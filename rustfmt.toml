@@ -1,0 +1,3 @@
+fn_single_line = true
+use_field_init_shorthand = true
+tab_spaces = 4
