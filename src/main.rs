@@ -1,5 +1,8 @@
 #![cfg_attr(debug_assertions, allow(dead_code, unused))]
 
+extern crate setop;
+use setop::{read_bytes, lines_of};
+
 #[macro_use]
 extern crate quicli;
 
@@ -9,7 +12,6 @@ use std::str::FromStr;
 use std::result;
 
 use quicli::prelude::*;
-use quicli::prelude::structopt::clap;
 
 #[derive(Debug, StructOpt)]
 #[structopt(
@@ -52,34 +54,14 @@ impl FromStr for OpName {
     }
 }
 
-use std::path::{Path};
-use std::io::{BufReader, BufWriter, Read};
-use std::fs::File;
-fn reed_file<P: AsRef<Path>>(path: P) -> Result<Vec<u8>> {
-    let path = path.as_ref();
-    use std::fs;
-//    println!("{:?}", fs::metadata(path)?.file_type());
-//    ensure!(
-//        path.exists() && path.is_file(),
-//        "Path {:?} is not a file!",
-//        path
-//    );
-
-    let file = File::open(path).with_context(|_| format!("Could not open file {:?}", path))?;
-    let mut file = BufReader::new(file);
-
-    let mut result = Vec::<u8>::new();
-    file.read_to_end(&mut result)
-        .with_context(|_| format!("Could not read file {:?}", path))?;
-
-    Ok(result)
-}
-
 main!(|args: Args| {
     let files = args.file;
-    if files.len() == 0 { return Ok(()) }
+    if files.is_empty() { return Ok(()) }
     for f in files {
-        let contents = reed_file(f)?;
-        io::stdout().write(&contents);
+        let contents = read_bytes(f)?;
+        let lines = lines_of(&contents);
+        for l in lines.iter() {
+            io::stdout().write(l)?;
+        }
     }
 });

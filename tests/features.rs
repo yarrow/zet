@@ -47,5 +47,5 @@ fn single_argument_just_prints_the_unique_lines() {
         .unwrap()
         .args(&["intersect", x.path().to_str().unwrap()])
         .unwrap();
-    assert_eq!(String::from_utf8(output.stdout).unwrap(), XX);
+    assert_eq!(String::from_utf8(output.stdout).unwrap(), X);
 }
