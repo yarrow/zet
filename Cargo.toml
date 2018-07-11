@@ -18,8 +18,9 @@ memchr = "2.0.1"
 indexmap = "1.0.1"
 
 [dev-dependencies]
-assert_cmd = "0.3.0"
+assert_cmd = "0.4.0"
 assert_fs = "0.2"
 indoc = "0.2"
 predicates = "0.5"
 tempfile = "3.0.2"
+maplit = "1.0.1"

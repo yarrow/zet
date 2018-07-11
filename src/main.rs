@@ -1,7 +1,7 @@
 #![cfg_attr(debug_assertions, allow(dead_code, unused))]
 
 extern crate setop;
-use setop::{read_bytes, lines_of};
+use setop::lines_of;
 
 #[macro_use]
 extern crate quicli;
@@ -10,6 +10,7 @@ use std::io::{self, Write};
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::result;
+use std::fs;
 
 use quicli::prelude::*;
 
@@ -58,7 +59,7 @@ main!(|args: Args| {
     let files = args.file;
     if files.is_empty() { return Ok(()) }
     for f in files {
-        let contents = read_bytes(f)?;
+        let contents = fs::read(f)?;
         let lines = lines_of(&contents);
         for l in lines.iter() {
             io::stdout().write(l)?;
