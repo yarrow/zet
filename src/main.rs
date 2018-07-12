@@ -1,7 +1,7 @@
 #![cfg_attr(debug_assertions, allow(dead_code, unused))]
 
 extern crate setop;
-use setop::lines_of;
+use setop::LineSet;
 
 #[macro_use]
 extern crate quicli;
@@ -44,13 +44,15 @@ struct Args {
 #[derive(Debug)]
 enum OpName {
     Intersect,
+    Diff,
 }
 impl FromStr for OpName {
     type Err = String;
     fn from_str(s: &str) -> result::Result<Self, <Self as FromStr>::Err> {
         match &*s.to_ascii_lowercase() {
             "intersect" => Ok(OpName::Intersect),
-            _ => Err("Expected intersect, ...".to_owned()),
+            "diff" => Ok(OpName::Diff),
+            _ => Err("Expected intersect, diff, ...".to_owned()),
         }
     }
 }
@@ -58,11 +60,22 @@ impl FromStr for OpName {
 main!(|args: Args| {
     let files = args.file;
     if files.is_empty() { return Ok(()) }
-    for f in files {
-        let contents = fs::read(f)?;
-        let lines = lines_of(&contents);
-        for l in lines.iter() {
-            io::stdout().write(l)?;
+
+    let contents = fs::read(&files[0])?;
+    let mut lines = LineSet::new(&contents);
+    let rest = files[1..].iter();
+
+    use self::OpName::*;
+    match args.op {
+        Intersect => for f in rest {
+            lines.intersect(&fs::read(f)?);
         }
+        Diff => for f in rest {
+            lines.diff(&fs::read(f)?);
+        }
+    }
+
+    for l in lines.iter() {
+        io::stdout().write(l)?;
     }
 });
