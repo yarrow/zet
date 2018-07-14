@@ -6,6 +6,12 @@ use memchr::Memchr;
 extern crate indexmap;
 use indexmap::IndexSet;
 
+#[macro_use]
+extern crate structopt_derive;
+extern crate structopt;
+
+pub mod args;
+
 type BaseSet<'a> = IndexSet<&'a [u8]>;
 pub struct LineSet<'lines>(BaseSet<'lines>);
 
