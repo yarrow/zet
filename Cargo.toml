@@ -5,6 +5,7 @@ authors = ["Yarrow Angelweed <yarrow.angelweed@gmail.com>"]
 
 [dependencies]
 failure = "0.1.1"
+failure_derive = "0.1.1"
 structopt = {version = "0.2.10", features=["wrap_help"]}
 structopt-derive = "0.2.10"
 quicli = "0.3.0"
