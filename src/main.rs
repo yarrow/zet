@@ -1,4 +1,4 @@
-//#![cfg_attr(debug_assertions, allow(dead_code, unused))]
+#![cfg_attr(debug_assertions, allow(dead_code, unused))]
 
 extern crate structopt;
 extern crate failure;

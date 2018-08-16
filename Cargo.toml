@@ -2,26 +2,20 @@
 name = "setop"
 version = "0.1.0"
 authors = ["Yarrow Angelweed <yarrow.angelweed@gmail.com>"]
+edition = '2018'
 
 [dependencies]
+rental = "0.5.1"
 failure = "0.1.1"
 failure_derive = "0.1.1"
 structopt = {version = "0.2.10", features=["wrap_help"]}
 structopt-derive = "0.2.10"
-quicli = "0.3.0"
 clap = "2.32.0"
-log = "0.4.3"
-env_logger = "0.5.10"
-glob = "0.2.11"
-rayon = "1.0.1"
-clap-verbosity-flag = "0.1.0"
 memchr = "2.0.1"
 indexmap = "1.0.1"
 
 [dev-dependencies]
 assert_cmd = "0.4.0"
 assert_fs = "0.2"
-indoc = "0.2"
 predicates = "0.5"
 tempfile = "3.0.2"
-maplit = "1.0.1"

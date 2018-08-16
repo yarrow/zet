@@ -3,11 +3,6 @@ extern crate assert_cmd;
 extern crate assert_fs;
 extern crate predicates;
 
-#[macro_use]
-extern crate maplit;
-#[macro_use]
-extern crate indoc;
-
 use std::process::Command;
 use std::collections::HashMap;
 

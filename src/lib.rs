@@ -1,3 +1,4 @@
+#![feature(rust_2018_preview)]
 #![cfg_attr(debug_assertions, allow(dead_code, unused))]
 
 use std::io::{stdout, Write};
@@ -20,10 +21,10 @@ use std::path::PathBuf;
 pub type SetOpResult = Result<(), Error>;
 
 pub mod args;
-use args::OpName;
+use crate::args::OpName;
 
-fn is_present_in(x: &[u8], other: &SliceSet) -> bool { other.contains(x) }
-fn is_absent_from(x: &[u8], other: &SliceSet) -> bool { ! other.contains(x) }
+fn is_present_in(x: &[u8], other: &SliceSet<'_>) -> bool { other.contains(x) }
+fn is_absent_from(x: &[u8], other: &SliceSet<'_>) -> bool { ! other.contains(x) }
 
 pub fn calculate(op: OpName, files: Vec<PathBuf>) -> SetOpResult {
     let wanted = match op {
@@ -45,7 +46,7 @@ pub fn calculate(op: OpName, files: Vec<PathBuf>) -> SetOpResult {
 }
 
 type SliceSet<'a> = IndexSet<&'a [u8]>;
-fn slice_set(line_sequence: &[u8]) -> SliceSet {
+fn slice_set(line_sequence: &[u8]) -> SliceSet<'_> {
     let mut set = SliceSet::new();
     let mut begin = 0;
     for end in Memchr::new(b'\n', line_sequence) {
@@ -121,11 +122,11 @@ impl VecSet {
     }
 
     pub fn process_file<F>(&mut self, op: F, line_sequence: &[u8])
-        where F: Fn(&mut Self, &SliceSet) {
+        where F: Fn(&mut Self, &SliceSet<'_>) {
         let other = slice_set(line_sequence);
         op(self, &other);
     }
-    pub fn intersect(&mut self, other: &SliceSet) {
+    pub fn intersect(&mut self, other: &SliceSet<'_>) {
         self.0.retain(|x| other.contains(&x[..]));
     }
 
@@ -134,7 +135,7 @@ impl VecSet {
         self.0.retain(|x| ! other.contains(&x[..]));
     }
 
-    pub fn iter(&self) -> indexmap::set::Iter<Vec<u8>> {
+    pub fn iter(&self) -> indexmap::set::Iter<'_, Vec<u8>> {
         self.0.iter()
     }
 }
