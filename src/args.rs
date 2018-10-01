@@ -2,7 +2,6 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::result;
 
-extern crate structopt;
 use structopt::StructOpt;
 
 pub fn parse_args() -> Args {

@@ -1,14 +1,7 @@
-#![cfg_attr(debug_assertions, allow(dead_code, unused))]
-extern crate assert_cmd;
-extern crate assert_fs;
-extern crate predicates;
-
 use std::process::Command;
-use std::collections::HashMap;
 
 use assert_cmd::prelude::*;
 use assert_fs::{TempDir, prelude::*};
-use predicates::prelude::*;
 
 #[test]
 fn requires_subcommand() {

@@ -5,16 +5,11 @@ use std::fs;
 use std::path::PathBuf;
 
 use memchr::Memchr;
-
 use indexmap::IndexSet;
+use failure::Error;
 
 #[macro_use]
 extern crate rental;
-
-#[macro_use]
-extern crate structopt_derive;
-
-use failure::Error;
 
 pub type SetOpResult = Result<(), Error>;
 
