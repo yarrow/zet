@@ -35,7 +35,7 @@ pub struct Args {
     pub file: Vec<PathBuf>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum OpName {
     Intersect,
     Diff,

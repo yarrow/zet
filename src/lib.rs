@@ -37,7 +37,7 @@ fn rent_set(f: &PathBuf) -> Result<RentSet, Error> {
 fn is_present_in(x: &[u8], other: &SliceSet<'_>) -> bool { other.contains(x) }
 fn is_absent_from(x: &[u8], other: &SliceSet<'_>) -> bool { ! other.contains(x) }
 
-pub fn calculate(op: OpName, files: Vec<PathBuf>) -> SetOpResult {
+pub fn calculate(op: OpName, files: &[PathBuf]) -> SetOpResult {
     if files.is_empty() { return Ok(()) }
     let wanted = match op {
         OpName::Intersect => is_present_in,
@@ -58,7 +58,7 @@ pub(crate) fn slice_set(line_sequence: &[u8]) -> SliceSet<'_> {
     let mut set = SliceSet::new();
     let mut begin = 0;
     for end in Memchr::new(b'\n', line_sequence) {
-        set.insert(&line_sequence[begin..end+1]);
+        set.insert(&line_sequence[begin..=end]);
         begin = end+1;
     }
     if begin < line_sequence.len() {
@@ -148,7 +148,6 @@ impl VecSet {
     }
 }
 
-/*
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -207,4 +206,3 @@ mod tests {
     }
 
 }
-*/
