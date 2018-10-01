@@ -1,52 +1,65 @@
-#![feature(rust_2018_preview)]
 #![cfg_attr(debug_assertions, allow(dead_code, unused))]
 
 use std::io::{stdout, Write};
+use std::fs;
+use std::path::PathBuf;
 
-extern crate memchr;
 use memchr::Memchr;
 
-extern crate indexmap;
 use indexmap::IndexSet;
 
 #[macro_use]
+extern crate rental;
+
+#[macro_use]
 extern crate structopt_derive;
-extern crate structopt;
-extern crate failure;
 
 use failure::Error;
-use std::fs;
-use std::path::PathBuf;
 
 pub type SetOpResult = Result<(), Error>;
 
 pub mod args;
 use crate::args::OpName;
 
+pub(crate) type SliceSet<'a> = IndexSet<&'a [u8]>;
+rental! {
+    pub mod slice_set {
+        use crate::SliceSet;
+        #[rental(covariant)]
+        pub(crate) struct RentSet {
+            lines: Vec<u8>,
+            set: SliceSet<'lines>
+        }
+    }
+}
+use crate::slice_set::RentSet;
+
+fn rent_set(f: &PathBuf) -> Result<RentSet, Error> {
+    let lines = fs::read(f)?;
+    Ok(RentSet::new(lines, |x| slice_set(x)))
+}
+
 fn is_present_in(x: &[u8], other: &SliceSet<'_>) -> bool { other.contains(x) }
 fn is_absent_from(x: &[u8], other: &SliceSet<'_>) -> bool { ! other.contains(x) }
 
 pub fn calculate(op: OpName, files: Vec<PathBuf>) -> SetOpResult {
+    if files.is_empty() { return Ok(()) }
     let wanted = match op {
         OpName::Intersect => is_present_in,
         OpName::Diff => is_absent_from,
     };
-    if files.is_empty() { return Ok(()) }
-    let contents = fs::read(&files[0])?;
-    let mut result = slice_set(&contents);
+    let mut result = rent_set(&files[0])?;
     for f in files[1..].iter() {
-        let other_contents = fs::read(f)?;
-        let other = slice_set(&other_contents);
-        result.retain(|x| wanted(x, &other));
+        let other = rent_set(f)?;
+        result.rent_mut(|res| res.retain(|x| wanted(x, other.suffix())));
     }
-    for line in result.iter() {
+    for line in result.suffix().iter() {
         stdout().write_all(line)?;
     }
     Ok(())
 }
 
-type SliceSet<'a> = IndexSet<&'a [u8]>;
-fn slice_set(line_sequence: &[u8]) -> SliceSet<'_> {
+pub(crate) fn slice_set(line_sequence: &[u8]) -> SliceSet<'_> {
     let mut set = SliceSet::new();
     let mut begin = 0;
     for end in Memchr::new(b'\n', line_sequence) {
@@ -140,6 +153,7 @@ impl VecSet {
     }
 }
 
+/*
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -198,3 +212,4 @@ mod tests {
     }
 
 }
+*/
