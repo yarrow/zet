@@ -1,6 +1,6 @@
 use std::path::PathBuf;
-use std::str::FromStr;
 use std::result;
+use std::str::FromStr;
 
 use structopt::StructOpt;
 
@@ -10,16 +10,16 @@ pub fn parse_args() -> Args {
 
 #[derive(Debug, StructOpt)]
 #[structopt(
-    name = "setop", about = "find the union or intersection of files considered as sets of lines",
+    name = "setop",
+    about = "find the union or intersection of files considered as sets of lines",
     raw(setting = "structopt::clap::AppSettings::ColoredHelp"),
-    after_help=
-"Each line is output at most once, no matter how many times it occurs in the file(s). Lines are not sorted, but are printed in the order they occur in the input."
+    after_help = "Each line is output at most once, no matter how many times it occurs in the file(s). Lines are not sorted, but are printed in the order they occur in the input."
 )]
 pub struct Args {
     #[structopt(
-        name="intersect|union|diff|once",
-        raw(next_line_help = "true"), long_help=
-"Each operation prints lines meeting a different condition:
+        name = "intersect|union|diff|once",
+        raw(next_line_help = "true"),
+        long_help = "Each operation prints lines meeting a different condition:
     Operation  Prints lines appearing in
     ========== =========================
     intersect: EVERY file
@@ -30,7 +30,8 @@ pub struct Args {
     pub op: OpName,
     #[structopt(
         parse(from_os_str),
-        help = "Input files", raw(next_line_help = "true"),
+        help = "Input files",
+        raw(next_line_help = "true"),
     )]
     pub file: Vec<PathBuf>,
 }
@@ -50,4 +51,3 @@ impl FromStr for OpName {
         }
     }
 }
-

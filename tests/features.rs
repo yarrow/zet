@@ -1,7 +1,7 @@
 use std::process::Command;
 
 use assert_cmd::prelude::*;
-use assert_fs::{TempDir, prelude::*};
+use assert_fs::{prelude::*, TempDir};
 
 #[test]
 fn requires_subcommand() {
@@ -13,10 +13,7 @@ const SUBCOMMANDS: [&str; 2] = ["intersect", "diff"];
 #[test]
 fn subcommands_allow_empty_arg_list_and_produce_empty_output() {
     for subcommand in SUBCOMMANDS.iter() {
-        let output = Command::main_binary()
-            .unwrap()
-            .arg(subcommand)
-            .unwrap();
+        let output = Command::main_binary().unwrap().arg(subcommand).unwrap();
         assert_eq!(String::from_utf8(output.stdout).unwrap(), "");
     }
 }
@@ -40,12 +37,12 @@ fn path_with(temp: &TempDir, name: &str, contents: &str) -> String {
 
 #[test]
 fn single_argument_just_prints_the_unique_lines() {
-    const X:  &str = "x\nX\nEx\nEks\n";
+    const X: &str = "x\nX\nEx\nEks\n";
     const XX: &str = "x\nX\nEx\nEks\nx\nx\nX\n";
 
     let temp = TempDir::new().unwrap();
     let x = temp.child("x.txt");
-    x.write_str(&(XX.to_owned()+XX)).unwrap();
+    x.write_str(&(XX.to_owned() + XX)).unwrap();
 
     for subcommand in SUBCOMMANDS.iter() {
         let output = Command::main_binary()
@@ -68,13 +65,13 @@ fn intersect_prints_lines_in_the_intersection_in_order_they_appear_in_first_file
     let x_path = path_with(&temp, "x.txt", &XX);
     let y_path = path_with(&temp, "y.txt", &YY);
     let z_path = path_with(&temp, "z.txt", &ZZ);
-    
+
     let output = Command::main_binary()
         .unwrap()
         .args(&["intersect", &x_path, &y_path, &z_path])
         .unwrap();
     assert_eq!(String::from_utf8(output.stdout).unwrap(), X_INTERSECTION);
-    
+
     let output = Command::main_binary()
         .unwrap()
         .args(&["intersect", &z_path, &y_path, &x_path])
@@ -94,13 +91,13 @@ fn diff_prints_lines_in_the_first_file_but_no_other_in_order_they_appear_in_firs
     let x_path = path_with(&temp, "x.txt", &XX);
     let y_path = path_with(&temp, "y.txt", &YY);
     let z_path = path_with(&temp, "z.txt", &ZZ);
-    
+
     let output = Command::main_binary()
         .unwrap()
         .args(&["diff", &x_path, &y_path])
         .unwrap();
     assert_eq!(String::from_utf8(output.stdout).unwrap(), MINUS_Y);
-    
+
     let output = Command::main_binary()
         .unwrap()
         .args(&["diff", &x_path, &y_path, &z_path])

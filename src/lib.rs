@@ -1,12 +1,12 @@
 #![cfg_attr(debug_assertions, allow(dead_code, unused))]
 
-use std::io::{stdout, Write};
 use std::fs;
+use std::io::{stdout, Write};
 use std::path::PathBuf;
 
-use memchr::Memchr;
-use indexmap::IndexSet;
 use failure::Error;
+use indexmap::IndexSet;
+use memchr::Memchr;
 
 #[macro_use]
 extern crate rental;
@@ -34,11 +34,17 @@ fn rent_set(f: &PathBuf) -> Result<RentSet, Error> {
     Ok(RentSet::new(lines, |x| slice_set(x)))
 }
 
-fn is_present_in(x: &[u8], other: &SliceSet<'_>) -> bool { other.contains(x) }
-fn is_absent_from(x: &[u8], other: &SliceSet<'_>) -> bool { ! other.contains(x) }
+fn is_present_in(x: &[u8], other: &SliceSet<'_>) -> bool {
+    other.contains(x)
+}
+fn is_absent_from(x: &[u8], other: &SliceSet<'_>) -> bool {
+    !other.contains(x)
+}
 
 pub fn calculate(op: OpName, files: &[PathBuf]) -> SetOpResult {
-    if files.is_empty() { return Ok(()) }
+    if files.is_empty() {
+        return Ok(());
+    }
     let wanted = match op {
         OpName::Intersect => is_present_in,
         OpName::Diff => is_absent_from,
@@ -59,7 +65,7 @@ pub(crate) fn slice_set(line_sequence: &[u8]) -> SliceSet<'_> {
     let mut begin = 0;
     for end in Memchr::new(b'\n', line_sequence) {
         set.insert(&line_sequence[begin..=end]);
-        begin = end+1;
+        begin = end + 1;
     }
     if begin < line_sequence.len() {
         set.insert(&line_sequence[begin..]);
@@ -120,7 +126,7 @@ impl<'a> SubtractiveSet<'a> for DiffSet<'a> {
 
 pub struct VecSet(IndexSet<Vec<u8>>);
 impl VecSet {
-    pub fn new(line_sequence: &[u8]) -> Self  {
+    pub fn new(line_sequence: &[u8]) -> Self {
         let base = slice_set(line_sequence);
         let mut set = IndexSet::<Vec<u8>>::with_capacity(base.len());
         for line in base.iter() {
@@ -130,7 +136,9 @@ impl VecSet {
     }
 
     pub fn process_file<F>(&mut self, op: F, line_sequence: &[u8])
-        where F: Fn(&mut Self, &SliceSet<'_>) {
+    where
+        F: Fn(&mut Self, &SliceSet<'_>),
+    {
         let other = slice_set(line_sequence);
         op(self, &other);
     }
@@ -140,7 +148,7 @@ impl VecSet {
 
     pub fn diff(&mut self, line_sequence: &[u8]) {
         let other = slice_set(line_sequence);
-        self.0.retain(|x| ! other.contains(&x[..]));
+        self.0.retain(|x| !other.contains(&x[..]));
     }
 
     pub fn iter(&self) -> indexmap::set::Iter<'_, Vec<u8>> {
