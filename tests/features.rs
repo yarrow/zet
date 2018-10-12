@@ -11,13 +11,13 @@ fn requires_subcommand() {
 const SUBCOMMANDS: [&str; 2] = ["intersect", "diff"];
 
 #[test]
-fn subcommands_allow_empty_arg_list() {
+fn subcommands_allow_empty_arg_list_and_produce_empty_output() {
     for subcommand in SUBCOMMANDS.iter() {
-        Command::main_binary()
+        let output = Command::main_binary()
             .unwrap()
             .arg(subcommand)
-            .assert()
-            .success();
+            .unwrap();
+        assert_eq!(String::from_utf8(output.stdout).unwrap(), "");
     }
 }
 
