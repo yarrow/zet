@@ -1,4 +1,6 @@
 #![cfg_attr(debug_assertions, allow(dead_code, unused))]
+#![cfg_attr(feature = "cargo-clippy", deny(clippy))]
+#![cfg_attr(feature = "cargo-clippy", warn(clippy_pedantic))]
 
 use std::fs;
 use std::io::{stdout, Write};

@@ -4,7 +4,7 @@ use std::str::FromStr;
 
 use structopt::StructOpt;
 
-pub fn parse_args() -> Args {
+pub fn parsed() -> Args {
     Args::from_args()
 }
 
