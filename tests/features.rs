@@ -2,12 +2,14 @@ use std::process::Command;
 
 use assert_cmd::prelude::*;
 use assert_fs::{prelude::*, TempDir};
+use itertools::Itertools;
 
 #[test]
 fn requires_subcommand() {
     Command::main_binary().unwrap().assert().failure();
 }
 
+const EVENTUAL_SUBCOMMANDS: [&str; 5] = ["union", "intersect", "diff", "single", "multiple"];
 const SUBCOMMANDS: [&str; 2] = ["intersect", "diff"];
 
 #[test]
@@ -27,6 +29,146 @@ fn fail_on_missing_file() {
             .assert()
             .failure();
     }
+}
+
+// We're testing with files (say x.txt, y.txt, and z.txt) whose contents are
+// X, Y, and Z. Each line tells us which subset of the three files it appears
+// in, and that determines for which subcommands `sub` it will appear in the
+// output of
+//
+//      setop sub x.txt y.txt z.txt
+
+// The contents of x.txt
+const X: &str = "In x, y, z.  So: union, intersect, multiple
+In x only, though it appears there more than once. So: union, diff, single
+In x, y, z.  So: union, intersect, multiple
+Just in x.  So: union, diff, single.
+In x only, though it appears there more than once. So: union, diff, single
+In x only, though it appears there more than once. So: union, diff, single
+In x and y.  So: union, multiple
+In x and z.  So: union, multiple
+Also in x, y, z.  So: union, intersect, multiple
+";
+
+// The contents of y.txt
+const Y: &str = "In x, y, z.  So: union, intersect, multiple
+In x and y.  So: union, multiple
+Also in x, y, z.  So: union, intersect, multiple
+In y and z. So: union, multiple
+Just in y. So: union, single
+";
+
+// The contents of z.txt
+const Z: &str = "Just in z. So: union, single
+Also in x, y, z.  So: union, intersect, multiple
+Just in z. So: union, single
+In y and z. So: union, multiple
+Just in z. So: union, single
+In x, y, z.  So: union, intersect, multiple
+In x and z.  So: union, multiple
+In x and z.  So: union, multiple
+";
+
+// For the expected output sections below, we want to begin each line at the
+// first column, so we put the opening quote mark on the line above and ignore
+// the newline character that this produces.
+fn expected(subcommand: &str) -> &'static str {
+    match subcommand {
+        "union" => &UNION[1..],
+        "intersect" => &INTERSECT[1..],
+        "diff" => &DIFF[1..],
+        "single" => &SINGLE[1..],
+        "multiple" => &MULTIPLE[1..],
+        _ => panic!("There is no subcommand {}", subcommand),
+    }
+}
+
+// The expected output of `setop union x.txt y.txt z.txt`
+const UNION: &str = "
+In x, y, z.  So: union, intersect, multiple
+In x only, though it appears there more than once. So: union, diff, single
+Just in x.  So: union, diff, single.
+In x and y.  So: union, multiple
+In x and z.  So: union, multiple
+Also in x, y, z.  So: union, intersect, multiple
+In y and z. So: union, multiple
+Just in y. So: union, single
+Just in z. So: union, single
+";
+
+// The expected output of `setop intersect x.txt y.txt z.txt`
+const INTERSECT: &str = "
+In x, y, z.  So: union, intersect, multiple
+Also in x, y, z.  So: union, intersect, multiple
+";
+
+// The expected output of `setop diff x.txt y.txt z.txt`
+const DIFF: &str = "
+In x only, though it appears there more than once. So: union, diff, single
+Just in x.  So: union, diff, single.
+";
+
+// The expected output of `setop single x.txt y.txt z.txt`
+const SINGLE: &str = "
+In x only, though it appears there more than once. So: union, diff, single
+Just in x.  So: union, diff, single.
+Just in y. So: union, single
+Just in z. So: union, single
+";
+
+// The expected output of `setop single x.txt y.txt z.txt`
+const MULTIPLE: &str = "
+In x, y, z.  So: union, intersect, multiple
+In x and y.  So: union, multiple
+In x and z.  So: union, multiple
+Also in x, y, z.  So: union, intersect, multiple
+In y and z. So: union, multiple
+";
+
+// These tests of the expected results allow us to reduce the amount of
+// hand checking we need to make sure the expected outputs are themselves
+// correct.
+#[test]
+fn union_output_is_the_concatentated_input_lines_in_order_with_no_duplicates() {
+    let xyz = X.to_string() + Y + Z;
+    let unique_input_lines = xyz.lines().unique();
+    let union_lines = expected("union").lines();
+    assert!(union_lines.eq(unique_input_lines));
+}
+
+#[test]
+fn output_is_subsequence_of_union_output_for_all_subcommands() {
+    let union = expected("union");
+    for sub in EVENTUAL_SUBCOMMANDS.iter() {
+        assert!(
+            is_subsequence(expected(sub), union),
+            "Expected result for {} is not a subsequence of the expected result for union",
+            sub
+        );
+    }
+}
+
+#[test]
+fn each_line_occurs_at_most_once_in_the_output_of_any_subcommand() {
+    for sub in EVENTUAL_SUBCOMMANDS.iter() {
+        let all = expected(sub).lines();
+        let uniq = all.clone().unique();
+        assert!(all.eq(uniq), "Output of {} has duplicate lines", sub);
+    }
+}
+
+fn is_subsequence(needles: &str, haystack: &str) -> bool {
+    let needles = needles.lines();
+    let mut haystack = haystack.lines();
+    'next_needle: for needle in needles {
+        while let Some(hay) = haystack.next() {
+            if needle == hay {
+                continue 'next_needle;
+            }
+        }
+        return false;
+    }
+    true
 }
 
 fn path_with(temp: &TempDir, name: &str, contents: &str) -> String {
@@ -54,53 +196,21 @@ fn single_argument_just_prints_the_unique_lines() {
 }
 
 #[test]
-fn intersect_prints_lines_in_the_intersection_in_order_they_appear_in_first_file() {
-    const XX: &str = "x\nX\nEx\nEks\nx\nx\nX\n";
-    const YY: &str = "Ex\nx\ny\nY\nEy\nEks\ny\ny\nY\n";
-    const ZZ: &str = "Eks\nx\nx\nz\nZ\nEz\nEks\nz\nz\nZ\n";
-    const X_INTERSECTION: &str = "x\nEks\n";
-    const Z_INTERSECTION: &str = "Eks\nx\n";
-
+fn setop_subcommand_x_y_z_matches_expected_output_for_all_subcommands() {
     let temp = TempDir::new().unwrap();
-    let x_path = path_with(&temp, "x.txt", &XX);
-    let y_path = path_with(&temp, "y.txt", &YY);
-    let z_path = path_with(&temp, "z.txt", &ZZ);
-
-    let output = Command::main_binary()
-        .unwrap()
-        .args(&["intersect", &x_path, &y_path, &z_path])
-        .unwrap();
-    assert_eq!(String::from_utf8(output.stdout).unwrap(), X_INTERSECTION);
-
-    let output = Command::main_binary()
-        .unwrap()
-        .args(&["intersect", &z_path, &y_path, &x_path])
-        .unwrap();
-    assert_eq!(String::from_utf8(output.stdout).unwrap(), Z_INTERSECTION);
-}
-
-#[test]
-fn diff_prints_lines_in_the_first_file_but_no_other_in_order_they_appear_in_first_file() {
-    const XX: &str = "x\nX\nEx\nEks\nx\nx\nX\n";
-    const YY: &str = "Ex\n";
-    const ZZ: &str = "Eks\n";
-    const MINUS_Y: &str = "x\nX\nEks\n";
-    const ALSO_MINUS_Z: &str = "x\nX\n";
-
-    let temp = TempDir::new().unwrap();
-    let x_path = path_with(&temp, "x.txt", &XX);
-    let y_path = path_with(&temp, "y.txt", &YY);
-    let z_path = path_with(&temp, "z.txt", &ZZ);
-
-    let output = Command::main_binary()
-        .unwrap()
-        .args(&["diff", &x_path, &y_path])
-        .unwrap();
-    assert_eq!(String::from_utf8(output.stdout).unwrap(), MINUS_Y);
-
-    let output = Command::main_binary()
-        .unwrap()
-        .args(&["diff", &x_path, &y_path, &z_path])
-        .unwrap();
-    assert_eq!(String::from_utf8(output.stdout).unwrap(), ALSO_MINUS_Z);
+    let x_path: &str = &path_with(&temp, "x.txt", X);
+    let y_path: &str = &path_with(&temp, "y.txt", Y);
+    let z_path: &str = &path_with(&temp, "z.txt", Z);
+    for sub in SUBCOMMANDS.iter() {
+        let output = Command::main_binary()
+            .unwrap()
+            .args(&[sub, &x_path, &y_path, &z_path])
+            .unwrap();
+        assert_eq!(
+            String::from_utf8(output.stdout).unwrap(),
+            expected(sub),
+            "Output from {} doeasn't match expected",
+            sub
+        );
+    }
 }
