@@ -65,8 +65,6 @@ fn calculate_and_print(set: &mut impl SetExpression, files: Iter<PathBuf>) -> Se
 }
 
 trait SetExpression
-where
-    Self: Sized,
 {
     fn init(text: TextVec) -> Self;
     fn operate(&mut self, text: &TextSlice);
