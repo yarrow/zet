@@ -66,7 +66,6 @@ fn calculate_and_print(set: &mut impl SetExpression, files: Iter<PathBuf>) -> Se
 
 trait SetExpression
 {
-    fn init(text: TextVec) -> Self;
     fn operate(&mut self, text: &TextSlice);
     fn finish(&mut self) {}
     fn write_to(&self, out: &mut impl Write) -> SetOpResult;
@@ -144,12 +143,16 @@ impl<'a> LineSet<'a> for UnionSet {
     }
 }
 
-impl SetExpression for UnionSet {
-    // The first operand is initialized by calling the `LineSet`'s initialization method.
+trait UnionSetExt {
+    fn init(text: TextVec) -> Self;
+}
+impl UnionSetExt for UnionSet {
     fn init(text: TextVec) -> Self {
         Self::init_from_slice(&text)
     }
-    // For subsequent operands we simply insert each line into the hash
+}
+
+impl SetExpression for UnionSet {
     fn operate(&mut self, text: &TextSlice) {
         self.insert_all_lines(&text);
     }
@@ -188,6 +191,11 @@ impl<'a> IntoLineIterator for &'a UnionSet {
 //
 macro_rules! impl_singular_plural_set {
     ($set_type:ident, $retain_relevant_lines:ident) => {
+        impl $set_type {
+            fn init(text: TextVec) -> Self {
+                $set_type::init_from_slice(&text)
+            }
+        }
         impl Default for $set_type {
             fn default() -> Self {
                 let def = BoolMapForSet::default();
@@ -200,9 +208,6 @@ macro_rules! impl_singular_plural_set {
             }
         }
         impl SetExpression for $set_type {
-            fn init(text: TextVec) -> Self {
-                $set_type::init_from_slice(&text)
-            }
             // Since a line that occurs more than once in a single file still
             // counts as singular, but not if occurs in multiple files, for the
             // second and subsequent operand files we first calculate a SliceSet
@@ -277,10 +282,12 @@ rental! {
 
 macro_rules! impl_waning_set {
     ($set_type:ident, $operation:ident) => {
-        impl SetExpression for $set_type {
+        impl $set_type {
             fn init(text: TextVec) -> Self {
                 $set_type(RentalSet::new(text, |x| SliceSet::init_from_slice(x)))
             }
+        }
+        impl SetExpression for $set_type {
             fn operate(&mut self, text: &TextSlice) {
                 let other = SliceSet::init_from_slice(text);
                 self.0.rent_mut(|set| $operation(set, &other));
