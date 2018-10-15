@@ -9,8 +9,7 @@ fn requires_subcommand() {
     Command::main_binary().unwrap().assert().failure();
 }
 
-const EVENTUAL_SUBCOMMANDS: [&str; 5] = ["union", "intersect", "diff", "single", "multiple"];
-const SUBCOMMANDS: [&str; 2] = ["intersect", "diff"];
+const SUBCOMMANDS: [&str; 5] = ["intersect", "union", "diff", "single", "multiple"];
 
 #[test]
 fn subcommands_allow_empty_arg_list_and_produce_empty_output() {
@@ -139,7 +138,7 @@ fn union_output_is_the_concatentated_input_lines_in_order_with_no_duplicates() {
 #[test]
 fn output_is_subsequence_of_union_output_for_all_subcommands() {
     let union = expected("union");
-    for sub in EVENTUAL_SUBCOMMANDS.iter() {
+    for sub in SUBCOMMANDS.iter() {
         assert!(
             is_subsequence(expected(sub), union),
             "Expected result for {} is not a subsequence of the expected result for union",
@@ -150,7 +149,7 @@ fn output_is_subsequence_of_union_output_for_all_subcommands() {
 
 #[test]
 fn each_line_occurs_at_most_once_in_the_output_of_any_subcommand() {
-    for sub in EVENTUAL_SUBCOMMANDS.iter() {
+    for sub in SUBCOMMANDS.iter() {
         let all = expected(sub).lines();
         let uniq = all.clone().unique();
         assert!(all.eq(uniq), "Output of {} has duplicate lines", sub);
@@ -178,7 +177,7 @@ fn path_with(temp: &TempDir, name: &str, contents: &str) -> String {
 }
 
 #[test]
-fn single_argument_just_prints_the_unique_lines() {
+fn single_argument_just_prints_the_unique_lines_for_all_but_multiple() {
     const X: &str = "x\nX\nEx\nEks\n";
     const XX: &str = "x\nX\nEx\nEks\nx\nx\nX\n";
 
@@ -191,7 +190,8 @@ fn single_argument_just_prints_the_unique_lines() {
             .unwrap()
             .args(&[subcommand, x.path().to_str().unwrap()])
             .unwrap();
-        assert_eq!(String::from_utf8(output.stdout).unwrap(), X);
+        let result = String::from_utf8(output.stdout).unwrap();
+        assert_eq!(result, if subcommand == &"multiple" { "" } else { X });
     }
 }
 

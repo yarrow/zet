@@ -4,5 +4,5 @@ use failure::Error;
 
 fn main() -> Result<(), Error> {
     let args = setop::args::parsed();
-    setop::calculate(args.op, &args.file)
+    setop::do_calculation(args.op, &args.file)
 }

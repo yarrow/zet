@@ -25,7 +25,8 @@ pub struct Args {
     intersect: EVERY file
     union:     ANY file
     diff:      the FIRST file, and no other
-    once:      exactly ONE file"
+    single:    exactly ONE file
+    multiple:  MORE THAN one file"
     )]
     pub op: OpName,
     #[structopt(
@@ -39,15 +40,21 @@ pub struct Args {
 #[derive(Debug, Clone, Copy)]
 pub enum OpName {
     Intersect,
+    Union,
     Diff,
+    Single,
+    Multiple,
 }
 impl FromStr for OpName {
     type Err = String;
     fn from_str(s: &str) -> result::Result<Self, <Self as FromStr>::Err> {
         match &*s.to_ascii_lowercase() {
             "intersect" => Ok(OpName::Intersect),
+            "union" => Ok(OpName::Union),
             "diff" => Ok(OpName::Diff),
-            _ => Err("Expected intersect, diff, ...".to_owned()),
+            "single" => Ok(OpName::Single),
+            "multiple" => Ok(OpName::Multiple),
+            _ => Err("Expected intersect, union, diff, single, or multiple".to_owned()),
         }
     }
 }
