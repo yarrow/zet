@@ -19,6 +19,7 @@ use crate::args::OpName;
 
 type TextVec = Vec<u8>;
 type TextSlice = [u8];
+type LineIterator<'a> = Box<dyn Iterator<Item = &'a TextSlice> + 'a>;
 
 type UnionSet = IndexSet<TextVec>;
 type BoolMapForSet = IndexMap<TextVec, bool>;
@@ -60,32 +61,16 @@ fn calculate_and_print(set: &mut impl SetExpression, files: Iter<PathBuf>) -> Se
     set.finish();
     let stdout_for_locking = io::stdout();
     let mut stdout = stdout_for_locking.lock();
-    set.write_to(&mut stdout)?;
-    Ok(())
-}
-
-trait SetExpression
-{
-    fn operate(&mut self, text: &TextSlice);
-    fn finish(&mut self) {}
-    fn write_to(&self, out: &mut impl Write) -> SetOpResult;
-}
-
-trait IntoLineIterator {
-    type Item: AsRef<TextSlice>;
-    type IntoIter: Iterator<Item = Self::Item>;
-    fn result_lines(&self) -> Self::IntoIter;
-}
-
-// I can't figure out how to implement this function inside the `SetExpression` trait,
-// so every `impl trait SetExpression` will have have a `write_to` function that
-// just calls `rite_to`
-//
-fn rite_to(zelf: &impl IntoLineIterator, out: &mut impl Write) -> SetOpResult {
-    for line in zelf.result_lines() {
-        out.write_all(line.as_ref())?;
+    for line in set.iter() {
+        stdout.write_all(line)?;
     }
     Ok(())
+}
+
+trait SetExpression {
+    fn operate(&mut self, text: &TextSlice);
+    fn finish(&mut self) {}
+    fn iter(&self) -> LineIterator;
 }
 
 // Sets are implemented as variations on the `IndexMap` type, a hash that remembers
@@ -156,18 +141,8 @@ impl SetExpression for UnionSet {
     fn operate(&mut self, text: &TextSlice) {
         self.insert_all_lines(&text);
     }
-    fn write_to(&self, mut out: &mut impl Write) -> SetOpResult {
-        rite_to(&self, &mut out)
-    }
-}
-
-impl<'a> IntoLineIterator for &'a UnionSet {
-    type Item = &'a TextVec;
-    type IntoIter = indexmap::set::Iter<'a, TextVec>;
-
-    // A `UnionSet`'s `result_lines` iterator is the iterator of the underlying `IndexSet`
-    fn result_lines(&self) -> Self::IntoIter {
-        self.iter()
+    fn iter(&self) -> LineIterator {
+        Box::new(self.iter().map(|v| v.as_slice()))
     }
 }
 
@@ -231,17 +206,8 @@ macro_rules! impl_singular_plural_set {
             fn finish(&mut self) {
                 $retain_relevant_lines(&mut self.0)
             }
-            fn write_to(&self, mut out: &mut impl Write) -> SetOpResult {
-                rite_to(&self, &mut out)
-            }
-        }
-        // The `result_lines` iterator is the `keys` method of the underlying
-        // `IndexMap`.
-        impl<'a> IntoLineIterator for &'a $set_type {
-            type Item = &'a TextVec;
-            type IntoIter = indexmap::map::Keys<'a, TextVec, bool>;
-            fn result_lines(&self) -> Self::IntoIter {
-                self.0.keys()
+            fn iter(&self) -> LineIterator {
+                Box::new(self.0.keys().map(|k| k.as_slice()))
             }
         }
     };
@@ -292,16 +258,8 @@ macro_rules! impl_waning_set {
                 let other = SliceSet::init_from_slice(text);
                 self.0.rent_mut(|set| $operation(set, &other));
             }
-            fn write_to(&self, mut out: &mut impl Write) -> SetOpResult {
-                rite_to(&self, &mut out)
-            }
-        }
-
-        impl<'a> IntoLineIterator for &'a $set_type {
-            type Item = &'a &'a TextSlice;
-            type IntoIter = indexmap::set::Iter<'a, &'a TextSlice>;
-            fn result_lines(&self) -> Self::IntoIter {
-                self.0.suffix().iter()
+            fn iter(&self) -> LineIterator {
+                Box::new(self.0.suffix().iter().cloned())
             }
         }
     };
