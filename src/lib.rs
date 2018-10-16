@@ -52,8 +52,8 @@ pub fn do_calculation(op: OpName, files: &[PathBuf]) -> SetOpResult {
     };
     match op {
         OpName::Intersect => calculate_and_print(&mut IntersectSet::init(&text), paths)?,
-        OpName::Union => calculate_and_print(&mut UnionSet::init(&text), paths)?,
         OpName::Diff => calculate_and_print(&mut DiffSet::init(&text), paths)?,
+        OpName::Union => calculate_and_print(&mut UnionSet::init(&text), paths)?,
         OpName::Single => calculate_and_print(&mut SingleSet::init(&text), paths)?,
         OpName::Multiple => calculate_and_print(&mut MultipleSet::init(&text), paths)?,
     }
@@ -83,13 +83,13 @@ trait SetExpression {
 // the order in which keys were inserted, since our 'sets' are equipped with an
 // ordering on the members.
 //
-trait LineSet<'a>: Default {
+trait LineSet<'data>: Default {
     // The only method that implementations need to define is `insert_line`
-    fn insert_line(&mut self, line: &'a TextSlice);
+    fn insert_line(&mut self, line: &'data TextSlice);
 
     // The `insert_all_lines` method breaks `text` down into lines and inserts
     // each of them into `self`
-    fn insert_all_lines(&mut self, text: &'a TextSlice) {
+    fn insert_all_lines(&mut self, text: &'data TextSlice) {
         let mut begin = 0;
         for end in Memchr::new(b'\n', text) {
             self.insert_line(&text[begin..=end]);
@@ -104,7 +104,7 @@ trait LineSet<'a>: Default {
     }
     // We initialize a `LineSet` from `text` by inserting every line contained
     // in text into an empty hash.
-    fn init_from_slice(text: &'a TextSlice) -> Self {
+    fn init(text: &'data TextSlice) -> Self {
         let mut set = Self::default();
         set.insert_all_lines(text);
         set
@@ -129,16 +129,6 @@ impl<'a> LineSet<'a> for UnionSet {
         self.insert(line.to_vec());
     }
 }
-
-trait UnionSetExt {
-    fn init(text: &TextSlice) -> Self;
-}
-impl UnionSetExt for UnionSet {
-    fn init(text: &TextSlice) -> Self {
-        Self::init_from_slice(text)
-    }
-}
-
 impl SetExpression for UnionSet {
     fn operate(&mut self, text: &TextSlice) {
         self.insert_all_lines(&text);
@@ -177,11 +167,6 @@ impl SetExpression for UnionSet {
             // a `true` value for a `SingleSet`, and for a `MultipleSet` the
             // keys with a `false` value.
 
-impl SingleSet {
-    fn init(text: &TextSlice) -> Self {
-        SingleSet::init_from_slice(text)
-    }
-}
 impl<'a> LineSet<'a> for SingleSet {
     fn insert_line(&mut self, line: &'a TextSlice) {
         self.0.insert(line.to_vec(), true);
@@ -189,7 +174,7 @@ impl<'a> LineSet<'a> for SingleSet {
 }
 impl SetExpression for SingleSet {
     fn operate(&mut self, text: &TextSlice) {
-        let other = SliceSet::init_from_slice(text);
+        let other = SliceSet::init(text);
         for line in other.iter() {
             if self.0.contains_key(*line) {
                 self.0.insert(line.to_vec(), false);
@@ -206,11 +191,6 @@ impl SetExpression for SingleSet {
     }
 }
 
-impl MultipleSet {
-    fn init(text: &TextSlice) -> Self {
-        MultipleSet::init_from_slice(text)
-    }
-}
 impl<'a> LineSet<'a> for MultipleSet {
     fn insert_line(&mut self, line: &'a TextSlice) {
         self.0.insert(line.to_vec(), true);
@@ -218,7 +198,7 @@ impl<'a> LineSet<'a> for MultipleSet {
 }
 impl SetExpression for MultipleSet {
     fn operate(&mut self, text: &TextSlice) {
-        let other = SliceSet::init_from_slice(text);
+        let other = SliceSet::init(text);
         for line in other.iter() {
             if self.0.contains_key(*line) {
                 self.0.insert(line.to_vec(), false);
@@ -256,28 +236,28 @@ fn difference(set: &mut SliceSet, other: &SliceSet) {
 }
 */
 
-impl<'data> IntersectSet<'data> {
-    fn init(text: &'data TextSlice) -> Self {
-        IntersectSet(SliceSet::init_from_slice(text))
+impl<'data> LineSet<'data> for IntersectSet<'data> {
+    fn insert_line(&mut self, line: &'data TextSlice) {
+        self.0.insert(line);
     }
 }
 impl<'data> SetExpression for IntersectSet<'data> {
     fn operate(&mut self, text: &TextSlice) {
-        let other = SliceSet::init_from_slice(text);
+        let other = SliceSet::init(text);
         self.0.retain(|x| other.contains(x));
     }
     fn iter<'me>(&'me self) -> LineIterator<'me> {
         Box::new(self.0.iter().cloned())
     }
 }
-impl<'data> DiffSet<'data> {
-    fn init(text: &'data TextSlice) -> Self {
-        DiffSet(SliceSet::init_from_slice(text))
+impl<'data> LineSet<'data> for DiffSet<'data> {
+    fn insert_line(&mut self, line: &'data TextSlice) {
+        self.0.insert(line);
     }
 }
 impl<'data> SetExpression for DiffSet<'data> {
     fn operate(&mut self, text: &TextSlice) {
-        let other = SliceSet::init_from_slice(text);
+        let other = SliceSet::init(text);
         self.0.retain(|x| ! other.contains(x));
     }
     fn iter<'me>(&'me self) -> LineIterator<'me> {
