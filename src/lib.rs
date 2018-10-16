@@ -161,25 +161,6 @@ impl SetExpression for UnionSet {
 // with a `true` value and for a `MultipleSet` the keys with a `false` value,
 // so we use a macro to distinguish the two.
 //
-macro_rules! impl_singular_plural_set {
-    ($set_type:ident, $retain_relevant_lines:ident) => {
-        impl $set_type {
-            fn init(text: &TextSlice) -> Self {
-                $set_type::init_from_slice(text)
-            }
-        }
-        impl Default for $set_type {
-            fn default() -> Self {
-                let def = BoolMapForSet::default();
-                $set_type(def)
-            }
-        }
-        impl<'a> LineSet<'a> for $set_type {
-            fn insert_line(&mut self, line: &'a TextSlice) {
-                self.0.insert(line.to_vec(), true);
-            }
-        }
-        impl SetExpression for $set_type {
             // Since a line that occurs more than once in a single file still
             // counts as singular, but not if occurs in multiple files, for the
             // second and subsequent operand files we first calculate a SliceSet
@@ -187,37 +168,78 @@ macro_rules! impl_singular_plural_set {
             // we either add the line to `self` with a `true` value if it's not
             // already present, or set the line's value to `false` if it is present.
             //
-            fn operate(&mut self, text: &TextSlice) {
-                let other = SliceSet::init_from_slice(text);
-                for line in other.iter() {
-                    if self.0.contains_key(*line) {
-                        self.0.insert(line.to_vec(), false);
-                    } else {
-                        self.0.insert(line.to_vec(), true);
-                    }
-                }
-            }
             // After we've processed all the operands, we keep the keys with
             // a `true` value for a `SingleSet`, and for a `MultipleSet` the
             // keys with a `false` value.
-            fn finish(&mut self) {
-                $retain_relevant_lines(&mut self.0)
-            }
-            fn iter(&self) -> LineIterator {
-                Box::new(self.0.keys().map(|k| k.as_slice()))
+
+impl SingleSet {
+    fn init(text: &TextSlice) -> Self {
+        SingleSet::init_from_slice(text)
+    }
+}
+impl Default for SingleSet {
+    fn default() -> Self {
+        let def = BoolMapForSet::default();
+        SingleSet(def)
+    }
+}
+impl<'a> LineSet<'a> for SingleSet {
+    fn insert_line(&mut self, line: &'a TextSlice) {
+        self.0.insert(line.to_vec(), true);
+    }
+}
+impl SetExpression for SingleSet {
+    fn operate(&mut self, text: &TextSlice) {
+        let other = SliceSet::init_from_slice(text);
+        for line in other.iter() {
+            if self.0.contains_key(*line) {
+                self.0.insert(line.to_vec(), false);
+            } else {
+                self.0.insert(line.to_vec(), true);
             }
         }
-    };
+    }
+    fn finish(&mut self) {
+        self.0.retain(|_k, v| *v)
+    }
+    fn iter(&self) -> LineIterator {
+        Box::new(self.0.keys().map(|k| k.as_slice()))
+    }
 }
 
-impl_singular_plural_set!(SingleSet, retain_singles);
-fn retain_singles(singles: &mut BoolMapForSet) {
-    singles.retain(|_k, v| *v)
+impl MultipleSet {
+    fn init(text: &TextSlice) -> Self {
+        MultipleSet::init_from_slice(text)
+    }
 }
-
-impl_singular_plural_set!(MultipleSet, retain_multiples);
-fn retain_multiples(multiples: &mut BoolMapForSet) {
-    multiples.retain(|_k, v| !*v)
+impl Default for MultipleSet {
+    fn default() -> Self {
+        let def = BoolMapForSet::default();
+        MultipleSet(def)
+    }
+}
+impl<'a> LineSet<'a> for MultipleSet {
+    fn insert_line(&mut self, line: &'a TextSlice) {
+        self.0.insert(line.to_vec(), true);
+    }
+}
+impl SetExpression for MultipleSet {
+    fn operate(&mut self, text: &TextSlice) {
+        let other = SliceSet::init_from_slice(text);
+        for line in other.iter() {
+            if self.0.contains_key(*line) {
+                self.0.insert(line.to_vec(), false);
+            } else {
+                self.0.insert(line.to_vec(), true);
+            }
+        }
+    }
+    fn finish(&mut self) {
+        self.0.retain(|_k, v| ! *v)
+    }
+    fn iter(&self) -> LineIterator {
+        Box::new(self.0.keys().map(|k| k.as_slice()))
+    }
 }
 
 // For an `IntersectSet` or a `DiffSet`, all result lines will be from the
