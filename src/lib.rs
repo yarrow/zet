@@ -45,6 +45,7 @@ pub type SetOpResult = Result<(), Error>;
 /// * `single` prints the lines that occur in exactly one file, and
 /// * `multiple` prints the lines that occur in more than one file.
 pub fn do_calculation(op: OpName, files: &[PathBuf]) -> SetOpResult {
+    use std::mem::drop;
     let mut paths = files.iter();
     let text = match paths.next() {
         None => return Ok(()),
@@ -53,9 +54,21 @@ pub fn do_calculation(op: OpName, files: &[PathBuf]) -> SetOpResult {
     match op {
         OpName::Intersect => calculate_and_print(&mut IntersectSet::init(&text), paths)?,
         OpName::Diff => calculate_and_print(&mut DiffSet::init(&text), paths)?,
-        OpName::Union => calculate_and_print(&mut UnionSet::init(&text), paths)?,
-        OpName::Single => calculate_and_print(&mut SingleSet::init(&text), paths)?,
-        OpName::Multiple => calculate_and_print(&mut MultipleSet::init(&text), paths)?,
+        OpName::Union => {
+            let mut set = UnionSet::init(&text);
+            drop(text);
+            calculate_and_print(&mut set, paths)?;
+        }
+        OpName::Single => {
+            let mut set = SingleSet::init(&text);
+            drop(text);
+            calculate_and_print(&mut set, paths)?;
+        }
+        OpName::Multiple => {
+            let mut set = MultipleSet::init(&text);
+            drop(text);
+            calculate_and_print(&mut set, paths)?;
+        }
     }
     Ok(())
 }
