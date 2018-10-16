@@ -11,9 +11,6 @@ use failure::Error;
 use indexmap::{self, IndexMap, IndexSet};
 use memchr::Memchr;
 
-#[macro_use]
-extern crate rental;
-
 pub mod args;
 use crate::args::OpName;
 
@@ -25,9 +22,10 @@ type UnionSet = IndexSet<TextVec>;
 type BoolMapForSet = IndexMap<TextVec, bool>;
 struct SingleSet(BoolMapForSet);
 struct MultipleSet(BoolMapForSet);
-use self::rented_slice_set::RentalSet;
-struct DiffSet(RentalSet);
-struct IntersectSet(RentalSet);
+
+type SliceSet<'data> = IndexSet<&'data TextSlice>;
+struct DiffSet<'data>(SliceSet<'data>);
+struct IntersectSet<'data>(SliceSet<'data>);
 
 pub type SetOpResult = Result<(), Error>;
 /// Calculates and prints the set operation named by `op`. Each file in `files`
@@ -45,11 +43,11 @@ pub fn do_calculation(op: OpName, files: &[PathBuf]) -> SetOpResult {
         Some(path) => fs::read(path)?,
     };
     match op {
-        OpName::Intersect => calculate_and_print(&mut IntersectSet::init(text), paths)?,
-        OpName::Union => calculate_and_print(&mut UnionSet::init(text), paths)?,
-        OpName::Diff => calculate_and_print(&mut DiffSet::init(text), paths)?,
-        OpName::Single => calculate_and_print(&mut SingleSet::init(text), paths)?,
-        OpName::Multiple => calculate_and_print(&mut MultipleSet::init(text), paths)?,
+        OpName::Intersect => calculate_and_print(&mut IntersectSet::init(&text), paths)?,
+        OpName::Union => calculate_and_print(&mut UnionSet::init(&text), paths)?,
+        OpName::Diff => calculate_and_print(&mut DiffSet::init(&text), paths)?,
+        OpName::Single => calculate_and_print(&mut SingleSet::init(&text), paths)?,
+        OpName::Multiple => calculate_and_print(&mut MultipleSet::init(&text), paths)?,
     }
     Ok(())
 }
@@ -111,9 +109,8 @@ where
 // The simplest `LineSet` is a `SliceSet`, whose members (hash keys) are slices
 // borrowed from a text string, each slice corresponding to a line.
 //
-type SliceSet<'a> = IndexSet<&'a TextSlice>;
-impl<'a> LineSet<'a> for SliceSet<'a> {
-    fn insert_line(&mut self, line: &'a TextSlice) {
+impl<'data> LineSet<'data> for SliceSet<'data> {
+    fn insert_line(&mut self, line: &'data TextSlice) {
         self.insert(line);
     }
 }
@@ -129,11 +126,11 @@ impl<'a> LineSet<'a> for UnionSet {
 }
 
 trait UnionSetExt {
-    fn init(text: TextVec) -> Self;
+    fn init(text: &TextSlice) -> Self;
 }
 impl UnionSetExt for UnionSet {
-    fn init(text: TextVec) -> Self {
-        Self::init_from_slice(&text)
+    fn init(text: &TextSlice) -> Self {
+        Self::init_from_slice(text)
     }
 }
 
@@ -167,8 +164,8 @@ impl SetExpression for UnionSet {
 macro_rules! impl_singular_plural_set {
     ($set_type:ident, $retain_relevant_lines:ident) => {
         impl $set_type {
-            fn init(text: TextVec) -> Self {
-                $set_type::init_from_slice(&text)
+            fn init(text: &TextSlice) -> Self {
+                $set_type::init_from_slice(text)
             }
         }
         impl Default for $set_type {
@@ -226,17 +223,6 @@ fn retain_multiples(multiples: &mut BoolMapForSet) {
 // For an `IntersectSet` or a `DiffSet`, all result lines will be from the
 // first file operand, so we can avoid additional allocations by keeping its
 // text in memory and using subslices of its text as the members of the set.
-//
-rental! {
-    pub mod rented_slice_set {
-        use crate::{SliceSet, TextVec};
-        #[rental(covariant)]
-        pub(crate) struct RentalSet {
-            text: TextVec,
-            set: SliceSet<'text>
-        }
-    }
-}
 
 // For subsequent operands, we take a `SliceSet` `s` of the operand's text and
 // (for an `IntersectSet`) keep only those lines that occur in `s` or (for a
@@ -246,31 +232,40 @@ rental! {
 // `retain` or `discard` the members of the next file. So we can use a macro
 // to define the impls for `SetExpression` and `IntoLineIterator`.
 
-macro_rules! impl_waning_set {
-    ($set_type:ident, $operation:ident) => {
-        impl $set_type {
-            fn init(text: TextVec) -> Self {
-                $set_type(RentalSet::new(text, |x| SliceSet::init_from_slice(x)))
-            }
-        }
-        impl SetExpression for $set_type {
-            fn operate(&mut self, text: &TextSlice) {
-                let other = SliceSet::init_from_slice(text);
-                self.0.rent_mut(|set| $operation(set, &other));
-            }
-            fn iter(&self) -> LineIterator {
-                Box::new(self.0.suffix().iter().cloned())
-            }
-        }
-    };
-}
-
-impl_waning_set!(IntersectSet, intersect);
+/*
 fn intersect(set: &mut SliceSet, other: &SliceSet) {
     set.retain(|x| other.contains(x));
 }
-
-impl_waning_set!(DiffSet, difference);
 fn difference(set: &mut SliceSet, other: &SliceSet) {
     set.retain(|x| !other.contains(x));
+}
+*/
+
+impl<'data> IntersectSet<'data> {
+    fn init(text: &'data TextSlice) -> Self {
+        IntersectSet(SliceSet::init_from_slice(text))
+    }
+}
+impl<'data> SetExpression for IntersectSet<'data> {
+    fn operate(&mut self, text: &TextSlice) {
+        let other = SliceSet::init_from_slice(text);
+        self.0.retain(|x| other.contains(x));
+    }
+    fn iter<'me>(&'me self) -> LineIterator<'me> {
+        Box::new(self.0.iter().cloned())
+    }
+}
+impl<'data> DiffSet<'data> {
+    fn init(text: &'data TextSlice) -> Self {
+        DiffSet(SliceSet::init_from_slice(text))
+    }
+}
+impl<'data> SetExpression for DiffSet<'data> {
+    fn operate(&mut self, text: &TextSlice) {
+        let other = SliceSet::init_from_slice(text);
+        self.0.retain(|x| ! other.contains(x));
+    }
+    fn iter<'me>(&'me self) -> LineIterator<'me> {
+        Box::new(self.0.iter().cloned())
+    }
 }
