@@ -19,13 +19,13 @@ type TextSlice = [u8];
 type LineIterator<'a> = Box<dyn Iterator<Item = &'a TextSlice> + 'a>;
 
 type UnionSet = IndexSet<TextVec>;
-type BoolMapForSet = IndexMap<TextVec, bool>;
+type CountedSet = IndexMap<TextVec, bool>;
 
 #[derive(Default)]
-struct SingleSet(BoolMapForSet);
+struct SingleSet(CountedSet);
 
 #[derive(Default)]
-struct MultipleSet(BoolMapForSet);
+struct MultipleSet(CountedSet);
 
 type SliceSet<'data> = IndexSet<&'data TextSlice>;
 
@@ -180,52 +180,41 @@ impl SetExpression for UnionSet {
             // a `true` value for a `SingleSet`, and for a `MultipleSet` the
             // keys with a `false` value.
 
-impl<'a> LineSet<'a> for SingleSet {
-    fn insert_line(&mut self, line: &'a TextSlice) {
-        self.0.insert(line.to_vec(), true);
-    }
-}
-impl SetExpression for SingleSet {
-    fn operate(&mut self, text: &TextSlice) {
-        let other = SliceSet::init(text);
-        for line in other.iter() {
-            if self.0.contains_key(*line) {
-                self.0.insert(line.to_vec(), false);
-            } else {
+macro_rules! impl_counted_set {
+    ($CountedSet:ident, $filter:ident) => {
+        impl<'a> LineSet<'a> for $CountedSet {
+            fn insert_line(&mut self, line: &'a TextSlice) {
                 self.0.insert(line.to_vec(), true);
             }
         }
+        impl SetExpression for $CountedSet {
+            fn operate(&mut self, text: &TextSlice) {
+                let other = SliceSet::init(text);
+                for line in other.iter() {
+                    if self.0.contains_key(*line) {
+                        self.0.insert(line.to_vec(), false);
+                    } else {
+                        self.0.insert(line.to_vec(), true);
+                    }
+                }
+            }
+            fn finish(&mut self) {
+                $filter(&mut self.0);
+            }
+            fn iter(&self) -> LineIterator {
+                Box::new(self.0.keys().map(|k| k.as_slice()))
+            }
+        }
     }
-    fn finish(&mut self) {
-        self.0.retain(|_k, v| *v)
-    }
-    fn iter(&self) -> LineIterator {
-        Box::new(self.0.keys().map(|k| k.as_slice()))
-    }
+}
+impl_counted_set!(SingleSet, retain_lines_found_in_just_one_file);
+fn retain_lines_found_in_just_one_file(set: &mut CountedSet) {
+    set.retain(|_k, v| *v);
 }
 
-impl<'a> LineSet<'a> for MultipleSet {
-    fn insert_line(&mut self, line: &'a TextSlice) {
-        self.0.insert(line.to_vec(), true);
-    }
-}
-impl SetExpression for MultipleSet {
-    fn operate(&mut self, text: &TextSlice) {
-        let other = SliceSet::init(text);
-        for line in other.iter() {
-            if self.0.contains_key(*line) {
-                self.0.insert(line.to_vec(), false);
-            } else {
-                self.0.insert(line.to_vec(), true);
-            }
-        }
-    }
-    fn finish(&mut self) {
-        self.0.retain(|_k, v| ! *v)
-    }
-    fn iter(&self) -> LineIterator {
-        Box::new(self.0.keys().map(|k| k.as_slice()))
-    }
+impl_counted_set!(MultipleSet, retain_lines_found_in_multiple_files);
+fn retain_lines_found_in_multiple_files(set: &mut CountedSet) {
+    set.retain(|_k, v| ! *v);
 }
 
 // For an `IntersectSet` or a `DiffSet`, all result lines will be from the
@@ -240,40 +229,33 @@ impl SetExpression for MultipleSet {
 // `retain` or `discard` the members of the next file. So we can use a macro
 // to define the impls for `SetExpression` and `IntoLineIterator`.
 
-/*
+macro_rules! impl_waning_set {
+    ($WaningSet:ident, $filter:ident) => {
+        impl<'data> LineSet<'data> for $WaningSet<'data> {
+            fn insert_line(&mut self, line: &'data TextSlice) {
+                self.0.insert(line);
+            }
+        }
+        impl<'data> SetExpression for $WaningSet<'data> {
+            fn operate(&mut self, text: &TextSlice) {
+                let other = SliceSet::init(text);
+                $filter(&mut self.0, &other);
+            }
+            fn iter<'me>(&'me self) -> LineIterator<'me> {
+                Box::new(self.0.iter().cloned())
+            }
+        }
+    }
+}
+
+impl_waning_set!(IntersectSet, intersect);
+
 fn intersect(set: &mut SliceSet, other: &SliceSet) {
     set.retain(|x| other.contains(x));
 }
+
+impl_waning_set!(DiffSet, difference);
+
 fn difference(set: &mut SliceSet, other: &SliceSet) {
     set.retain(|x| !other.contains(x));
-}
-*/
-
-impl<'data> LineSet<'data> for IntersectSet<'data> {
-    fn insert_line(&mut self, line: &'data TextSlice) {
-        self.0.insert(line);
-    }
-}
-impl<'data> SetExpression for IntersectSet<'data> {
-    fn operate(&mut self, text: &TextSlice) {
-        let other = SliceSet::init(text);
-        self.0.retain(|x| other.contains(x));
-    }
-    fn iter<'me>(&'me self) -> LineIterator<'me> {
-        Box::new(self.0.iter().cloned())
-    }
-}
-impl<'data> LineSet<'data> for DiffSet<'data> {
-    fn insert_line(&mut self, line: &'data TextSlice) {
-        self.0.insert(line);
-    }
-}
-impl<'data> SetExpression for DiffSet<'data> {
-    fn operate(&mut self, text: &TextSlice) {
-        let other = SliceSet::init(text);
-        self.0.retain(|x| ! other.contains(x));
-    }
-    fn iter<'me>(&'me self) -> LineIterator<'me> {
-        Box::new(self.0.iter().cloned())
-    }
 }
