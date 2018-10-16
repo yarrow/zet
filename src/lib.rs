@@ -20,11 +20,19 @@ type LineIterator<'a> = Box<dyn Iterator<Item = &'a TextSlice> + 'a>;
 
 type UnionSet = IndexSet<TextVec>;
 type BoolMapForSet = IndexMap<TextVec, bool>;
+
+#[derive(Default)]
 struct SingleSet(BoolMapForSet);
+
+#[derive(Default)]
 struct MultipleSet(BoolMapForSet);
 
 type SliceSet<'data> = IndexSet<&'data TextSlice>;
+
+#[derive(Default)]
 struct DiffSet<'data>(SliceSet<'data>);
+
+#[derive(Default)]
 struct IntersectSet<'data>(SliceSet<'data>);
 
 pub type SetOpResult = Result<(), Error>;
@@ -75,10 +83,7 @@ trait SetExpression {
 // the order in which keys were inserted, since our 'sets' are equipped with an
 // ordering on the members.
 //
-trait LineSet<'a>
-where
-    Self: Default,
-{
+trait LineSet<'a>: Default {
     // The only method that implementations need to define is `insert_line`
     fn insert_line(&mut self, line: &'a TextSlice);
 
@@ -177,12 +182,6 @@ impl SingleSet {
         SingleSet::init_from_slice(text)
     }
 }
-impl Default for SingleSet {
-    fn default() -> Self {
-        let def = BoolMapForSet::default();
-        SingleSet(def)
-    }
-}
 impl<'a> LineSet<'a> for SingleSet {
     fn insert_line(&mut self, line: &'a TextSlice) {
         self.0.insert(line.to_vec(), true);
@@ -210,12 +209,6 @@ impl SetExpression for SingleSet {
 impl MultipleSet {
     fn init(text: &TextSlice) -> Self {
         MultipleSet::init_from_slice(text)
-    }
-}
-impl Default for MultipleSet {
-    fn default() -> Self {
-        let def = BoolMapForSet::default();
-        MultipleSet(def)
     }
 }
 impl<'a> LineSet<'a> for MultipleSet {
