@@ -87,7 +87,7 @@ fn calculate_and_print(set: &mut impl SetExpression, files: Iter<PathBuf>) -> Se
 }
 
 trait SetExpression {
-    fn operate(&mut self, text: &TextSlice);
+    fn operate(&mut self, other: &TextSlice);
     fn finish(&mut self) {}
     fn iter(&self) -> LineIterator;
 }
@@ -143,43 +143,26 @@ impl<'a> LineSet<'a> for UnionSet {
     }
 }
 impl SetExpression for UnionSet {
-    fn operate(&mut self, text: &TextSlice) {
-        self.insert_all_lines(&text);
+    fn operate(&mut self, other: &TextSlice) {
+        self.insert_all_lines(&other);
     }
     fn iter(&self) -> LineIterator {
         Box::new(self.iter().map(|v| v.as_slice()))
     }
 }
 
-// We use a `SingleSet` to calculate those lines which occur in exactly one of
-// the given files, and a `MultipleSet` to calculate those lines which occur in
-// more than one file.  We need to remember every line we've seen, so in that
-// way these set types are like `UnionSet`, but with the additional requirement
-// to keep track of whether the line occurs in just one file.  So underlying a
-// `SingleSet` or a `MultipleSet` is an `IndexMap` with Boolean values, `true`
-// for lines that occur in only one file and `false` for lines that occur in
-// multiple files.
-//
-// For the first operand we just set every line's value to `true`. (If a line
-// occurs more than once in just one particular file, we still count it as
-// occuring in a single file.)
-//
-// The only implementation difference between a `SingleSet` and a `MultipleSet`
-// is that at the end of the calculation we retain for a `SingleSet` the keys
-// with a `true` value and for a `MultipleSet` the keys with a `false` value,
-// so we use a macro to distinguish the two.
-//
-            // Since a line that occurs more than once in a single file still
-            // counts as singular, but not if occurs in multiple files, for the
-            // second and subsequent operand files we first calculate a SliceSet
-            // from the file's text, and then for each of the `SliceSet`'s lines
-            // we either add the line to `self` with a `true` value if it's not
-            // already present, or set the line's value to `false` if it is present.
-            //
-            // After we've processed all the operands, we keep the keys with
-            // a `true` value for a `SingleSet`, and for a `MultipleSet` the
-            // keys with a `false` value.
-
+/// We use a `SingleSet` to keep track of the lines which occur in exactly one of
+/// the given files, and a `MultipleSet` to keep track of those that occur in more
+/// than one file.  Underlying a `SingleSet` or a `MultipleSet` is an `IndexMap`
+/// with Boolean values, `true` for lines that occur in only one file and `false`
+/// for lines that occur in multiple files.  (If a line occurs more than once in
+/// just one particular file, we still count it as occuring in a single file.)
+///
+/// For the first operand we just set every line's value to `true`.  The only
+/// implementation difference between a `SingleSet` and a `MultipleSet` is that
+/// at the end of the calculation we retain for a `SingleSet` the keys with a
+/// `true` value and for a `MultipleSet` the keys with a `false` value. We use
+/// a macro to avoid two chunks of code differing in a single `!` character.
 macro_rules! impl_counted_set {
     ($CountedSet:ident, $filter:ident) => {
         impl<'a> LineSet<'a> for $CountedSet {
@@ -188,8 +171,11 @@ macro_rules! impl_counted_set {
             }
         }
         impl SetExpression for $CountedSet {
-            fn operate(&mut self, text: &TextSlice) {
-                let other = SliceSet::init(text);
+            /// If a line occurs in `other` but not `self`,
+            /// we insert it with a `true` value; if it
+            /// occurs in both, we set its value to `false`
+            fn operate(&mut self, other: &TextSlice) {
+                let other = SliceSet::init(other);
                 for line in other.iter() {
                     if self.0.contains_key(*line) {
                         self.0.insert(line.to_vec(), false);
@@ -198,6 +184,7 @@ macro_rules! impl_counted_set {
                     }
                 }
             }
+            /// Remove the unwanted values
             fn finish(&mut self) {
                 $filter(&mut self.0);
             }
@@ -217,18 +204,14 @@ fn retain_lines_found_in_multiple_files(set: &mut CountedSet) {
     set.retain(|_k, v| ! *v);
 }
 
-// For an `IntersectSet` or a `DiffSet`, all result lines will be from the
-// first file operand, so we can avoid additional allocations by keeping its
-// text in memory and using subslices of its text as the members of the set.
-
-// For subsequent operands, we take a `SliceSet` `s` of the operand's text and
-// (for an `IntersectSet`) keep only those lines that occur in `s` or (for a
-// `DiffSet`) remove the lines that occur in `s`.
-//
-// Since the only difference between `IntersectSet` and `DiffSet` is whether we
-// `retain` or `discard` the members of the next file. So we can use a macro
-// to define the impls for `SetExpression` and `IntoLineIterator`.
-
+/// For an `IntersectSet` or a `DiffSet`, all result lines will be from the
+/// first file operand, so we can avoid additional allocations by keeping its
+/// text in memory and using subslices of its text as the members of the set.
+///
+/// For subsequent operands, we take a `SliceSet` `s` of the operand's text and
+/// (for an `IntersectSet`) keep only those lines that occur in `s` or (for a
+/// `DiffSet`) remove the lines that occur in `s`. Again we use a macro to avoid
+/// two chunks of code differing in a single `!` character.
 macro_rules! impl_waning_set {
     ($WaningSet:ident, $filter:ident) => {
         impl<'data> LineSet<'data> for $WaningSet<'data> {
@@ -237,8 +220,10 @@ macro_rules! impl_waning_set {
             }
         }
         impl<'data> SetExpression for $WaningSet<'data> {
-            fn operate(&mut self, text: &TextSlice) {
-                let other = SliceSet::init(text);
+            /// Remove (for DiffSet) or retain (for IntersectSet) the elements
+            /// of `other`
+            fn operate(&mut self, other: &TextSlice) {
+                let other = SliceSet::init(other);
                 $filter(&mut self.0, &other);
             }
             fn iter<'me>(&'me self) -> LineIterator<'me> {
