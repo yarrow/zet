@@ -19,7 +19,13 @@ type TextSlice = [u8];
 type LineIterator<'a> = Box<dyn Iterator<Item = &'a TextSlice> + 'a>;
 
 type UnionSet = IndexSet<TextVec>;
-type CountedSet = IndexMap<TextVec, bool>;
+
+#[derive(PartialEq)]
+enum FoundIn {
+    One,
+    Many,
+}
+type CountedSet = IndexMap<TextVec, FoundIn>;
 
 #[derive(Default)]
 struct SingleSet(CountedSet);
@@ -154,20 +160,23 @@ impl SetExpression for UnionSet {
 /// We use a `SingleSet` to keep track of the lines which occur in exactly one of
 /// the given files, and a `MultipleSet` to keep track of those that occur in more
 /// than one file.  Underlying a `SingleSet` or a `MultipleSet` is an `IndexMap`
-/// with Boolean values, `true` for lines that occur in only one file and `false`
-/// for lines that occur in multiple files.  (If a line occurs more than once in
-/// just one particular file, we still count it as occuring in a single file.)
+/// whose values are either `FoundIn::One` for lines that occur in only one file
+/// or `FoundIn:Many` for lines that occur in multiple files. (If a line occurs
+/// more than once in just one particular file, we still count it as occuring in
+/// a single file.)
 ///
-/// For the first operand we just set every line's value to `true`.  The only
+/// For the first operand we set every line's value to `FoundIn::One`, and if it
+/// is found in a subsequent file we set its value to `FoundIn::Many`.  The only
 /// implementation difference between a `SingleSet` and a `MultipleSet` is that
 /// at the end of the calculation we retain for a `SingleSet` the keys with a
-/// `true` value and for a `MultipleSet` the keys with a `false` value. We use
-/// a macro to avoid two chunks of code differing in a single `!` character.
+/// `FoundIn::One` value and for a `MultipleSet` the keys with a `FoundIn::Many`
+/// value. We use a macro to avoid two chunks of code differing in a single line.
+
 macro_rules! impl_counted_set {
-    ($CountedSet:ident, $filter:ident) => {
+    ($CountedSet:ident, $count:expr) => {
         impl<'a> LineSet<'a> for $CountedSet {
             fn insert_line(&mut self, line: &'a TextSlice) {
-                self.0.insert(line.to_vec(), true);
+                self.0.insert(line.to_vec(), FoundIn::One);
             }
         }
         impl SetExpression for $CountedSet {
@@ -178,31 +187,24 @@ macro_rules! impl_counted_set {
                 let other = SliceSet::init(other);
                 for line in other.iter() {
                     if self.0.contains_key(*line) {
-                        self.0.insert(line.to_vec(), false);
+                        self.0.insert(line.to_vec(), FoundIn::Many);
                     } else {
-                        self.0.insert(line.to_vec(), true);
+                        self.0.insert(line.to_vec(), FoundIn::One);
                     }
                 }
             }
             /// Remove the unwanted values
             fn finish(&mut self) {
-                $filter(&mut self.0);
+                self.0.retain(|_k, v| *v == $count);
             }
             fn iter(&self) -> LineIterator {
                 Box::new(self.0.keys().map(|k| k.as_slice()))
             }
         }
-    }
+    };
 }
-impl_counted_set!(SingleSet, retain_lines_found_in_just_one_file);
-fn retain_lines_found_in_just_one_file(set: &mut CountedSet) {
-    set.retain(|_k, v| *v);
-}
-
-impl_counted_set!(MultipleSet, retain_lines_found_in_multiple_files);
-fn retain_lines_found_in_multiple_files(set: &mut CountedSet) {
-    set.retain(|_k, v| ! *v);
-}
+impl_counted_set!(SingleSet, FoundIn::One);
+impl_counted_set!(MultipleSet, FoundIn::Many);
 
 /// For an `IntersectSet` or a `DiffSet`, all result lines will be from the
 /// first file operand, so we can avoid additional allocations by keeping its
@@ -211,7 +213,7 @@ fn retain_lines_found_in_multiple_files(set: &mut CountedSet) {
 /// For subsequent operands, we take a `SliceSet` `s` of the operand's text and
 /// (for an `IntersectSet`) keep only those lines that occur in `s` or (for a
 /// `DiffSet`) remove the lines that occur in `s`. Again we use a macro to avoid
-/// two chunks of code differing in a single `!` character.
+/// two chunks of code differing in a single line.
 macro_rules! impl_waning_set {
     ($WaningSet:ident, $filter:ident) => {
         impl<'data> LineSet<'data> for $WaningSet<'data> {
@@ -230,7 +232,7 @@ macro_rules! impl_waning_set {
                 Box::new(self.0.iter().cloned())
             }
         }
-    }
+    };
 }
 
 impl_waning_set!(IntersectSet, intersect);
