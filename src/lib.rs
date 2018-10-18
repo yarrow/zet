@@ -143,8 +143,8 @@ impl<'data> LineSet<'data> for SliceSet<'data> {
 // of the lines which occur in at least one of a sequence of files. Rather than
 // keep the text of all files in memory, we allocate a `TextVec` for each set member.
 //
-impl<'a> LineSet<'a> for UnionSet {
-    fn insert_line(&mut self, line: &'a TextSlice) {
+impl<'data> LineSet<'data> for UnionSet {
+    fn insert_line(&mut self, line: &'data TextSlice) {
         self.insert(line.to_vec());
     }
 }
@@ -174,8 +174,8 @@ impl SetExpression for UnionSet {
 
 macro_rules! impl_counted_set {
     ($CountedSet:ident, $count:expr) => {
-        impl<'a> LineSet<'a> for $CountedSet {
-            fn insert_line(&mut self, line: &'a TextSlice) {
+        impl<'data> LineSet<'data> for $CountedSet {
+            fn insert_line(&mut self, line: &'data TextSlice) {
                 self.0.insert(line.to_vec(), FoundIn::One);
             }
         }
