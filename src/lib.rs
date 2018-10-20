@@ -7,7 +7,9 @@ use std::io::{self, Write};
 use std::path::PathBuf;
 use std::slice::Iter;
 
+#[macro_use] extern crate failure;
 use failure::Error;
+
 use indexmap::{self, IndexMap, IndexSet};
 use memchr::Memchr;
 
@@ -50,40 +52,65 @@ pub type SetOpResult = Result<(), Error>;
 /// * `diff` prints the lines that occur in the first file and no other,
 /// * `single` prints the lines that occur in exactly one file, and
 /// * `multiple` prints the lines that occur in more than one file.
-pub fn do_calculation(op: OpName, files: &[PathBuf]) -> SetOpResult {
+pub fn do_calculation(operation: OpName, files: Vec<PathBuf>) -> SetOpResult {
     use std::mem::drop;
-    let mut paths = files.iter();
-    let text = match paths.next() {
+    let mut operands = contents_iter(files);
+    let first = match operands.next() {
         None => return Ok(()),
-        Some(path) => fs::read(path)?,
+        Some(operand) => operand?,
     };
-    match op {
-        OpName::Intersect => calculate_and_print(&mut IntersectSet::init(&text), paths)?,
-        OpName::Diff => calculate_and_print(&mut DiffSet::init(&text), paths)?,
+    match operation {
+        OpName::Intersect => calculate_and_print(&mut IntersectSet::init(&first), operands)?,
+        OpName::Diff => calculate_and_print(&mut DiffSet::init(&first), operands)?,
         OpName::Union => {
-            let mut set = UnionSet::init(&text);
-            drop(text);
-            calculate_and_print(&mut set, paths)?;
+            let mut set = UnionSet::init(&first);
+            drop(first);
+            calculate_and_print(&mut set, operands)?;
         }
         OpName::Single => {
-            let mut set = SingleSet::init(&text);
-            drop(text);
-            calculate_and_print(&mut set, paths)?;
+            let mut set = SingleSet::init(&first);
+            drop(first);
+            calculate_and_print(&mut set, operands)?;
         }
         OpName::Multiple => {
-            let mut set = MultipleSet::init(&text);
-            drop(text);
-            calculate_and_print(&mut set, paths)?;
+            let mut set = MultipleSet::init(&first);
+            drop(first);
+            calculate_and_print(&mut set, operands)?;
         }
     }
     Ok(())
 }
 
-fn calculate_and_print(set: &mut impl SetExpression, files: Iter<PathBuf>) -> SetOpResult {
-    for f in files {
-        set.operate(&fs::read(f)?);
+fn contents_iter(files: Vec<PathBuf>) -> ContentsIter {
+    ContentsIter{files: files.into_iter() }
+}
+struct ContentsIter {
+    files: std::vec::IntoIter<PathBuf>,
+}
+impl Iterator for ContentsIter {
+    type Item = Result<TextVec, Error>;
+    fn next(&mut self) -> Option<Self::Item> {
+        let path = self.files.next()?;
+        Some(match fs::read(&path) {
+            Ok(contents) => Ok(contents),
+            Err(io_err) => {
+                let path = path.to_string_lossy();
+                Err(format_err!("Can't read file `{}`: {}", path, io_err))
+            }
+        })
+    }
+}
+
+fn calculate(set: &mut impl SetExpression, operands: ContentsIter) -> SetOpResult {
+    for operand in operands {
+        set.operate(&operand?);
     }
     set.finish();
+    Ok(())
+}
+
+fn calculate_and_print(set: &mut impl SetExpression, operands: ContentsIter) -> SetOpResult {
+    calculate(set, operands)?;
     let stdout_for_locking = io::stdout();
     let mut stdout = stdout_for_locking.lock();
     for line in set.iter() {
