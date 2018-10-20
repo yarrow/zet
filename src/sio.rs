@@ -5,7 +5,7 @@ use std::slice::Iter;
 
 use failure::Error;
 
-pub(crate) struct ContentsIter {
+pub struct ContentsIter {
     files: std::vec::IntoIter<PathBuf>,
 }
 impl From<Vec<PathBuf>> for ContentsIter {

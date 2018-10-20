@@ -4,5 +4,6 @@ use failure::Error;
 
 fn main() -> Result<(), Error> {
     let args = setop::args::parsed();
-    setop::do_calculation(args.op, args.file)
+    let file_contents = setop::sio::ContentsIter::from(args.file);
+    setop::do_calculation(args.op, file_contents)
 }

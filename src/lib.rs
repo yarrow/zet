@@ -2,9 +2,6 @@
 #![cfg_attr(feature = "cargo-clippy", deny(clippy))]
 #![cfg_attr(feature = "cargo-clippy", warn(clippy_pedantic))]
 
-mod sio;
-use self::sio::ContentsIter;
-
 use std::fs;
 use std::io::{self, Write};
 use std::path::PathBuf;
@@ -18,6 +15,8 @@ use memchr::Memchr;
 
 pub mod args;
 use crate::args::OpName;
+pub mod sio;
+use self::sio::ContentsIter;
 
 type LineIterator<'a> = Box<dyn Iterator<Item = &'a [u8]> + 'a>;
 
@@ -53,9 +52,8 @@ pub type SetOpResult = Result<(), Error>;
 /// * `diff` prints the lines that occur in the first file and no other,
 /// * `single` prints the lines that occur in exactly one file, and
 /// * `multiple` prints the lines that occur in more than one file.
-pub fn do_calculation(operation: OpName, files: Vec<PathBuf>) -> SetOpResult {
+pub fn do_calculation(operation: OpName, mut operands: ContentsIter) -> SetOpResult {
     use std::mem::drop;
-    let mut operands = ContentsIter::from(files);
     let first = match operands.next() {
         None => return Ok(()),
         Some(operand) => operand?,
