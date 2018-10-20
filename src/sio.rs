@@ -1,7 +1,5 @@
 use std::fs;
-use std::io::{self, Write};
 use std::path::PathBuf;
-use std::slice::Iter;
 
 use failure::Error;
 

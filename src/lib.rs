@@ -2,15 +2,12 @@
 #![cfg_attr(feature = "cargo-clippy", deny(clippy))]
 #![cfg_attr(feature = "cargo-clippy", warn(clippy_pedantic))]
 
-use std::fs;
 use std::io::{self, Write};
-use std::path::PathBuf;
-use std::slice::Iter;
 
 #[macro_use] extern crate failure;
 use failure::Error;
 
-use indexmap::{self, IndexMap, IndexSet};
+use indexmap::{IndexMap, IndexSet};
 use memchr::Memchr;
 
 pub mod args;
