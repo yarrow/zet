@@ -2,6 +2,9 @@
 #![cfg_attr(feature = "cargo-clippy", deny(clippy))]
 #![cfg_attr(feature = "cargo-clippy", warn(clippy_pedantic))]
 
+mod sio;
+use self::sio::ContentsIter;
+
 use std::fs;
 use std::io::{self, Write};
 use std::path::PathBuf;
@@ -16,18 +19,16 @@ use memchr::Memchr;
 pub mod args;
 use crate::args::OpName;
 
-type TextVec = Vec<u8>;
-type TextSlice = [u8];
-type LineIterator<'a> = Box<dyn Iterator<Item = &'a TextSlice> + 'a>;
+type LineIterator<'a> = Box<dyn Iterator<Item = &'a [u8]> + 'a>;
 
-type UnionSet = IndexSet<TextVec>;
+type UnionSet = IndexSet<Vec<u8>>;
 
 #[derive(PartialEq)]
 enum FoundIn {
     One,
     Many,
 }
-type CountedSet = IndexMap<TextVec, FoundIn>;
+type CountedSet = IndexMap<Vec<u8>, FoundIn>;
 
 #[derive(Default)]
 struct SingleSet(CountedSet);
@@ -35,7 +36,7 @@ struct SingleSet(CountedSet);
 #[derive(Default)]
 struct MultipleSet(CountedSet);
 
-type SliceSet<'data> = IndexSet<&'data TextSlice>;
+type SliceSet<'data> = IndexSet<&'data [u8]>;
 
 #[derive(Default)]
 struct DiffSet<'data>(SliceSet<'data>);
@@ -54,7 +55,7 @@ pub type SetOpResult = Result<(), Error>;
 /// * `multiple` prints the lines that occur in more than one file.
 pub fn do_calculation(operation: OpName, files: Vec<PathBuf>) -> SetOpResult {
     use std::mem::drop;
-    let mut operands = contents_iter(files);
+    let mut operands = ContentsIter::from(files);
     let first = match operands.next() {
         None => return Ok(()),
         Some(operand) => operand?,
@@ -81,26 +82,6 @@ pub fn do_calculation(operation: OpName, files: Vec<PathBuf>) -> SetOpResult {
     Ok(())
 }
 
-fn contents_iter(files: Vec<PathBuf>) -> ContentsIter {
-    ContentsIter{files: files.into_iter() }
-}
-struct ContentsIter {
-    files: std::vec::IntoIter<PathBuf>,
-}
-impl Iterator for ContentsIter {
-    type Item = Result<TextVec, Error>;
-    fn next(&mut self) -> Option<Self::Item> {
-        let path = self.files.next()?;
-        Some(match fs::read(&path) {
-            Ok(contents) => Ok(contents),
-            Err(io_err) => {
-                let path = path.to_string_lossy();
-                Err(format_err!("Can't read file `{}`: {}", path, io_err))
-            }
-        })
-    }
-}
-
 fn calculate(set: &mut impl SetExpression, operands: ContentsIter) -> SetOpResult {
     for operand in operands {
         set.operate(&operand?);
@@ -120,7 +101,7 @@ fn calculate_and_print(set: &mut impl SetExpression, operands: ContentsIter) -> 
 }
 
 trait SetExpression {
-    fn operate(&mut self, other: &TextSlice);
+    fn operate(&mut self, other: &[u8]);
     fn finish(&mut self) {}
     fn iter(&self) -> LineIterator;
 }
@@ -131,11 +112,11 @@ trait SetExpression {
 //
 trait LineSet<'data>: Default {
     // The only method that implementations need to define is `insert_line`
-    fn insert_line(&mut self, line: &'data TextSlice);
+    fn insert_line(&mut self, line: &'data [u8]);
 
     // The `insert_all_lines` method breaks `text` down into lines and inserts
     // each of them into `self`
-    fn insert_all_lines(&mut self, text: &'data TextSlice) {
+    fn insert_all_lines(&mut self, text: &'data [u8]) {
         let mut begin = 0;
         for end in Memchr::new(b'\n', text) {
             self.insert_line(&text[begin..=end]);
@@ -150,7 +131,7 @@ trait LineSet<'data>: Default {
     }
     // We initialize a `LineSet` from `text` by inserting every line contained
     // in text into an empty hash.
-    fn init(text: &'data TextSlice) -> Self {
+    fn init(text: &'data [u8]) -> Self {
         let mut set = Self::default();
         set.insert_all_lines(text);
         set
@@ -161,22 +142,22 @@ trait LineSet<'data>: Default {
 // borrowed from a text string, each slice corresponding to a line.
 //
 impl<'data> LineSet<'data> for SliceSet<'data> {
-    fn insert_line(&mut self, line: &'data TextSlice) {
+    fn insert_line(&mut self, line: &'data [u8]) {
         self.insert(line);
     }
 }
 
 // The next simplest set is a `UnionSet`, which we use to calculate the union
 // of the lines which occur in at least one of a sequence of files. Rather than
-// keep the text of all files in memory, we allocate a `TextVec` for each set member.
+// keep the text of all files in memory, we allocate a `Vec<u8>` for each set member.
 //
 impl<'data> LineSet<'data> for UnionSet {
-    fn insert_line(&mut self, line: &'data TextSlice) {
+    fn insert_line(&mut self, line: &'data [u8]) {
         self.insert(line.to_vec());
     }
 }
 impl SetExpression for UnionSet {
-    fn operate(&mut self, other: &TextSlice) {
+    fn operate(&mut self, other: &[u8]) {
         self.insert_all_lines(&other);
     }
     fn iter(&self) -> LineIterator {
@@ -202,7 +183,7 @@ impl SetExpression for UnionSet {
 macro_rules! impl_counted_set {
     ($CountedSet:ident, $count:expr) => {
         impl<'data> LineSet<'data> for $CountedSet {
-            fn insert_line(&mut self, line: &'data TextSlice) {
+            fn insert_line(&mut self, line: &'data [u8]) {
                 self.0.insert(line.to_vec(), FoundIn::One);
             }
         }
@@ -210,7 +191,7 @@ macro_rules! impl_counted_set {
             /// If a line occurs in `other` but not `self`,
             /// we insert it with a `true` value; if it
             /// occurs in both, we set its value to `false`
-            fn operate(&mut self, other: &TextSlice) {
+            fn operate(&mut self, other: &[u8]) {
                 let other = SliceSet::init(other);
                 for line in other.iter() {
                     if self.0.contains_key(*line) {
@@ -244,14 +225,14 @@ impl_counted_set!(MultipleSet, FoundIn::Many);
 macro_rules! impl_waning_set {
     ($WaningSet:ident, $filter:ident) => {
         impl<'data> LineSet<'data> for $WaningSet<'data> {
-            fn insert_line(&mut self, line: &'data TextSlice) {
+            fn insert_line(&mut self, line: &'data [u8]) {
                 self.0.insert(line);
             }
         }
         impl<'data> SetExpression for $WaningSet<'data> {
             /// Remove (for DiffSet) or retain (for IntersectSet) the elements
             /// of `other`
-            fn operate(&mut self, other: &TextSlice) {
+            fn operate(&mut self, other: &[u8]) {
                 let other = SliceSet::init(other);
                 $filter(&mut self.0, &other);
             }
