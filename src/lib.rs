@@ -4,7 +4,8 @@
 
 use std::io::{self, Write};
 
-#[macro_use] extern crate failure;
+#[macro_use]
+extern crate failure;
 use failure::Error;
 
 use indexmap::{IndexMap, IndexSet};
@@ -77,9 +78,14 @@ pub fn do_calculation(operation: OpName, mut operands: ContentsIter) -> SetOpRes
     Ok(())
 }
 
-fn calculate(set: &mut impl SetExpression, operands: ContentsIter) -> SetOpResult {
-    for operand in operands {
-        set.operate(&operand?);
+// We make `calculate` generic so we can test it more easily
+fn calculate<S, T>(set: &mut impl SetExpression, operands: T) -> SetOpResult
+where
+    S: AsRef<[u8]>,
+    T: IntoIterator<Item = Result<S, Error>>,
+{
+    for operand in operands.into_iter() {
+        set.operate(operand?.as_ref());
     }
     set.finish();
     Ok(())

@@ -8,7 +8,9 @@ pub struct ContentsIter {
 }
 impl From<Vec<PathBuf>> for ContentsIter {
     fn from(files: Vec<PathBuf>) -> Self {
-        ContentsIter{files: files.into_iter() }
+        ContentsIter {
+            files: files.into_iter(),
+        }
     }
 }
 impl Iterator for ContentsIter {
@@ -24,4 +26,3 @@ impl Iterator for ContentsIter {
         })
     }
 }
-
