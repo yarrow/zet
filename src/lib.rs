@@ -56,30 +56,22 @@ pub fn do_calculation(operation: OpName, mut operands: ContentsIter) -> SetOpRes
         None => return Ok(()),
         Some(operand) => operand?,
     };
-    match operation {
-        OpName::Intersect => IntersectSet::borrowing(&first).calculate_and_print(operands)?,
-        OpName::Diff => DiffSet::borrowing(&first).calculate_and_print(operands)?,
-        OpName::Union => UnionSet::consuming(first).calculate_and_print(operands)?,
-        OpName::Single => SingleSet::consuming(first).calculate_and_print(operands)?,
-        OpName::Multiple => MultipleSet::consuming(first).calculate_and_print(operands)?,
-    }
+    let mut set: Box<dyn SetExpression> = match operation {
+        OpName::Intersect => Box::new(IntersectSet::borrowing(&first)),
+        OpName::Diff => Box::new(DiffSet::borrowing(&first)),
+        OpName::Union => Box::new(UnionSet::consuming(first)),
+        OpName::Single => Box::new(SingleSet::consuming(first)),
+        OpName::Multiple => Box::new(MultipleSet::consuming(first)),
+    };
+    set.calculate(operands);
+    set.print();
     Ok(())
-}
-
-fn calculate_and_print(set: &mut impl SetExpression, operands: ContentsIter) -> SetOpResult {
-    set.calculate(operands)?;
-    set.print()
 }
 
 trait SetExpression {
     fn operate(&mut self, other: &[u8]);
     fn finish(&mut self) {}
     fn iter(&self) -> LineIterator;
-    fn calculate_and_print(&mut self, operands: ContentsIter) -> SetOpResult {
-        self.calculate(operands)?;
-        self.print()?;
-        Ok(())
-    }
     fn print(&self) -> SetOpResult { 
         let stdout_for_locking = io::stdout();
         let mut stdout = stdout_for_locking.lock();
@@ -88,13 +80,8 @@ trait SetExpression {
         }
         Ok(())
     }
-    // We make `calculate` generic so we can test it more easily
-    fn calculate<S, T>(&mut self, operands: T) -> SetOpResult
-    where
-        S: AsRef<[u8]>,
-        T: IntoIterator<Item = Result<S, Error>>,
-    {
-        for operand in operands.into_iter() {
+    fn calculate(&mut self, operands: ContentsIter) -> SetOpResult {
+        for operand in operands {
             self.operate(operand?.as_ref());
         }
         self.finish();
@@ -243,7 +230,7 @@ macro_rules! impl_waning_set {
                 let other = SliceSet::borrowing(other);
                 $filter(&mut self.0, &other);
             }
-            fn iter<'me>(&'me self) -> LineIterator<'me> {
+            fn iter(&self) -> LineIterator {
                 Box::new(self.0.iter().cloned())
             }
         }
