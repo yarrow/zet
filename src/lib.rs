@@ -51,8 +51,13 @@ pub type SetOpResult = Result<(), Error>;
 /// * `diff` prints the lines that occur in the first file and no other,
 /// * `single` prints the lines that occur in exactly one file, and
 /// * `multiple` prints the lines that occur in more than one file.
-pub fn do_calculation(operation: OpName, mut operands: ContentsIter) -> SetOpResult {
+pub fn do_calculation(
+    operation: OpName,
+    mut operands: impl IntoIterator<Item = Result<Vec<u8>, Error>>,
+    output: &mut impl Write,
+) -> SetOpResult {
     use std::mem::drop;
+    let mut operands = operands.into_iter();
     let first = match operands.next() {
         None => return Ok(()),
         Some(operand) => operand?,
@@ -64,8 +69,17 @@ pub fn do_calculation(operation: OpName, mut operands: ContentsIter) -> SetOpRes
         OpName::Single => Box::new(SingleSet::consuming(first)),
         OpName::Multiple => Box::new(MultipleSet::consuming(first)),
     };
-    set.calculate(operands)?;
-    set.print()?;
+
+    for operand in operands {
+        set.operate(operand?.as_ref());
+    }
+    set.finish();
+
+    for line in set.iter() {
+        output.write_all(line)?;
+    }
+    output.flush()?;
+
     Ok(())
 }
 
@@ -73,22 +87,6 @@ trait SetExpression {
     fn operate(&mut self, other: &[u8]);
     fn finish(&mut self) {}
     fn iter(&self) -> LineIterator;
-    fn print(&self) -> SetOpResult { 
-        let stdout_for_locking = io::stdout();
-        let mut stdout = stdout_for_locking.lock();
-        for line in self.iter() {
-            stdout.write_all(line)?;
-        }
-        stdout.flush()?;
-        Ok(())
-    }
-    fn calculate(&mut self, operands: ContentsIter) -> SetOpResult {
-        for operand in operands {
-            self.operate(operand?.as_ref());
-        }
-        self.finish();
-        Ok(())
-    }
 }
 
 // Sets are implemented as variations on the `IndexMap` type, a hash that remembers
@@ -123,7 +121,7 @@ trait LineSet<'data>: Default {
 
 /// A waxing set's members are allocated vectors, so its lifetime is independant
 /// of its first operand. To conserve space, we drop that operand after reading it.
-trait ConsumingSet: for <'a> LineSet<'a> + Default {
+trait ConsumingSet: for<'a> LineSet<'a> + Default {
     fn consuming(text: impl Into<Vec<u8>>) -> Self {
         let mut set = Self::default();
         set.insert_all_lines(&text.into());

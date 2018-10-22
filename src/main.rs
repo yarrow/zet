@@ -4,6 +4,11 @@ use failure::Error;
 
 fn main() -> Result<(), Error> {
     let args = setop::args::parsed();
+
     let file_contents = setop::sio::ContentsIter::from(args.file);
-    setop::do_calculation(args.op, file_contents)
+
+    let stdout_for_locking = std::io::stdout();
+    let mut output = stdout_for_locking.lock();
+
+    setop::do_calculation(args.op, file_contents, &mut output)
 }
