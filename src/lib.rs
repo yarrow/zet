@@ -57,54 +57,49 @@ pub fn do_calculation(operation: OpName, mut operands: ContentsIter) -> SetOpRes
         Some(operand) => operand?,
     };
     match operation {
-        OpName::Intersect => calculate_and_print(&mut IntersectSet::init(&first), operands)?,
-        OpName::Diff => calculate_and_print(&mut DiffSet::init(&first), operands)?,
-        OpName::Union => {
-            let mut set = UnionSet::init(&first);
-            drop(first);
-            calculate_and_print(&mut set, operands)?;
-        }
-        OpName::Single => {
-            let mut set = SingleSet::init(&first);
-            drop(first);
-            calculate_and_print(&mut set, operands)?;
-        }
-        OpName::Multiple => {
-            let mut set = MultipleSet::init(&first);
-            drop(first);
-            calculate_and_print(&mut set, operands)?;
-        }
+        OpName::Intersect => IntersectSet::borrowing(&first).calculate_and_print(operands)?,
+        OpName::Diff => DiffSet::borrowing(&first).calculate_and_print(operands)?,
+        OpName::Union => UnionSet::consuming(first).calculate_and_print(operands)?,
+        OpName::Single => SingleSet::consuming(first).calculate_and_print(operands)?,
+        OpName::Multiple => MultipleSet::consuming(first).calculate_and_print(operands)?,
     }
-    Ok(())
-}
-
-// We make `calculate` generic so we can test it more easily
-fn calculate<S, T>(set: &mut impl SetExpression, operands: T) -> SetOpResult
-where
-    S: AsRef<[u8]>,
-    T: IntoIterator<Item = Result<S, Error>>,
-{
-    for operand in operands.into_iter() {
-        set.operate(operand?.as_ref());
-    }
-    set.finish();
     Ok(())
 }
 
 fn calculate_and_print(set: &mut impl SetExpression, operands: ContentsIter) -> SetOpResult {
-    calculate(set, operands)?;
-    let stdout_for_locking = io::stdout();
-    let mut stdout = stdout_for_locking.lock();
-    for line in set.iter() {
-        stdout.write_all(line)?;
-    }
-    Ok(())
+    set.calculate(operands)?;
+    set.print()
 }
 
 trait SetExpression {
     fn operate(&mut self, other: &[u8]);
     fn finish(&mut self) {}
     fn iter(&self) -> LineIterator;
+    fn calculate_and_print(&mut self, operands: ContentsIter) -> SetOpResult {
+        self.calculate(operands)?;
+        self.print()?;
+        Ok(())
+    }
+    fn print(&self) -> SetOpResult { 
+        let stdout_for_locking = io::stdout();
+        let mut stdout = stdout_for_locking.lock();
+        for line in self.iter() {
+            stdout.write_all(line)?;
+        }
+        Ok(())
+    }
+    // We make `calculate` generic so we can test it more easily
+    fn calculate<S, T>(&mut self, operands: T) -> SetOpResult
+    where
+        S: AsRef<[u8]>,
+        T: IntoIterator<Item = Result<S, Error>>,
+    {
+        for operand in operands.into_iter() {
+            self.operate(operand?.as_ref());
+        }
+        self.finish();
+        Ok(())
+    }
 }
 
 // Sets are implemented as variations on the `IndexMap` type, a hash that remembers
@@ -130,11 +125,20 @@ trait LineSet<'data>: Default {
             self.insert_line(&text[begin..]);
         }
     }
-    // We initialize a `LineSet` from `text` by inserting every line contained
-    // in text into an empty hash.
-    fn init(text: &'data [u8]) -> Self {
+    fn borrowing(text: &'data [u8]) -> Self {
         let mut set = Self::default();
         set.insert_all_lines(text);
+        set
+    }
+}
+
+/// A waxing set's members are allocated vectors, so its lifetime is independant
+/// of its first operand. To conserve space, we drop that operand after reading it.
+trait ConsumingSet: for <'a> LineSet<'a> + Default { // FIXME: temp
+    // in text into an empty hash.
+    fn consuming(text: impl Into<Vec<u8>>) -> Self {
+        let mut set = Self::default();
+        set.insert_all_lines(&text.into());
         set
     }
 }
@@ -152,6 +156,7 @@ impl<'data> LineSet<'data> for SliceSet<'data> {
 // of the lines which occur in at least one of a sequence of files. Rather than
 // keep the text of all files in memory, we allocate a `Vec<u8>` for each set member.
 //
+impl ConsumingSet for UnionSet {}
 impl<'data> LineSet<'data> for UnionSet {
     fn insert_line(&mut self, line: &'data [u8]) {
         self.insert(line.to_vec());
@@ -183,6 +188,7 @@ impl SetExpression for UnionSet {
 
 macro_rules! impl_counted_set {
     ($CountedSet:ident, $count:expr) => {
+        impl ConsumingSet for $CountedSet {}
         impl<'data> LineSet<'data> for $CountedSet {
             fn insert_line(&mut self, line: &'data [u8]) {
                 self.0.insert(line.to_vec(), FoundIn::One);
@@ -193,7 +199,7 @@ macro_rules! impl_counted_set {
             /// we insert it with a `true` value; if it
             /// occurs in both, we set its value to `false`
             fn operate(&mut self, other: &[u8]) {
-                let other = SliceSet::init(other);
+                let other = SliceSet::borrowing(other);
                 for line in other.iter() {
                     if self.0.contains_key(*line) {
                         self.0.insert(line.to_vec(), FoundIn::Many);
@@ -234,7 +240,7 @@ macro_rules! impl_waning_set {
             /// Remove (for DiffSet) or retain (for IntersectSet) the elements
             /// of `other`
             fn operate(&mut self, other: &[u8]) {
-                let other = SliceSet::init(other);
+                let other = SliceSet::borrowing(other);
                 $filter(&mut self.0, &other);
             }
             fn iter<'me>(&'me self) -> LineIterator<'me> {
