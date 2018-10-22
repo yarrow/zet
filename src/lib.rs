@@ -1,4 +1,5 @@
 #![cfg_attr(debug_assertions, allow(dead_code, unused))]
+#![deny(unused_must_use)]
 #![cfg_attr(feature = "cargo-clippy", deny(clippy))]
 #![cfg_attr(feature = "cargo-clippy", warn(clippy_pedantic))]
 
@@ -63,8 +64,8 @@ pub fn do_calculation(operation: OpName, mut operands: ContentsIter) -> SetOpRes
         OpName::Single => Box::new(SingleSet::consuming(first)),
         OpName::Multiple => Box::new(MultipleSet::consuming(first)),
     };
-    set.calculate(operands);
-    set.print();
+    set.calculate(operands)?;
+    set.print()?;
     Ok(())
 }
 
@@ -78,6 +79,7 @@ trait SetExpression {
         for line in self.iter() {
             stdout.write_all(line)?;
         }
+        stdout.flush()?;
         Ok(())
     }
     fn calculate(&mut self, operands: ContentsIter) -> SetOpResult {
@@ -121,8 +123,7 @@ trait LineSet<'data>: Default {
 
 /// A waxing set's members are allocated vectors, so its lifetime is independant
 /// of its first operand. To conserve space, we drop that operand after reading it.
-trait ConsumingSet: for <'a> LineSet<'a> + Default { // FIXME: temp
-    // in text into an empty hash.
+trait ConsumingSet: for <'a> LineSet<'a> + Default {
     fn consuming(text: impl Into<Vec<u8>>) -> Self {
         let mut set = Self::default();
         set.insert_all_lines(&text.into());
