@@ -1,9 +1,9 @@
-#![cfg_attr(debug_assertions, allow(dead_code, unused))]
+#![cfg_attr(debug_assertions, allow(dead_code, unused_imports))]
 #![deny(unused_must_use)]
 #![cfg_attr(feature = "cargo-clippy", deny(clippy))]
 #![cfg_attr(feature = "cargo-clippy", warn(clippy_pedantic))]
 
-use std::io::{self, Write};
+use std::io::{Write};
 
 #[macro_use]
 extern crate failure;
@@ -15,7 +15,6 @@ use memchr::Memchr;
 pub mod args;
 use crate::args::OpName;
 pub mod sio;
-use self::sio::ContentsIter;
 
 type LineIterator<'a> = Box<dyn Iterator<Item = &'a [u8]> + 'a>;
 
@@ -53,10 +52,9 @@ pub type SetOpResult = Result<(), Error>;
 /// * `multiple` prints the lines that occur in more than one file.
 pub fn do_calculation(
     operation: OpName,
-    mut operands: impl IntoIterator<Item = Result<Vec<u8>, Error>>,
+    operands: impl IntoIterator<Item = Result<Vec<u8>, Error>>,
     output: &mut impl Write,
 ) -> SetOpResult {
-    use std::mem::drop;
     let mut operands = operands.into_iter();
     let first = match operands.next() {
         None => return Ok(()),
