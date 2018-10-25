@@ -3,7 +3,7 @@
 #![cfg_attr(feature = "cargo-clippy", deny(clippy))]
 #![cfg_attr(feature = "cargo-clippy", warn(clippy_pedantic))]
 
-use std::io::{Write};
+use std::io::Write;
 
 #[macro_use]
 extern crate failure;
@@ -244,4 +244,45 @@ impl_waning_set!(DiffSet, difference);
 
 fn difference(set: &mut SliceSet, other: &SliceSet) {
     set.retain(|x| !other.contains(x));
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use std::collections::HashMap;
+    use std::convert::AsRef;
+
+    fn calc(operation: OpName, operands: &Vec<&[u8]>) -> Vec<u8> {
+        let mut answer = Vec::<u8>::new();
+        let operands = operands.iter().map(|s| Ok(s.to_vec()));
+        do_calculation(operation, operands, &mut answer).unwrap();
+        answer
+    }
+
+    use self::OpName::*;
+
+    #[test]
+    fn given_a_single_argument_all_ops_but_multiple_return_its_lines_in_order_without_dups() {
+        let arg: Vec<&[u8]> = vec![b"xxx\nabc\nxxx\nyyy\nxxx\nabc\n"];
+        let uniq = b"xxx\nabc\nyyy\n";
+        for op in [Intersect, Union, Diff, Single, Multiple].iter() {
+            match op {
+                Intersect | Union | Diff | Single => assert_eq!(calc(*op, &arg), uniq),
+                Multiple => assert_eq!(calc(*op, &arg), b""),
+            }
+        }
+    }
+    #[test]
+    fn results_for_each_operation() {
+        let args: Vec<&[u8]> = vec![
+            b"xyz\nabc\nxy\nxz\nx\n", // Strings containing "x" (and "abc")
+            b"xyz\nabc\nxy\nyz\ny\n", // Strings containing "y" (and "abc")
+            b"xyz\nabc\nxz\nyz\nz\n", // Strings containing "z" (and "abc")
+        ];
+        assert_eq!(calc(Union, &args), b"xyz\nabc\nxy\nxz\nx\nyz\ny\nz\n");
+        assert_eq!(calc(Intersect, &args), b"xyz\nabc\n");
+        assert_eq!(calc(Diff, &args), b"x\n");
+        assert_eq!(calc(Single, &args), b"x\ny\nz\n");
+        assert_eq!(calc(Multiple, &args), b"xyz\nabc\nxy\nxz\nyz\n");
+    }
 }
