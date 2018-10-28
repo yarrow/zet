@@ -1,14 +1,13 @@
-#![cfg_attr(debug_assertions, allow(dead_code, unused))]
+use std::process;
 
-use failure::Error;
-
-fn main() -> Result<(), Error> {
+fn main() {
     let args = setop::args::parsed();
 
-    let file_contents = setop::sio::ContentsIter::from(args.file);
+    let file_contents = setop::sio::ContentsIter::from(args.files);
+    let mut stdout = setop::sio::stdout();
 
-    let stdout_for_locking = std::io::stdout();
-    let mut output = stdout_for_locking.lock();
-
-    setop::do_calculation(args.op, file_contents, &mut output)
+    if let Err(e) = setop::do_calculation(args.op, file_contents, &mut stdout) {
+        eprintln!("{}", e);
+        process::exit(1);
+    }
 }

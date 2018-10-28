@@ -1,13 +1,24 @@
+//! The `do_calculation` function is the kernel of the appliction.  The `args` module parses
+//! the command line, and the `sio` module hides I/O details.
+//!
+//! Current Limitations:
+//! * Currently a "line" is zero or more non-newline bytes followed by a newline.
+//!   That's a problem for little-endian UTF-16.  Eventually we want to use BOM
+//!   sniffing to detect UTF-16LE, UTF16BE, and UTF8 so we can
+//!   * allow files of different formats on the command line, and
+//!   * make our output compatible with the format of the first operand.
+//! * If a file doesn't end in a newline, the last line of the file won't be
+//!   separated by a newline in the output from the following output.
 #![cfg_attr(debug_assertions, allow(dead_code, unused_imports))]
 #![deny(unused_must_use)]
 #![cfg_attr(feature = "cargo-clippy", deny(clippy))]
 #![cfg_attr(feature = "cargo-clippy", warn(clippy_pedantic))]
+#![warn(missing_docs)]
 
 use std::io::Write;
 
 #[macro_use]
 extern crate failure;
-use failure::Error;
 
 use indexmap::{IndexMap, IndexSet};
 use memchr::Memchr;
@@ -41,20 +52,19 @@ struct DiffSet<'data>(SliceSet<'data>);
 #[derive(Default)]
 struct IntersectSet<'data>(SliceSet<'data>);
 
-pub type SetOpResult = Result<(), Error>;
 /// Calculates and prints the set operation named by `op`. Each file in `files`
 /// is treated as a set of lines:
 ///
-/// * `union` prints the lines that occur in any file,
-/// * `intersect` prints the lines that occur in all files,
-/// * `diff` prints the lines that occur in the first file and no other,
-/// * `single` prints the lines that occur in exactly one file, and
-/// * `multiple` prints the lines that occur in more than one file.
+/// * `OpName::Union` prints the lines that occur in any file,
+/// * `OpName::Intersect` prints the lines that occur in all files,
+/// * `OpName::Diff` prints the lines that occur in the first file and no other,
+/// * `OpName::Single` prints the lines that occur in exactly one file, and
+/// * `OpName::Multiple` prints the lines that occur in more than one file.
 pub fn do_calculation(
     operation: OpName,
-    operands: impl IntoIterator<Item = Result<Vec<u8>, Error>>,
+    operands: impl IntoIterator<Item = Result<Vec<u8>, failure::Error>>,
     output: &mut impl Write,
-) -> SetOpResult {
+) -> Result<(), failure::Error> {
     let mut operands = operands.into_iter();
     let first = match operands.next() {
         None => return Ok(()),
