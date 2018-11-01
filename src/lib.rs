@@ -7,8 +7,7 @@
 //!   sniffing to detect UTF-16LE, UTF16BE, and UTF8 so we can
 //!   * allow files of different formats on the command line, and
 //!   * make our output compatible with the format of the first operand.
-//! * If a file doesn't end in a newline, the last line of the file won't be
-//!   separated by a newline in the output from the following output.
+
 #![cfg_attr(debug_assertions, allow(dead_code, unused_imports))]
 #![deny(unused_must_use)]
 #![cfg_attr(feature = "cargo-clippy", deny(clippy))]
@@ -65,6 +64,7 @@ pub fn do_calculation(
     operands: impl IntoIterator<Item = Result<Vec<u8>, failure::Error>>,
     output: &mut impl Write,
 ) -> Result<(), failure::Error> {
+    const NEWLINE: &[u8] = b"\n";
     let mut operands = operands.into_iter();
     let first = match operands.next() {
         None => return Ok(()),
@@ -85,6 +85,7 @@ pub fn do_calculation(
 
     for line in set.iter() {
         output.write_all(line)?;
+        output.write_all(&NEWLINE)?;
     }
     output.flush()?;
 
@@ -106,16 +107,14 @@ trait LineSet<'data>: Default {
     fn insert_line(&mut self, line: &'data [u8]);
 
     // The `insert_all_lines` method breaks `text` down into lines and inserts
-    // each of them into `self`
+    // each of them into `self`, not including the ending newline.
     fn insert_all_lines(&mut self, text: &'data [u8]) {
         let mut begin = 0;
         for end in Memchr::new(b'\n', text) {
-            self.insert_line(&text[begin..=end]);
+            self.insert_line(&text[begin..end]); // skip the newline
             begin = end + 1;
         }
-        //FIXME: this leaves the last line of the file without a newline. Given that
-        // fs::read allocates an extra byte at the end of the returned vector, we could
-        // just add a newline there.  But that's pretty fragile!
+        // `being < text.len()` iff the last character of the file is not a newline
         if begin < text.len() {
             self.insert_line(&text[begin..]);
         }
