@@ -9,6 +9,7 @@ use structopt::StructOpt;
 
 /// Returns the parsed command line: the `Args` return value's `op` field is the set operation
 /// desired, and the `files` field holds the files to take as operands.
+#[must_use]
 pub fn parsed() -> Args {
     Args::from_args()
 }

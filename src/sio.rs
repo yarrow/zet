@@ -3,9 +3,10 @@ use std::{io, fs, path::PathBuf};
 
 use failure;
 
-/// Returns io::stdout, locked
-pub fn stdout() -> std::io::Stdout {
-    let stdout_for_locking = std::io::stdout();
+/// Returns `io::stdout`, locked
+#[must_use]
+pub fn stdout() -> io::Stdout {
+    let stdout_for_locking = io::stdout();
     stdout_for_locking.lock();
     stdout_for_locking
 }

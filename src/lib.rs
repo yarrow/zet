@@ -10,11 +10,13 @@
 
 #![cfg_attr(debug_assertions, allow(dead_code, unused_imports))]
 #![deny(unused_must_use)]
-#![cfg_attr(feature = "cargo-clippy", deny(clippy))]
-#![cfg_attr(feature = "cargo-clippy", warn(clippy_pedantic))]
+#![deny(clippy::all)]
+#![deny(clippy::pedantic)]
+#![allow(clippy::missing_errors_doc)]
 #![warn(missing_docs)]
 
 use std::io::Write;
+use std::vec::Vec;
 
 #[macro_use]
 extern crate failure;
@@ -160,7 +162,7 @@ impl SetExpression for UnionSet {
         self.insert_all_lines(&other);
     }
     fn iter(&self) -> LineIterator {
-        Box::new(self.iter().map(|v| v.as_slice()))
+        Box::new(self.iter().map(Vec::as_slice))
     }
 }
 
@@ -206,7 +208,7 @@ macro_rules! impl_counted_set {
                 self.0.retain(|_k, v| *v == $count);
             }
             fn iter(&self) -> LineIterator {
-                Box::new(self.0.keys().map(|k| k.as_slice()))
+                Box::new(self.0.keys().map(Vec::as_slice))
             }
         }
     };
@@ -230,7 +232,7 @@ macro_rules! impl_waning_set {
             }
         }
         impl<'data> SetExpression for $WaningSet<'data> {
-            /// Remove (for DiffSet) or retain (for IntersectSet) the elements
+            /// Remove (for `DiffSet`) or retain (for `IntersectSet`) the elements
             /// of `other`
             fn operate(&mut self, other: &[u8]) {
                 let other = SliceSet::borrowing(other);
