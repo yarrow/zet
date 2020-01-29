@@ -35,7 +35,7 @@ fn fail_on_missing_file() {
 // in, and that determines for which subcommands `sub` it will appear in the
 // output of
 //
-//      setop sub x.txt y.txt z.txt
+//      zet sub x.txt y.txt z.txt
 
 // The contents of x.txt
 const X: &str = "In x, y, z.  So: union, intersect, multiple
@@ -82,7 +82,7 @@ fn expected(subcommand: &str) -> &'static str {
     }
 }
 
-// The expected output of `setop union x.txt y.txt z.txt`
+// The expected output of `zet union x.txt y.txt z.txt`
 const UNION: &str = "
 In x, y, z.  So: union, intersect, multiple
 In x only, though it appears there more than once. So: union, diff, single
@@ -95,19 +95,19 @@ Just in y. So: union, single
 Just in z. So: union, single
 ";
 
-// The expected output of `setop intersect x.txt y.txt z.txt`
+// The expected output of `zet intersect x.txt y.txt z.txt`
 const INTERSECT: &str = "
 In x, y, z.  So: union, intersect, multiple
 Also in x, y, z.  So: union, intersect, multiple
 ";
 
-// The expected output of `setop diff x.txt y.txt z.txt`
+// The expected output of `zet diff x.txt y.txt z.txt`
 const DIFF: &str = "
 In x only, though it appears there more than once. So: union, diff, single
 Just in x.  So: union, diff, single.
 ";
 
-// The expected output of `setop single x.txt y.txt z.txt`
+// The expected output of `zet single x.txt y.txt z.txt`
 const SINGLE: &str = "
 In x only, though it appears there more than once. So: union, diff, single
 Just in x.  So: union, diff, single.
@@ -115,7 +115,7 @@ Just in y. So: union, single
 Just in z. So: union, single
 ";
 
-// The expected output of `setop single x.txt y.txt z.txt`
+// The expected output of `zet single x.txt y.txt z.txt`
 const MULTIPLE: &str = "
 In x, y, z.  So: union, intersect, multiple
 In x and y.  So: union, multiple
@@ -196,7 +196,7 @@ fn single_argument_just_prints_the_unique_lines_for_all_but_multiple() {
 }
 
 #[test]
-fn setop_subcommand_x_y_z_matches_expected_output_for_all_subcommands() {
+fn zet_subcommand_x_y_z_matches_expected_output_for_all_subcommands() {
     let temp = TempDir::new().unwrap();
     let x_path: &str = &path_with(&temp, "x.txt", X);
     let y_path: &str = &path_with(&temp, "y.txt", Y);

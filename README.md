@@ -1,24 +1,24 @@
-setop: Take the union, intersection, etc of files
+zet: Take the union, intersection, etc of files
 =================================================
 
 This is a command-line utility for doing set operations on files considered as
-sets of lines. For instance, `setop union x y z` outputs the lines that occur in
+sets of lines. For instance, `zet union x y z` outputs the lines that occur in
 any of `x`, `y`, or `z`. Two notes:
 
 * Each output line occurs only once, because we're treating the files as sets
   and the lines as their elements.
 * We do take the file structure into account in one respect: the lines are
-  output in the same order as they are encountered. So `setop union x` prints
+  output in the same order as they are encountered. So `zet union x` prints
   out the lines of `x`, in order, with duplicates removed.
 
-Here are the subcommands of `setop` and what they do:
+Here are the subcommands of `zet` and what they do:
 
-* `setop union x y z` outputs the lines that occur in any of `x`, `y`, or `z`.
-* `setop intersect x y z` outputs the lines that occur in all of `x`, `y`, and `z`.
-* `setop diff x y z` outputs the lines that occur in `x` but not in `y` or `z`.
-* `setop single x y z` outputs the lines that occur in exactly one of `x`, `y`,
+* `zet union x y z` outputs the lines that occur in any of `x`, `y`, or `z`.
+* `zet intersect x y z` outputs the lines that occur in all of `x`, `y`, and `z`.
+* `zet diff x y z` outputs the lines that occur in `x` but not in `y` or `z`.
+* `zet single x y z` outputs the lines that occur in exactly one of `x`, `y`,
   or `z`.
-* `setop multiple x y z` outputs the lines that occur in two or more of `x`, `y`,
+* `zet multiple x y z` outputs the lines that occur in two or more of `x`, `y`,
   and `z`.
 
 ## License

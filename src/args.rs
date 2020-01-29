@@ -16,7 +16,7 @@ pub fn parsed() -> Args {
 
 #[derive(Debug, StructOpt)]
 #[structopt(
-    name = "setop",
+    name = "zet",
     about = "Calcuate the union, intersection, and so forth of files considered as sets of lines",
     raw(setting = "structopt::clap::AppSettings::ColoredHelp"),
     after_help = "Each line is output at most once, no matter how many times it occurs in the file(s). Lines are not sorted, but are printed in the order they occur in the input."

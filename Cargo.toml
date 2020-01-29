@@ -1,5 +1,5 @@
 [package]
-name = "setop"
+name = "zet"
 version = "0.1.0"
 authors = ["Yarrow Angelweed <yarrow.angelweed@gmail.com>"]
 edition = '2018'
