@@ -20,7 +20,7 @@ pub fn stdout() -> io::Stdout {
 /// ```no_run
 /// # fn main() -> Result<(), failure::Error> {
 /// use std::{io::stdout, io::Write, path::PathBuf};
-/// use zet::sio::ContentsIter; 
+/// use zet::io::ContentsIter; 
 ///
 /// let files = vec![PathBuf::from("a.txt"), PathBuf::from("b.txt"), PathBuf::from("c.txt")];
 /// for result in ContentsIter::from(files) {

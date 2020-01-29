@@ -1,5 +1,5 @@
 //! The `do_calculation` function is the kernel of the appliction.  The `args` module parses
-//! the command line, and the `sio` module hides I/O details.
+//! the command line, and the `io` module hides I/O details.
 //!
 //! Current Limitations:
 //! * Currently a "line" is zero or more non-newline bytes followed by a newline.
@@ -26,7 +26,7 @@ use memchr::Memchr;
 
 pub mod args;
 use crate::args::OpName;
-pub mod sio;
+pub mod io;
 
 type LineIterator<'a> = Box<dyn Iterator<Item = &'a [u8]> + 'a>;
 
