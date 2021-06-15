@@ -22,11 +22,7 @@ fn subcommands_allow_empty_arg_list_and_produce_empty_output() {
 #[test]
 fn fail_on_missing_file() {
     for subcommand in SUBCOMMANDS.iter() {
-        Command::main_binary()
-            .unwrap()
-            .args(&[subcommand, "x"])
-            .assert()
-            .failure();
+        Command::main_binary().unwrap().args(&[subcommand, "x"]).assert().failure();
     }
 }
 
@@ -202,10 +198,8 @@ fn zet_subcommand_x_y_z_matches_expected_output_for_all_subcommands() {
     let y_path: &str = &path_with(&temp, "y.txt", Y);
     let z_path: &str = &path_with(&temp, "z.txt", Z);
     for sub in SUBCOMMANDS.iter() {
-        let output = Command::main_binary()
-            .unwrap()
-            .args(&[sub, &x_path, &y_path, &z_path])
-            .unwrap();
+        let output =
+            Command::main_binary().unwrap().args(&[sub, &x_path, &y_path, &z_path]).unwrap();
         assert_eq!(
             String::from_utf8(output.stdout).unwrap(),
             expected(sub),

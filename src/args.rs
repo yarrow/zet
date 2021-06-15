@@ -37,11 +37,7 @@ pub struct Args {
     )]
     /// `op` is the set operation requested
     pub op: OpName,
-    #[structopt(
-        parse(from_os_str),
-        help = "Input files",
-        raw(next_line_help = "true"),
-    )]
+    #[structopt(parse(from_os_str), help = "Input files", raw(next_line_help = "true"))]
     /// `files` is the list of files from the command line
     pub files: Vec<PathBuf>,
 }
