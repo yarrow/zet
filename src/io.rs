@@ -1,7 +1,5 @@
 //! Input/Output structs and functions
-use std::{io, fs, path::PathBuf};
-
-use failure;
+use std::{fs, io, path::PathBuf};
 
 /// Returns `io::stdout`, locked
 #[must_use]
@@ -20,7 +18,7 @@ pub fn stdout() -> io::Stdout {
 /// ```no_run
 /// # fn main() -> Result<(), failure::Error> {
 /// use std::{io::stdout, io::Write, path::PathBuf};
-/// use zet::io::ContentsIter; 
+/// use zet::io::ContentsIter;
 ///
 /// let files = vec![PathBuf::from("a.txt"), PathBuf::from("b.txt"), PathBuf::from("c.txt")];
 /// for result in ContentsIter::from(files) {
