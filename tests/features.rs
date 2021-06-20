@@ -30,6 +30,23 @@ fn fail_on_missing_file() {
     }
 }
 
+#[test]
+fn zet_subcommand_x_y_z_matches_expected_output_for_all_subcommands() {
+    let temp = TempDir::new().unwrap();
+    let x_path: &str = &path_with(&temp, "x.txt", X);
+    let y_path: &str = &path_with(&temp, "y.txt", Y);
+    let z_path: &str = &path_with(&temp, "z.txt", Z);
+    for sub in SUBCOMMANDS.iter() {
+        let output = main_binary().args(&[sub, &x_path, &y_path, &z_path]).unwrap();
+        assert_eq!(
+            String::from_utf8(output.stdout).unwrap(),
+            expected(sub),
+            "Output from {} doeasn't match expected",
+            sub
+        );
+    }
+}
+
 // We're testing with files (say x.txt, y.txt, and z.txt) whose contents are
 // X, Y, and Z. Each line tells us which subset of the three files it appears
 // in, and that determines for which subcommands `sub` it will appear in the
@@ -178,7 +195,7 @@ fn path_with(temp: &TempDir, name: &str, contents: &str) -> String {
 
 #[test]
 fn single_argument_just_prints_the_unique_lines_for_all_but_multiple() {
-    const X: &str = "x\nX\nEx\nEks\n";
+    const EXPECTED: &str = "x\nX\nEx\nEks\n";
     const XX: &str = "x\nX\nEx\nEks\nx\nx\nX\n";
 
     let temp = TempDir::new().unwrap();
@@ -186,28 +203,29 @@ fn single_argument_just_prints_the_unique_lines_for_all_but_multiple() {
     x.write_str(&(XX.to_owned() + XX)).unwrap();
 
     for subcommand in SUBCOMMANDS.iter() {
-        let output = main_binary()
-            .args(&[subcommand, x.path().to_str().unwrap()])
-            .unwrap();
+        let output = main_binary().args(&[subcommand, x.path().to_str().unwrap()]).unwrap();
         let result = String::from_utf8(output.stdout).unwrap();
-        assert_eq!(result, if subcommand == &"multiple" { "" } else { X });
+        assert_eq!(result, if subcommand == &"multiple" { "" } else { EXPECTED });
     }
 }
 
 #[test]
-fn zet_subcommand_x_y_z_matches_expected_output_for_all_subcommands() {
+fn the_last_line_of_a_file_need_not_end_in_a_newline() {
+    const EXPECTED: &str = "x\nX\nEx\nEks\na\n";
+    const XX: &str = "x\nX\nEx\nEks\nx\nx\nX\n";
+
     let temp = TempDir::new().unwrap();
-    let x_path: &str = &path_with(&temp, "x.txt", X);
-    let y_path: &str = &path_with(&temp, "y.txt", Y);
-    let z_path: &str = &path_with(&temp, "z.txt", Z);
-    for sub in SUBCOMMANDS.iter() {
-        let output =
-            main_binary().args(&[sub, &x_path, &y_path, &z_path]).unwrap();
-        assert_eq!(
-            String::from_utf8(output.stdout).unwrap(),
-            expected(sub),
-            "Output from {} doeasn't match expected",
-            sub
-        );
+    let x = temp.child("x.txt");
+    x.write_str(&(XX.to_owned() + XX + "a")).unwrap();
+    let x_path = x.path().to_str().unwrap();
+
+    for subcommand in SUBCOMMANDS.iter() {
+        let mut subcommand_with_args = vec![subcommand, &x_path];
+        if subcommand == &"multiple" {
+            subcommand_with_args.push(&x_path)
+        }
+        let output = main_binary().args(&subcommand_with_args).unwrap();
+        let result = String::from_utf8(output.stdout).unwrap();
+        assert_eq!(result, EXPECTED);
     }
 }
