@@ -4,9 +4,13 @@ use assert_cmd::prelude::*;
 use assert_fs::{prelude::*, TempDir};
 use itertools::Itertools;
 
+fn main_binary() -> Command {
+    Command::cargo_bin("zet").unwrap()
+}
+
 #[test]
 fn requires_subcommand() {
-    Command::main_binary().unwrap().assert().failure();
+    main_binary().assert().failure();
 }
 
 const SUBCOMMANDS: [&str; 5] = ["intersect", "union", "diff", "single", "multiple"];
@@ -14,7 +18,7 @@ const SUBCOMMANDS: [&str; 5] = ["intersect", "union", "diff", "single", "multipl
 #[test]
 fn subcommands_allow_empty_arg_list_and_produce_empty_output() {
     for subcommand in SUBCOMMANDS.iter() {
-        let output = Command::main_binary().unwrap().arg(subcommand).unwrap();
+        let output = main_binary().arg(subcommand).unwrap();
         assert_eq!(String::from_utf8(output.stdout).unwrap(), "");
     }
 }
@@ -22,7 +26,7 @@ fn subcommands_allow_empty_arg_list_and_produce_empty_output() {
 #[test]
 fn fail_on_missing_file() {
     for subcommand in SUBCOMMANDS.iter() {
-        Command::main_binary().unwrap().args(&[subcommand, "x"]).assert().failure();
+        main_binary().args(&[subcommand, "x"]).assert().failure();
     }
 }
 
@@ -182,8 +186,7 @@ fn single_argument_just_prints_the_unique_lines_for_all_but_multiple() {
     x.write_str(&(XX.to_owned() + XX)).unwrap();
 
     for subcommand in SUBCOMMANDS.iter() {
-        let output = Command::main_binary()
-            .unwrap()
+        let output = main_binary()
             .args(&[subcommand, x.path().to_str().unwrap()])
             .unwrap();
         let result = String::from_utf8(output.stdout).unwrap();
@@ -199,7 +202,7 @@ fn zet_subcommand_x_y_z_matches_expected_output_for_all_subcommands() {
     let z_path: &str = &path_with(&temp, "z.txt", Z);
     for sub in SUBCOMMANDS.iter() {
         let output =
-            Command::main_binary().unwrap().args(&[sub, &x_path, &y_path, &z_path]).unwrap();
+            main_binary().args(&[sub, &x_path, &y_path, &z_path]).unwrap();
         assert_eq!(
             String::from_utf8(output.stdout).unwrap(),
             expected(sub),

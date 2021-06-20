@@ -18,14 +18,14 @@ pub fn parsed() -> Args {
 #[structopt(
     name = "zet",
     about = "Calcuate the union, intersection, and so forth of files considered as sets of lines",
-    raw(setting = "structopt::clap::AppSettings::ColoredHelp"),
+    setting = structopt::clap::AppSettings::ColoredHelp,
     after_help = "Each line is output at most once, no matter how many times it occurs in the file(s). Lines are not sorted, but are printed in the order they occur in the input."
 )]
 /// `Args` contains the parsed command line.
 pub struct Args {
     #[structopt(
         name = "intersect|union|diff|single|multiple",
-        raw(next_line_help = "true"),
+        next_line_help = true,
         long_help = "Each operation prints lines meeting a different condition:
     Operation  Prints lines appearing in
     ========== =========================
@@ -37,7 +37,7 @@ pub struct Args {
     )]
     /// `op` is the set operation requested
     pub op: OpName,
-    #[structopt(parse(from_os_str), help = "Input files", raw(next_line_help = "true"))]
+    #[structopt(parse(from_os_str), help = "Input files", next_line_help = true)]
     /// `files` is the list of files from the command line
     pub files: Vec<PathBuf>,
 }

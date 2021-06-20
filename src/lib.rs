@@ -257,13 +257,12 @@ fn difference(set: &mut SliceSet, other: &SliceSet) {
     set.retain(|x| !other.contains(x));
 }
 
+#[allow(clippy::pedantic)]
 #[cfg(test)]
 mod test {
     use super::*;
-    use std::collections::HashMap;
-    use std::convert::AsRef;
 
-    fn calc(operation: OpName, operands: &Vec<&[u8]>) -> Vec<u8> {
+    fn calc(operation: OpName, operands: &[&[u8]]) -> Vec<u8> {
         let mut answer = Vec::<u8>::new();
         let operands = operands.iter().map(|s| Ok(s.to_vec()));
         do_calculation(operation, operands, &mut answer).unwrap();
@@ -276,7 +275,7 @@ mod test {
     fn given_a_single_argument_all_ops_but_multiple_return_its_lines_in_order_without_dups() {
         let arg: Vec<&[u8]> = vec![b"xxx\nabc\nxxx\nyyy\nxxx\nabc\n"];
         let uniq = b"xxx\nabc\nyyy\n";
-        for op in [Intersect, Union, Diff, Single, Multiple].iter() {
+        for op in &[Intersect, Union, Diff, Single, Multiple] {
             match op {
                 Intersect | Union | Diff | Single => assert_eq!(calc(*op, &arg), uniq),
                 Multiple => assert_eq!(calc(*op, &arg), b""),
