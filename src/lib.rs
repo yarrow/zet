@@ -28,7 +28,9 @@ pub mod args;
 use crate::args::OpName;
 pub mod io;
 
-type LineIterator<'a> = Box<dyn Iterator<Item = &'a [u8]> + 'a>;
+/// The `LineIterator` type is used to return the value of a `SetExpression` `s`:
+/// `s.iter()` returns an iterator over the lines (elements) of `s`.
+pub type LineIterator<'a> = Box<dyn Iterator<Item = &'a [u8]> + 'a>;
 
 type UnionSet = IndexSet<Vec<u8>>;
 
@@ -67,7 +69,7 @@ struct IntersectSet<'data>(SliceSet<'data>);
 pub fn do_calculation(
     operation: OpName,
     operands: impl IntoIterator<Item = Result<Vec<u8>, failure::Error>>,
-    output: &mut impl Write,
+    output: impl FnOnce(LineIterator) -> Result<(), failure::Error>,
 ) -> Result<(), failure::Error> {
     let mut operands = operands.into_iter();
     let first = match operands.next() {
@@ -87,12 +89,7 @@ pub fn do_calculation(
     }
     set.finish();
 
-    for line in set.iter() {
-        output.write_all(line)?;
-    }
-    output.flush()?;
-
-    Ok(())
+    output(set.iter())
 }
 
 trait SetExpression {
@@ -262,7 +259,13 @@ mod test {
     fn calc(operation: OpName, operands: &[&[u8]]) -> Vec<u8> {
         let mut answer = Vec::<u8>::new();
         let operands = operands.iter().map(|s| Ok(s.to_vec()));
-        do_calculation(operation, operands, &mut answer).unwrap();
+        do_calculation(operation, operands, {
+            |iter| {
+                answer = iter.map(|s| s.to_owned()).flatten().collect();
+                Ok(())
+            }
+        })
+        .unwrap();
         answer
     }
 

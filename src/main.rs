@@ -1,13 +1,18 @@
-use std::process;
+use std::io::Write;
 
-fn main() {
+fn main() -> Result<(), failure::Error> {
     let args = zet::args::parsed();
 
     let file_contents = zet::io::ContentsIter::from(args.files);
     let mut stdout = zet::io::stdout();
 
-    if let Err(e) = zet::do_calculation(args.op, file_contents, &mut stdout) {
-        eprintln!("{}", e);
-        process::exit(1);
-    }
+    zet::do_calculation(args.op, file_contents, {
+        |iter| {
+            for line in iter {
+                stdout.write_all(line)?;
+            }
+            stdout.flush()?;
+            Ok(())
+        }
+    })
 }
