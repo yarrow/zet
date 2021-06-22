@@ -21,6 +21,11 @@ Here are the subcommands of `zet` and what they do:
 * `zet multiple x y z` outputs the lines that occur in two or more of `x`, `y`,
   and `z`.
 
+## Limitations
+
+* Zet currently doesn't work with UTF-16LE and UTF-16BE file encodings, and doesn't work well with UTF-8 files that start with a Byte Order Mark. So it's currently not a good fit for Windows. (The plan is to change this!)
+* In some files, the last line lacks an end of line marker. Zet will add that marker (so such a line can be usefully compared to a line in the middle of a file), using `\r\n` if the first line in the file ended that way, or `\n` if not. If the file has only a single line, not terminated, then Zet will use `\n`, which could be a problem if other files use `\r\n`.
+
 ## License
 
 Licensed under either of

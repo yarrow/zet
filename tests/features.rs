@@ -3,6 +3,7 @@ use std::process::Command;
 use assert_cmd::prelude::*;
 use assert_fs::{prelude::*, TempDir};
 use itertools::Itertools;
+use zet::io::read_and_eol_terminate;
 
 fn main_binary() -> Command {
     Command::cargo_bin("zet").unwrap()
@@ -28,6 +29,27 @@ fn fail_on_missing_file() {
     for subcommand in SUBCOMMANDS.iter() {
         main_binary().args(&[subcommand, "x"]).assert().failure();
     }
+}
+
+#[test]
+fn fail_bad_subcommand() {
+    main_binary().args(&["OwOwOwOwOw"]).assert().failure();
+}
+
+#[test]
+fn read_and_eol_terminate_adds_the_eol_given_by_the_first_line() {
+    let temp = TempDir::new().unwrap();
+    let rn_path: &str = &path_with(&temp, "rn.txt", "a\r\nb");
+    assert_eq!(read_and_eol_terminate(rn_path).unwrap(), b"a\r\nb\r\n");
+
+    let n_path: &str = &path_with(&temp, "rn.txt", "a\nb");
+    assert_eq!(read_and_eol_terminate(n_path).unwrap(), b"a\nb\n");
+
+    let one_path: &str = &path_with(&temp, "one.txt", "b");
+    assert_eq!(read_and_eol_terminate(one_path).unwrap(), b"b\n");
+
+    let null_path: &str = &path_with(&temp, "null.txt", "");
+    assert_eq!(read_and_eol_terminate(null_path).unwrap(), b"");
 }
 
 #[test]

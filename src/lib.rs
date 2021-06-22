@@ -61,12 +61,14 @@ struct IntersectSet<'data>(SliceSet<'data>);
 /// * `OpName::Diff` prints the lines that occur in the first file and no other,
 /// * `OpName::Single` prints the lines that occur in exactly one file, and
 /// * `OpName::Multiple` prints the lines that occur in more than one file.
+///
+/// **Every** line in each element of `operands` must end in `b'\n'`, including
+/// the element's last line.
 pub fn do_calculation(
     operation: OpName,
     operands: impl IntoIterator<Item = Result<Vec<u8>, failure::Error>>,
     output: &mut impl Write,
 ) -> Result<(), failure::Error> {
-    const NEWLINE: &[u8] = b"\n";
     let mut operands = operands.into_iter();
     let first = match operands.next() {
         None => return Ok(()),
@@ -87,7 +89,6 @@ pub fn do_calculation(
 
     for line in set.iter() {
         output.write_all(line)?;
-        output.write_all(&NEWLINE)?;
     }
     output.flush()?;
 
@@ -109,16 +110,12 @@ trait LineSet<'data>: Default {
     fn insert_line(&mut self, line: &'data [u8]);
 
     // The `insert_all_lines` method breaks `text` down into lines and inserts
-    // each of them into `self`, not including the ending newline.
+    // each of them into `self`, including the ending `b'\n'`.
     fn insert_all_lines(&mut self, text: &'data [u8]) {
         let mut begin = 0;
         for end in Memchr::new(b'\n', text) {
-            self.insert_line(&text[begin..end]); // skip the newline
+            self.insert_line(&text[begin..=end]); // keep the newline
             begin = end + 1;
-        }
-        // `being < text.len()` iff the last character of the file is not a newline
-        if begin < text.len() {
-            self.insert_line(&text[begin..]);
         }
     }
     fn borrowing(text: &'data [u8]) -> Self {
