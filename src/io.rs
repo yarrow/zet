@@ -66,6 +66,7 @@ use memchr::memchr;
 /// `fs::read` directly, because we want to allocate *two* extra bytes
 /// (to add `\r\n` if need be), and `fs::read` only allocates one.
 pub fn read_and_eol_terminate<P: AsRef<Path>>(path: P) -> Result<Vec<u8>, std::io::Error> {
+    #[allow(clippy::cast_possible_truncation)]
     fn initial_buffer_size(file: &fs::File) -> usize {
         // Allocate ~~one extra byte~~ two extra bytes so the buffer doesn't
         // need to grow before the final `read` call at the end of the file.
