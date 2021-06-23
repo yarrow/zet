@@ -748,8 +748,6 @@ dependencies = [
  "indexmap",
  "itertools",
  "memchr",
- "predicates",
  "structopt",
  "structopt-derive",
- "tempfile",
 ]
