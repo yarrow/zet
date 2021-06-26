@@ -41,12 +41,6 @@ enum FoundIn {
 }
 type CountedSet = IndexMap<Vec<u8>, FoundIn>;
 
-#[derive(Default)]
-struct SingleSet(CountedSet);
-
-#[derive(Default)]
-struct MultipleSet(CountedSet);
-
 type SliceSet<'data> = IndexSet<&'data [u8]>;
 
 #[derive(Default)]
@@ -80,22 +74,28 @@ pub fn do_calculation(
         OpName::Intersect => Box::new(IntersectSet::borrowing(&first)),
         OpName::Diff => Box::new(DiffSet::borrowing(&first)),
         OpName::Union => Box::new(UnionSet::consuming(first)),
-        OpName::Single => Box::new(SingleSet::consuming(first)),
-        OpName::Multiple => Box::new(MultipleSet::consuming(first)),
+        OpName::Single | OpName::Multiple => Box::new(CountedSet::consuming(first)),
     };
 
     for operand in operands {
         set.operate(operand?.as_ref());
     }
-    set.finish();
+    match operation {
+        OpName::Single => set.keep_members(FoundIn::One),
+        OpName::Multiple => set.keep_members(FoundIn::Many),
+        _ => {}
+    };
 
     output(set.iter())
 }
 
 trait SetExpression {
     fn operate(&mut self, other: &[u8]);
-    fn finish(&mut self) {}
     fn iter(&self) -> LineIterator;
+
+    // This is a code smell, since only CountedSet needs it. But I don't know a
+    // better way
+    fn keep_members(&mut self, _keep: FoundIn) {}
 }
 
 // Sets are implemented as variations on the `IndexMap` type, a hash that remembers
@@ -160,55 +160,43 @@ impl SetExpression for UnionSet {
     }
 }
 
-/// We use a `SingleSet` to keep track of the lines which occur in exactly one of
-/// the given files, and a `MultipleSet` to keep track of those that occur in more
-/// than one file.  Underlying a `SingleSet` or a `MultipleSet` is an `IndexMap`
-/// whose values are either `FoundIn::One` for lines that occur in only one file
-/// or `FoundIn:Many` for lines that occur in multiple files. (If a line occurs
-/// more than once in just one particular file, we still count it as occuring in
-/// a single file.)
+/// We use a `CountedSet` to keep track, for each line seen, whether the line
+/// occurs in exactly one of the given files, or of more than one of them.
+/// A `CountedSet` is an `IndexMap` whose values are either `FoundIn::One` for
+/// lines that occur in only one file or `FoundIn:Many` for lines that occur
+/// in multiple files. (If a line occurs more than once in just one particular
+/// file, we still count it as occuring in a single file.)
 ///
 /// For the first operand we set every line's value to `FoundIn::One`, and if it
-/// is found in a subsequent file we set its value to `FoundIn::Many`.  The only
-/// implementation difference between a `SingleSet` and a `MultipleSet` is that
-/// at the end of the calculation we retain for a `SingleSet` the keys with a
-/// `FoundIn::One` value and for a `MultipleSet` the keys with a `FoundIn::Many`
-/// value. We use a macro to avoid two chunks of code differing in a single line.
-
-macro_rules! impl_counted_set {
-    ($CountedSet:ident, $count:expr) => {
-        impl ConsumingSet for $CountedSet {}
-        impl<'data> LineSet<'data> for $CountedSet {
-            fn insert_line(&mut self, line: &'data [u8]) {
-                self.0.insert(line.to_vec(), FoundIn::One);
-            }
-        }
-        impl SetExpression for $CountedSet {
-            /// If a line occurs in `other` but not `self`,
-            /// we insert it with a `true` value; if it
-            /// occurs in both, we set its value to `false`
-            fn operate(&mut self, other: &[u8]) {
-                let other = SliceSet::borrowing(other);
-                for line in other.iter() {
-                    if self.0.contains_key(*line) {
-                        self.0.insert(line.to_vec(), FoundIn::Many);
-                    } else {
-                        self.0.insert(line.to_vec(), FoundIn::One);
-                    }
-                }
-            }
-            /// Remove the unwanted values
-            fn finish(&mut self) {
-                self.0.retain(|_k, v| *v == $count);
-            }
-            fn iter(&self) -> LineIterator {
-                Box::new(self.0.keys().map(Vec::as_slice))
-            }
-        }
-    };
+/// is found in a subsequent file we set its value to `FoundIn::Many`.
+impl ConsumingSet for CountedSet {}
+impl<'data> LineSet<'data> for CountedSet {
+    fn insert_line(&mut self, line: &'data [u8]) {
+        self.insert(line.to_vec(), FoundIn::One);
+    }
 }
-impl_counted_set!(SingleSet, FoundIn::One);
-impl_counted_set!(MultipleSet, FoundIn::Many);
+impl SetExpression for CountedSet {
+    /// If a line occurs in `other` but not `self`,
+    /// we insert it with a `FoundIn::One` value; if it
+    /// occurs in both, we set its value to `FoundIn::Many`
+    fn operate(&mut self, other: &[u8]) {
+        let other = SliceSet::borrowing(other);
+        for line in other.iter() {
+            if self.contains_key(*line) {
+                self.insert(line.to_vec(), FoundIn::Many);
+            } else {
+                self.insert(line.to_vec(), FoundIn::One);
+            }
+        }
+    }
+    /// Remove the unwanted values
+    fn keep_members(&mut self, keep: FoundIn) {
+        self.retain(|_k, v| *v == keep);
+    }
+    fn iter(&self) -> LineIterator {
+        Box::new(self.keys().map(Vec::as_slice))
+    }
+}
 
 /// For an `IntersectSet` or a `DiffSet`, all result lines will be from the
 /// first file operand, so we can avoid additional allocations by keeping its
@@ -216,7 +204,7 @@ impl_counted_set!(MultipleSet, FoundIn::Many);
 ///
 /// For subsequent operands, we take a `SliceSet` `s` of the operand's text and
 /// (for an `IntersectSet`) keep only those lines that occur in `s` or (for a
-/// `DiffSet`) remove the lines that occur in `s`. Again we use a macro to avoid
+/// `DiffSet`) remove the lines that occur in `s`. We use a macro to avoid
 /// two chunks of code differing in a single line.
 macro_rules! impl_waning_set {
     ($WaningSet:ident, $filter:ident) => {
