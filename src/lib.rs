@@ -71,10 +71,10 @@ pub fn do_calculation(
         Some(operand) => operand?,
     };
     let mut set: Box<dyn SetExpression> = match operation {
-        OpName::Intersect => Box::new(IntersectSet::borrowing(&first)),
-        OpName::Diff => Box::new(DiffSet::borrowing(&first)),
-        OpName::Union => Box::new(UnionSet::consuming(first)),
-        OpName::Single | OpName::Multiple => Box::new(CountedSet::consuming(first)),
+        OpName::Intersect => Box::new(IntersectSet::with(&first)),
+        OpName::Diff => Box::new(DiffSet::with(&first)),
+        OpName::Union => Box::new(UnionSet::with(&first)),
+        OpName::Single | OpName::Multiple => Box::new(CountedSet::with(&first)),
     };
 
     for operand in operands {
@@ -115,19 +115,10 @@ trait LineSet<'data>: Default {
             begin = end + 1;
         }
     }
-    fn borrowing(text: &'data [u8]) -> Self {
+    // The initial value is the set of all lines in the first operand
+    fn with(text: &'data [u8]) -> Self {
         let mut set = Self::default();
         set.insert_all_lines(text);
-        set
-    }
-}
-
-/// A waxing set's members are allocated vectors, so its lifetime is independant
-/// of its first operand. To conserve space, we drop that operand after reading it.
-trait ConsumingSet: for<'a> LineSet<'a> + Default {
-    fn consuming(text: impl Into<Vec<u8>>) -> Self {
-        let mut set = Self::default();
-        set.insert_all_lines(&text.into());
         set
     }
 }
@@ -145,7 +136,6 @@ impl<'data> LineSet<'data> for SliceSet<'data> {
 // of the lines which occur in at least one of a sequence of files. Rather than
 // keep the text of all files in memory, we allocate a `Vec<u8>` for each set member.
 //
-impl ConsumingSet for UnionSet {}
 impl<'data> LineSet<'data> for UnionSet {
     fn insert_line(&mut self, line: &'data [u8]) {
         self.insert(line.to_vec());
@@ -169,7 +159,6 @@ impl SetExpression for UnionSet {
 ///
 /// For the first operand we set every line's value to `FoundIn::One`, and if it
 /// is found in a subsequent file we set its value to `FoundIn::Many`.
-impl ConsumingSet for CountedSet {}
 impl<'data> LineSet<'data> for CountedSet {
     fn insert_line(&mut self, line: &'data [u8]) {
         self.insert(line.to_vec(), FoundIn::One);
@@ -180,7 +169,7 @@ impl SetExpression for CountedSet {
     /// we insert it with a `FoundIn::One` value; if it
     /// occurs in both, we set its value to `FoundIn::Many`
     fn operate(&mut self, other: &[u8]) {
-        let other = SliceSet::borrowing(other);
+        let other = SliceSet::with(other);
         for line in other.iter() {
             if self.contains_key(*line) {
                 self.insert(line.to_vec(), FoundIn::Many);
@@ -217,7 +206,7 @@ macro_rules! impl_waning_set {
             /// Remove (for `DiffSet`) or retain (for `IntersectSet`) the elements
             /// of `other`
             fn operate(&mut self, other: &[u8]) {
-                let other = SliceSet::borrowing(other);
+                let other = SliceSet::with(other);
                 $filter(&mut self.0, &other);
             }
             fn iter(&self) -> LineIterator {
