@@ -15,14 +15,12 @@
 #![allow(clippy::missing_errors_doc)]
 #![warn(missing_docs)]
 
-use std::io::Write;
 use std::vec::Vec;
 
 #[macro_use]
 extern crate failure;
 
 use indexmap::{IndexMap, IndexSet};
-use memchr::Memchr;
 
 pub mod args;
 use crate::args::OpName;
