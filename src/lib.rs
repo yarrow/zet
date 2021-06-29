@@ -27,27 +27,45 @@ use memchr::Memchr;
 pub mod args;
 use crate::args::OpName;
 pub mod io;
+use crate::io::lines_of;
 
 /// The `LineIterator` type is used to return the value of a `SetExpression` `s`:
 /// `s.iter()` returns an iterator over the lines (elements) of `s`.
+///
 pub type LineIterator<'a> = Box<dyn Iterator<Item = &'a [u8]> + 'a>;
 
+// A `SliceSet` is a set of slices borrowed from a text string, each slice
+// corresponding to a line.
+//
+type SliceSet<'data> = IndexSet<&'data [u8]>;
+
+fn slice_set(operand: &[u8]) -> SliceSet {
+    let mut set = SliceSet::default();
+    for line in lines_of(operand) {
+        set.insert(line);
+    }
+    set
+}
+
+// The members of a `UnionSet` are owned, not borrowed — we assume that the
+// files whose lines we're taking the union of will often be substantially
+// identical, so we'll use less memory overall if we allocate line by (unique)
+// line rather than keeping the text of every file in member to borrow from.
+//
 type UnionSet = IndexSet<Vec<u8>>;
+
+// A `CountedSet` must keep track of whether its members were found in just
+// one file, or in multiple files. After processing all files, we return
+// for OpName::Single the lines found in just one file, and for
+// OpName::Multiple the lines found in more than one file.
+//
+type CountedSet = IndexMap<Vec<u8>, FoundIn>;
 
 #[derive(PartialEq)]
 enum FoundIn {
     One,
     Many,
 }
-type CountedSet = IndexMap<Vec<u8>, FoundIn>;
-
-type SliceSet<'data> = IndexSet<&'data [u8]>;
-
-#[derive(Default)]
-struct DiffSet<'data>(SliceSet<'data>);
-
-#[derive(Default)]
-struct IntersectSet<'data>(SliceSet<'data>);
 
 /// Calculates and prints the set operation named by `op`. Each file in `files`
 /// is treated as a set of lines:
@@ -58,8 +76,6 @@ struct IntersectSet<'data>(SliceSet<'data>);
 /// * `OpName::Single` prints the lines that occur in exactly one file, and
 /// * `OpName::Multiple` prints the lines that occur in more than one file.
 ///
-/// **Every** line in each element of `operands` must end in `b'\n'`, including
-/// the element's last line.
 pub fn do_calculation(
     operation: OpName,
     operands: impl IntoIterator<Item = Result<Vec<u8>, failure::Error>>,
@@ -70,162 +86,60 @@ pub fn do_calculation(
         None => return Ok(()),
         Some(operand) => operand?,
     };
-    let mut set: Box<dyn SetExpression> = match operation {
-        OpName::Intersect => Box::new(IntersectSet::with(&first)),
-        OpName::Diff => Box::new(DiffSet::with(&first)),
-        OpName::Union => Box::new(UnionSet::with(&first)),
-        OpName::Single | OpName::Multiple => Box::new(CountedSet::with(&first)),
-    };
-
-    for operand in operands {
-        set.operate(operand?.as_ref());
-    }
     match operation {
-        OpName::Single => set.keep_members(FoundIn::One),
-        OpName::Multiple => set.keep_members(FoundIn::Many),
-        _ => {}
-    };
-
-    output(set.iter())
-}
-
-trait SetExpression {
-    fn operate(&mut self, other: &[u8]);
-    fn iter(&self) -> LineIterator;
-
-    // This is a code smell, since only CountedSet needs it. But I don't know a
-    // better way
-    fn keep_members(&mut self, _keep: FoundIn) {}
-}
-
-// Sets are implemented as variations on the `IndexMap` type, a hash that remembers
-// the order in which keys were inserted, since our 'sets' are equipped with an
-// ordering on the members.
-//
-trait LineSet<'data>: Default {
-    // The only method that implementations need to define is `insert_line`
-    fn insert_line(&mut self, line: &'data [u8]);
-
-    // The `insert_all_lines` method breaks `text` down into lines and inserts
-    // each of them into `self`, including the ending `b'\n'`.
-    fn insert_all_lines(&mut self, text: &'data [u8]) {
-        let mut begin = 0;
-        for end in Memchr::new(b'\n', text) {
-            self.insert_line(&text[begin..=end]); // keep the newline
-            begin = end + 1;
+        OpName::Union => {
+            let mut set = UnionSet::default();
+            for line in lines_of(&first) {
+                set.insert(line.to_vec());
+            }
+            for operand in operands {
+                for line in lines_of(&operand?) {
+                    set.insert(line.to_vec());
+                }
+            }
+            return output(Box::new(&mut set.iter().map(Vec::as_slice)));
         }
-    }
-    // The initial value is the set of all lines in the first operand
-    fn with(text: &'data [u8]) -> Self {
-        let mut set = Self::default();
-        set.insert_all_lines(text);
-        set
-    }
-}
 
-// The simplest `LineSet` is a `SliceSet`, whose members (hash keys) are slices
-// borrowed from a text string, each slice corresponding to a line.
-//
-impl<'data> LineSet<'data> for SliceSet<'data> {
-    fn insert_line(&mut self, line: &'data [u8]) {
-        self.insert(line);
-    }
-}
-
-// The next simplest set is a `UnionSet`, which we use to calculate the union
-// of the lines which occur in at least one of a sequence of files. Rather than
-// keep the text of all files in memory, we allocate a `Vec<u8>` for each set member.
-//
-impl<'data> LineSet<'data> for UnionSet {
-    fn insert_line(&mut self, line: &'data [u8]) {
-        self.insert(line.to_vec());
-    }
-}
-impl SetExpression for UnionSet {
-    fn operate(&mut self, other: &[u8]) {
-        self.insert_all_lines(&other);
-    }
-    fn iter(&self) -> LineIterator {
-        Box::new(self.iter().map(Vec::as_slice))
-    }
-}
-
-/// We use a `CountedSet` to keep track, for each line seen, whether the line
-/// occurs in exactly one of the given files, or of more than one of them.
-/// A `CountedSet` is an `IndexMap` whose values are either `FoundIn::One` for
-/// lines that occur in only one file or `FoundIn:Many` for lines that occur
-/// in multiple files. (If a line occurs more than once in just one particular
-/// file, we still count it as occuring in a single file.)
-///
-/// For the first operand we set every line's value to `FoundIn::One`, and if it
-/// is found in a subsequent file we set its value to `FoundIn::Many`.
-impl<'data> LineSet<'data> for CountedSet {
-    fn insert_line(&mut self, line: &'data [u8]) {
-        self.insert(line.to_vec(), FoundIn::One);
-    }
-}
-impl SetExpression for CountedSet {
-    /// If a line occurs in `other` but not `self`,
-    /// we insert it with a `FoundIn::One` value; if it
-    /// occurs in both, we set its value to `FoundIn::Many`
-    fn operate(&mut self, other: &[u8]) {
-        let other = SliceSet::with(other);
-        for line in other.iter() {
-            if self.contains_key(*line) {
-                self.insert(line.to_vec(), FoundIn::Many);
-            } else {
-                self.insert(line.to_vec(), FoundIn::One);
+        OpName::Intersect | OpName::Diff => {
+            // Note: IndexSet's `retain` method keeps the order of the retained
+            // elements, but `remove` does not. So we can't just remove elements one by
+            // one when they're not wanted. We'll execute the order(n) `retain` operation
+            // `f - 1` times, where `f` is the number of files we examine.
+            //
+            let mut set = slice_set(&first);
+            for operand in operands {
+                // I don't know why this has to be two statements, but the borrow
+                // checker hates us if we just use `slice_set(&operand?)`
+                let operand = operand?;
+                let other = slice_set(&operand);
+                if operation == OpName::Intersect {
+                    set.retain(|x| other.contains(x))
+                } else {
+                    set.retain(|x| !other.contains(x))
+                }
             }
+            return output(Box::new(set.iter().copied()));
         }
-    }
-    /// Remove the unwanted values
-    fn keep_members(&mut self, keep: FoundIn) {
-        self.retain(|_k, v| *v == keep);
-    }
-    fn iter(&self) -> LineIterator {
-        Box::new(self.keys().map(Vec::as_slice))
-    }
-}
 
-/// For an `IntersectSet` or a `DiffSet`, all result lines will be from the
-/// first file operand, so we can avoid additional allocations by keeping its
-/// text in memory and using subslices of its text as the members of the set.
-///
-/// For subsequent operands, we take a `SliceSet` `s` of the operand's text and
-/// (for an `IntersectSet`) keep only those lines that occur in `s` or (for a
-/// `DiffSet`) remove the lines that occur in `s`. We use a macro to avoid
-/// two chunks of code differing in a single line.
-macro_rules! impl_waning_set {
-    ($WaningSet:ident, $filter:ident) => {
-        impl<'data> LineSet<'data> for $WaningSet<'data> {
-            fn insert_line(&mut self, line: &'data [u8]) {
-                self.0.insert(line);
+        OpName::Single | OpName::Multiple => {
+            let mut set = CountedSet::default();
+            for line in lines_of(&first) {
+                set.insert(line.to_vec(), FoundIn::One);
             }
-        }
-        impl<'data> SetExpression for $WaningSet<'data> {
-            /// Remove (for `DiffSet`) or retain (for `IntersectSet`) the elements
-            /// of `other`
-            fn operate(&mut self, other: &[u8]) {
-                let other = SliceSet::with(other);
-                $filter(&mut self.0, &other);
+            for operand in operands {
+                let operand = operand?;
+                let other = slice_set(&operand);
+                for line in other.iter() {
+                    let found_in =
+                        if set.contains_key(*line) { FoundIn::Many } else { FoundIn::One };
+                    set.insert(line.to_vec(), found_in);
+                }
             }
-            fn iter(&self) -> LineIterator {
-                Box::new(self.0.iter().cloned())
-            }
+            let wanted = if operation == OpName::Single { FoundIn::One } else { FoundIn::Many };
+            set.retain(|_k, v| *v == wanted);
+            return output(Box::new(set.keys().map(Vec::as_slice)));
         }
     };
-}
-
-impl_waning_set!(IntersectSet, intersect);
-
-fn intersect(set: &mut SliceSet, other: &SliceSet) {
-    set.retain(|x| other.contains(x));
-}
-
-impl_waning_set!(DiffSet, difference);
-
-fn difference(set: &mut SliceSet, other: &SliceSet) {
-    set.retain(|x| !other.contains(x));
 }
 
 #[allow(clippy::pedantic)]
@@ -251,12 +165,12 @@ mod test {
     #[test]
     fn given_a_single_argument_all_ops_but_multiple_return_its_lines_in_order_without_dups() {
         let arg: Vec<&[u8]> = vec![b"xxx\nabc\nxxx\nyyy\nxxx\nabc\n"];
-        let uniq = b"xxx\nabc\nyyy\n";
+        let uniq = b"xxx\nabc\nyyy\n".to_vec();
+        let empty = b"".to_vec();
         for op in &[Intersect, Union, Diff, Single, Multiple] {
-            match op {
-                Intersect | Union | Diff | Single => assert_eq!(calc(*op, &arg), uniq),
-                Multiple => assert_eq!(calc(*op, &arg), b""),
-            }
+            let result = calc(*op, &arg);
+            let expected = if *op == Multiple { &empty } else { &uniq };
+            assert_eq!(result, *expected, "for {:?}", op);
         }
     }
     #[test]
@@ -266,10 +180,10 @@ mod test {
             b"xyz\nabc\nxy\nyz\ny\n", // Strings containing "y" (and "abc")
             b"xyz\nabc\nxz\nyz\nz\n", // Strings containing "z" (and "abc")
         ];
-        assert_eq!(calc(Union, &args), b"xyz\nabc\nxy\nxz\nx\nyz\ny\nz\n");
-        assert_eq!(calc(Intersect, &args), b"xyz\nabc\n");
-        assert_eq!(calc(Diff, &args), b"x\n");
-        assert_eq!(calc(Single, &args), b"x\ny\nz\n");
-        assert_eq!(calc(Multiple, &args), b"xyz\nabc\nxy\nxz\nyz\n");
+        assert_eq!(calc(Union, &args), b"xyz\nabc\nxy\nxz\nx\nyz\ny\nz\n", "for {:?}", Union);
+        assert_eq!(calc(Intersect, &args), b"xyz\nabc\n", "for {:?}", Intersect);
+        assert_eq!(calc(Diff, &args), b"x\n", "for {:?}", Diff);
+        assert_eq!(calc(Single, &args), b"x\ny\nz\n", "for {:?}", Single);
+        assert_eq!(calc(Multiple, &args), b"xyz\nabc\nxy\nxz\nyz\n", "for {:?}", Multiple);
     }
 }

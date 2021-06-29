@@ -93,3 +93,25 @@ pub fn read_and_eol_terminate<P: AsRef<Path>>(path: P) -> Result<Vec<u8>, std::i
     }
     inner(path.as_ref())
 }
+
+pub(crate) struct InputLines<'data> {
+    remaining: &'data [u8],
+}
+
+pub(crate) fn lines_of(contents: &[u8]) -> InputLines {
+    InputLines { remaining: contents }
+}
+
+impl<'data> Iterator for InputLines<'data> {
+    type Item = &'data [u8];
+    fn next(&mut self) -> Option<Self::Item> {
+        match memchr(b'\n', self.remaining) {
+            None => None,
+            Some(end) => {
+                let line = &self.remaining[..=end];
+                self.remaining = &self.remaining[end + 1..];
+                Some(line)
+            }
+        }
+    }
+}
