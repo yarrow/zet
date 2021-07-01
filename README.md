@@ -3,13 +3,9 @@ zet: Take the union, intersection, etc of files
 
 This is a command-line utility for doing set operations on files considered as
 sets of lines. For instance, `zet union x y z` outputs the lines that occur in
-any of `x`, `y`, or `z`. Two notes:
+any of `x`, `y`, or `z`, and `zet intersect x y z` those that occur in all of them.
 
-* Each output line occurs only once, because we're treating the files as sets
-  and the lines as their elements.
-* We do take the file structure into account in one respect: the lines are
-  output in the same order as they are encountered. So `zet union x` prints
-  out the lines of `x`, in order, with duplicates removed.
+[![ci](https://github.com/yarrow/zet/actions/workflows/ci.yml/badge.svg)](https://github.com/yarrow/zet/actions/workflows/ci.yml)
 
 Here are the subcommands of `zet` and what they do:
 
@@ -21,10 +17,19 @@ Here are the subcommands of `zet` and what they do:
 * `zet multiple x y z` outputs the lines that occur in two or more of `x`, `y`,
   and `z`.
 
-## Limitations
+Two notes:
 
-* Zet currently doesn't work with UTF-16LE and UTF-16BE file encodings, and doesn't work well with UTF-8 files that start with a Byte Order Mark. So it's currently not a good fit for Windows. (The plan is to change this!)
-* In some files, the last line lacks an end of line marker. Zet will add that marker (so such a line can be usefully compared to a line in the middle of a file), using `\r\n` if the first line in the file ended that way, or `\n` if not. If the file has only a single line, not terminated, then Zet will use `\n`, which could be a problem if other files use `\r\n`.
+* Each output line occurs only once, because we're treating the files as sets
+  and the lines as their elements.
+* We do take the file structure into account in one respect: the lines are
+  output in the same order as they are encountered. So `zet union x` prints
+  out the lines of `x`, in order, with duplicates removed.
+
+## Plans
+
+* Zet translates UTF-16LE and UTF-16BE files to UTF-8, and strips Byte Order Marks (BOMs) from UTF-8 files. Currently, its output never has a BOM; the plan is to prepend a BOM to Zet's output if and only if its first file argument begins with a BOM.
+
+* Plan: Zet will strip all lines endings (`\r\n` or `\n`) from its inputs, so two input lines compare the same if their only difference is that one ends in `\r\n` and the other in `\r`. Zet will end each output line with `\r\n` if the first line of its first file argument ends in `\r\n`, and `\n` otherwise.
 
 ## License
 
