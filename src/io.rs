@@ -4,22 +4,58 @@ use std::{
     path::{Path, PathBuf},
 };
 
-/// Write the result of `do_calculation` to stdout, buffered if not going to the terminal and locked
-/// in any case.
-pub fn write_result(result: crate::LineIterator) -> Result<(), failure::Error> {
-    fn inner(result: crate::LineIterator, mut out: impl io::Write) -> Result<(), failure::Error> {
+/// Returns a triple consisting of:
+///
+/// * The contents of the first file in `files`, or `None` if there were no files;
+/// * An iterator over the (contents of) the remaing files;
+/// * A `SetWriter` that knows
+///     * whether or not to output a Byte Order Mark at the start of output, and
+///     * whether to end each line with `\r\n` or just '\n`.
+pub fn prepare(
+    files: Vec<PathBuf>,
+) -> Result<(Option<Vec<u8>>, ContentsIter, SetWriter), failure::Error> {
+    let mut rest = ContentsIter::from(files);
+    let first = rest.next();
+    match first {
+        None => Ok((None, rest, SetWriter { bom: b"" })),
+        Some(Err(e)) => Err(e),
+        Some(Ok(first)) => {
+            let bom = if has_bom(&first) { BOM_BYTES } else { b"" };
+            Ok((Some(first), rest, SetWriter { bom }))
+        }
+    }
+}
+
+/// Remember whether the first file had a BOM, and whether lines should end with `\r\n` or `\n`
+#[derive(Debug)]
+pub struct SetWriter {
+    bom: &'static [u8],
+}
+
+impl SetWriter {
+    /// Write the result of `do_calculation` to stdout, buffered if not going to the terminal
+    /// and locked in any case.
+    pub fn output(&self, result: crate::LineIterator) -> Result<(), failure::Error> {
+        if atty::is(atty::Stream::Stdout) {
+            self.inner(result, io::stdout().lock())
+        } else {
+            self.inner(result, io::BufWriter::new(io::stdout().lock()))
+        }
+    }
+    fn inner(
+        &self,
+        result: crate::LineIterator,
+        mut out: impl io::Write,
+    ) -> Result<(), failure::Error> {
+        out.write_all(self.bom)?;
         for line in result {
             out.write_all(line)?;
         }
         out.flush()?;
         Ok(())
     }
-    if atty::is(atty::Stream::Stdout) {
-        inner(result, io::stdout().lock())
-    } else {
-        inner(result, io::BufWriter::new(io::stdout().lock()))
-    }
 }
+
 /// Given a list of file paths (as a vector of `PathBuf`s), iterates over their contents.
 /// We guarantee that each non-empty file's contents ends with `\n` (and with `\r\n` if the
 /// file's penultimate line ends with `\r\n`).
@@ -74,11 +110,15 @@ fn read_and_adjust(
     let mut bytes: Vec<u8> = Vec::with_capacity(initial_buffer_size);
     source.read_to_end(&mut bytes)?;
 
-    // Replace UTF16 with UTF8
-    // Any malformed sequences will be replaced with the Unicode REPLACEMENT CHARACTER
+    // Translate UTF16 to UTF8
+    // Note: `decode_without_bom_handling` will change malformed sequences to the
+    // Unicode REPLACEMENT CHARACTER. Should we report an error instead?
+    //
+    // "with BOM handling" means that the UTF-16 BOM is translated to a UTF-8 BOM
+    //
     if let Some((enc, _)) = encoding_rs::Encoding::for_bom(&bytes) {
         if [encoding_rs::UTF_16LE, encoding_rs::UTF_16BE].contains(&enc) {
-            let (new_bytes, _had_malformed_sequences) = enc.decode_with_bom_removal(&bytes);
+            let (new_bytes, _had_malformed_sequences) = enc.decode_without_bom_handling(&bytes);
             bytes = new_bytes.into_owned().into_bytes();
         }
     }
@@ -123,8 +163,13 @@ pub(crate) struct InputLines<'data> {
 const BOM_0: u8 = b'\xEF';
 const BOM_1: u8 = b'\xBB';
 const BOM_2: u8 = b'\xBF';
+const BOM_BYTES: &[u8] = b"\xEF\xBB\xBF";
+pub(crate) fn has_bom(contents: &[u8]) -> bool {
+    contents.len() >= 3 && contents[0] == BOM_0 && contents[1] == BOM_1 && contents[2] == BOM_2
+}
+
 pub(crate) fn lines_of(contents: &[u8]) -> InputLines {
-    if contents.len() >= 3 && contents[0] == BOM_0 && contents[1] == BOM_1 && contents[2] == BOM_2 {
+    if has_bom(contents) {
         InputLines { remaining: &contents[3..] }
     } else {
         InputLines { remaining: contents }
@@ -166,13 +211,17 @@ mod test {
         result
     }
 
+    fn abominate(expected: &str) -> String {
+        UTF8_BOM.to_string() + expected
+    }
+
     #[test]
     fn utf_16le_is_translated_to_utf8() {
         let expected = "The cute red crab\n jumps over the lazy blue gopher\n";
         let utf16 = utf_16le(&expected);
         let mut source = &utf16[..];
         let result = read_and_adjust(&mut source, 100).unwrap();
-        assert_eq!(result, expected.as_bytes());
+        assert_eq!(result, abominate(expected).as_bytes());
     }
 
     fn utf_16be(source: &str) -> Vec<u8> {
@@ -190,7 +239,7 @@ mod test {
         let utf16 = utf_16be(&expected);
         let mut source = &utf16[..];
         let result = read_and_adjust(&mut source, 100).unwrap();
-        assert_eq!(result, expected.as_bytes());
+        assert_eq!(result, abominate(expected).as_bytes());
     }
 
     #[test]

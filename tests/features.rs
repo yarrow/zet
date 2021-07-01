@@ -38,15 +38,16 @@ fn fail_bad_subcommand() {
 #[test]
 fn zet_subcommand_x_y_z_matches_expected_output_for_all_subcommands() {
     let temp = TempDir::new().unwrap();
-    let x_path: &str = &path_with(&temp, "x.txt", X);
-    let y_path: &str = &path_with(&temp, "y.txt", Y);
-    let z_path: &str = &path_with(&temp, "z.txt", Z);
+
+    let x_path: &str = &path_with(&temp, "x.txt", X, Encoding::Plain);
+    let y_path: &str = &path_with(&temp, "y.txt", Y, Encoding::Plain);
+    let z_path: &str = &path_with(&temp, "z.txt", Z, Encoding::Plain);
     for sub in SUBCOMMANDS.iter() {
         let output = main_binary().args(&[sub, &x_path, &y_path, &z_path]).unwrap();
         assert_eq!(
             String::from_utf8(output.stdout).unwrap(),
             expected(sub),
-            "Output from {} doeasn't match expected",
+            "Output from {} doesn't match expected",
             sub
         );
     }
@@ -192,10 +193,65 @@ fn is_subsequence(needles: &str, haystack: &str) -> bool {
     true
 }
 
-fn path_with(temp: &TempDir, name: &str, contents: &str) -> String {
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Encoding {
+    Plain,
+    UTF8,
+    LE16,
+    BE16,
+}
+use Encoding::*;
+
+fn path_with(temp: &TempDir, name: &str, contents: &str, enc: Encoding) -> String {
     let f = temp.child(name);
-    f.write_str(contents).unwrap();
+    match enc {
+        Plain => f.write_str(contents).unwrap(),
+        UTF8 => {
+            f.write_str((UTF8_BOM.to_owned() + contents).as_str()).unwrap();
+        }
+        LE16 => f.write_binary(utf_16le(contents).as_slice()).unwrap(),
+        BE16 => f.write_binary(utf_16be(contents).as_slice()).unwrap(),
+    }
     f.path().to_str().unwrap().to_string()
+}
+const UTF8_BOM: &str = "\u{FEFF}";
+
+fn utf_16le(source: &str) -> Vec<u8> {
+    let mut result = b"\xff\xfe".to_vec();
+    for b in source.as_bytes().iter() {
+        result.push(*b);
+        result.push(0);
+    }
+    result
+}
+
+fn utf_16be(source: &str) -> Vec<u8> {
+    let mut result = b"\xfe\xff".to_vec();
+    for b in source.as_bytes().iter() {
+        result.push(0);
+        result.push(*b);
+    }
+    result
+}
+#[test]
+fn zet_accepts_all_encodings_and_remembers_the_first_file_has_a_byte_order_mark() {
+    let temp = TempDir::new().unwrap();
+
+    for enc in [Plain, UTF8, LE16, BE16] {
+        let x_path: &str = &path_with(&temp, "x.txt", X, enc);
+        let y_path: &str = &path_with(&temp, "y.txt", Y, LE16);
+        let z_path: &str = &path_with(&temp, "z.txt", Z, BE16);
+        let output = main_binary().args(&["union", &x_path, &y_path, &z_path]).unwrap();
+        let result_string = String::from_utf8(output.stdout).unwrap();
+        let mut result = &result_string[..];
+        if enc == Plain {
+            assert_ne!(&result[..3], UTF8_BOM, "Unexpected BOM");
+        } else {
+            assert_eq!(&result[..3], UTF8_BOM, "Expected BOM not found: {:?}", enc);
+            result = &result[3..];
+        }
+        assert_eq!(result, expected("union"), "Output from {:?} doesn't match expected", enc);
+    }
 }
 
 #[test]
