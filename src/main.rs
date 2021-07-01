@@ -1,7 +1,9 @@
 fn main() -> Result<(), failure::Error> {
     let args = zet::args::parsed();
 
-    let file_contents = zet::io::ContentsIter::from(args.files);
-
-    zet::do_calculation(args.op, file_contents, zet::io::write_result)
+    let mut file_contents = zet::io::ContentsIter::from(args.files);
+    if let Some(first_operand) = file_contents.next() {
+        zet::do_calculation(args.op, &first_operand?, file_contents, zet::io::write_result)?;
+    }
+    Ok(())
 }

@@ -43,12 +43,10 @@ pub fn write_result(result: crate::LineIterator) -> Result<(), failure::Error> {
 ///  # Ok(())
 ///  # }
 /// ```
-///     
 pub struct ContentsIter {
     files: std::vec::IntoIter<PathBuf>,
 }
 impl From<Vec<PathBuf>> for ContentsIter {
-    /// foo bar baz
     fn from(files: Vec<PathBuf>) -> Self {
         ContentsIter { files: files.into_iter() }
     }

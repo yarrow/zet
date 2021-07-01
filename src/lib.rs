@@ -76,21 +76,18 @@ enum FoundIn {
 ///
 pub fn do_calculation(
     operation: OpName,
-    operands: impl IntoIterator<Item = Result<Vec<u8>, failure::Error>>,
+    first_operand: &[u8],
+    rest: impl IntoIterator<Item = Result<Vec<u8>, failure::Error>>,
     output: impl FnOnce(LineIterator) -> Result<(), failure::Error>,
 ) -> Result<(), failure::Error> {
-    let mut operands = operands.into_iter();
-    let first = match operands.next() {
-        None => return Ok(()),
-        Some(operand) => operand?,
-    };
+    let rest = rest.into_iter();
     match operation {
         OpName::Union => {
             let mut set = UnionSet::default();
-            for line in lines_of(&first) {
+            for line in lines_of(first_operand) {
                 set.insert(line.to_vec());
             }
-            for operand in operands {
+            for operand in rest {
                 for line in lines_of(&operand?) {
                     set.insert(line.to_vec());
                 }
@@ -104,8 +101,8 @@ pub fn do_calculation(
             // one when they're not wanted. We'll execute the order(n) `retain` operation
             // `f - 1` times, where `f` is the number of files we examine.
             //
-            let mut set = slice_set(&first);
-            for operand in operands {
+            let mut set = slice_set(first_operand);
+            for operand in rest {
                 // I don't know why this has to be two statements, but the borrow
                 // checker hates us if we just use `slice_set(&operand?)`
                 let operand = operand?;
@@ -121,10 +118,10 @@ pub fn do_calculation(
 
         OpName::Single | OpName::Multiple => {
             let mut set = CountedSet::default();
-            for line in lines_of(&first) {
+            for line in lines_of(first_operand) {
                 set.insert(line.to_vec(), FoundIn::One);
             }
-            for operand in operands {
+            for operand in rest {
                 let operand = operand?;
                 let other = slice_set(&operand);
                 for line in other.iter() {
@@ -147,8 +144,9 @@ mod test {
 
     fn calc(operation: OpName, operands: &[&[u8]]) -> Vec<u8> {
         let mut answer = Vec::<u8>::new();
-        let operands = operands.iter().map(|s| Ok(s.to_vec()));
-        do_calculation(operation, operands, {
+        let mut operands = operands.iter().map(|s| Ok(s.to_vec()));
+        let first = operands.next().unwrap().unwrap();
+        do_calculation(operation, &first, operands, {
             |iter| {
                 answer = iter.map(|s| s.to_owned()).flatten().collect();
                 Ok(())
