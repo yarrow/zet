@@ -13,6 +13,7 @@ license = "MIT OR Apache-2.0"
 edition = '2018'
 
 [dependencies]
+atty = "0.2.14"
 encoding_rs = "0.8.28"
 failure = "0.1.8"
 failure_derive = "0.1.8"

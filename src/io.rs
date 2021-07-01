@@ -4,14 +4,22 @@ use std::{
     path::{Path, PathBuf},
 };
 
-/// Returns `io::stdout`, locked
-#[must_use]
-pub fn stdout() -> io::Stdout {
-    let stdout_for_locking = io::stdout();
-    stdout_for_locking.lock();
-    stdout_for_locking
+/// Write the result of `do_calculation` to stdout, buffered if not going to the terminal and locked
+/// in any case.
+pub fn write_result(result: crate::LineIterator) -> Result<(), failure::Error> {
+    fn inner(result: crate::LineIterator, mut out: impl io::Write) -> Result<(), failure::Error> {
+        for line in result {
+            out.write_all(line)?;
+        }
+        out.flush()?;
+        Ok(())
+    }
+    if atty::is(atty::Stream::Stdout) {
+        inner(result, io::stdout().lock())
+    } else {
+        inner(result, io::BufWriter::new(io::stdout().lock()))
+    }
 }
-
 /// Given a list of file paths (as a vector of `PathBuf`s), iterates over their contents.
 /// We guarantee that each non-empty file's contents ends with `\n` (and with `\r\n` if the
 /// file's penultimate line ends with `\r\n`).

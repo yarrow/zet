@@ -751,6 +751,7 @@ version = "0.1.1"
 dependencies = [
  "assert_cmd",
  "assert_fs",
+ "atty",
  "clap",
  "encoding_rs",
  "failure",
