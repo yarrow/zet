@@ -237,20 +237,20 @@ fn utf_16be(source: &str) -> Vec<u8> {
 fn zet_accepts_all_encodings_and_remembers_the_first_file_has_a_byte_order_mark() {
     let temp = TempDir::new().unwrap();
 
-    for enc in [Plain, UTF8, LE16, BE16] {
-        let x_path: &str = &path_with(&temp, "x.txt", X, enc);
+    for enc in [Plain, UTF8, LE16, BE16].iter() {
+        let x_path: &str = &path_with(&temp, "x.txt", X, *enc);
         let y_path: &str = &path_with(&temp, "y.txt", Y, LE16);
         let z_path: &str = &path_with(&temp, "z.txt", Z, BE16);
         let output = main_binary().args(&["union", &x_path, &y_path, &z_path]).unwrap();
         let result_string = String::from_utf8(output.stdout).unwrap();
         let mut result = &result_string[..];
-        if enc == Plain {
+        if *enc == Plain {
             assert_ne!(&result[..3], UTF8_BOM, "Unexpected BOM");
         } else {
-            assert_eq!(&result[..3], UTF8_BOM, "Expected BOM not found: {:?}", enc);
+            assert_eq!(&result[..3], UTF8_BOM, "Expected BOM not found: {:?}", *enc);
             result = &result[3..];
         }
-        assert_eq!(result, expected("union"), "Output from {:?} doesn't match expected", enc);
+        assert_eq!(result, expected("union"), "Output from {:?} doesn't match expected", *enc);
     }
 }
 
