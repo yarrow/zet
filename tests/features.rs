@@ -290,3 +290,31 @@ fn the_last_line_of_a_file_need_not_end_in_a_newline() {
         assert_eq!(result, EXPECTED);
     }
 }
+
+#[test]
+fn zet_terminates_every_output_line_with_the_line_terminator_of_the_first_input_line() {
+    fn terminate_with(eol: &str, bare: &Vec<&str>) -> String {
+        bare.iter().map(|b| b.to_string() + eol).join("")
+    }
+    let (a, b, c) = ("a".to_string(), "b\r\nB\nbB", "c\nC\r\ncC\r\n");
+    let bare = vec!["a", "b", "B", "bB", "c", "C", "cC"];
+    let temp = TempDir::new().unwrap();
+    for eol in ["", "\n", "\r\n"].iter() {
+        let expected_eol = if *eol == "" { "\n" } else { eol };
+        let expected = terminate_with(expected_eol, &bare);
+        let a = a.clone() + *eol;
+        for enc in [Plain, UTF8, LE16, BE16].iter() {
+            let expected = if *enc == Plain {
+                expected.clone()
+            } else {
+                UTF8_BOM.to_owned() + &expected.clone()
+            };
+            let a_path: &str = &path_with(&temp, "a.txt", &a, *enc);
+            let b_path: &str = &path_with(&temp, "b.txt", b, LE16);
+            let c_path: &str = &path_with(&temp, "c.txt", &c, BE16);
+            let output = main_binary().args(&["union", &a_path, &b_path, &c_path]).unwrap();
+            let result_string = String::from_utf8(output.stdout).unwrap();
+            assert_eq!(result_string, expected, "for eol '{}', encoding {:?}", eol, enc);
+        }
+    }
+}

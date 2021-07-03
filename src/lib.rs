@@ -143,12 +143,17 @@ mod test {
     use super::*;
 
     fn calc(operation: OpName, operands: &[&[u8]]) -> Vec<u8> {
+        fn add_eol(s: &[u8]) -> Vec<u8> {
+            let mut s = s.to_owned();
+            s.push(b'\n');
+            s
+        }
         let mut answer = Vec::<u8>::new();
         let mut operands = operands.iter().map(|s| Ok(s.to_vec()));
         let first = operands.next().unwrap().unwrap();
         do_calculation(operation, &first, operands, {
             |iter| {
-                answer = iter.map(|s| s.to_owned()).flatten().collect();
+                answer = iter.map(|s| add_eol(s)).flatten().collect();
                 Ok(())
             }
         })

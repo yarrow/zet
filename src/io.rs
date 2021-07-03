@@ -17,11 +17,17 @@ pub fn prepare(
     let mut rest = ContentsIter::from(files);
     let first = rest.next();
     match first {
-        None => Ok((None, rest, SetWriter { bom: b"" })),
+        None => Ok((None, rest, SetWriter { bom: b"", eol: b"" })),
         Some(Err(e)) => Err(e),
         Some(Ok(first)) => {
+            let mut eol: &[u8] = b"\n";
+            if let Some(n) = memchr(b'\n', &first) {
+                if n > 0 && first[n - 1] == b'\r' {
+                    eol = b"\r\n";
+                }
+            }
             let bom = if has_bom(&first) { BOM_BYTES } else { b"" };
-            Ok((Some(first), rest, SetWriter { bom }))
+            Ok((Some(first), rest, SetWriter { bom, eol }))
         }
     }
 }
@@ -30,6 +36,7 @@ pub fn prepare(
 #[derive(Debug)]
 pub struct SetWriter {
     bom: &'static [u8],
+    eol: &'static [u8],
 }
 
 impl SetWriter {
@@ -50,6 +57,7 @@ impl SetWriter {
         out.write_all(self.bom)?;
         for line in result {
             out.write_all(line)?;
+            out.write_all(self.eol)?;
         }
         out.flush()?;
         Ok(())
@@ -176,14 +184,29 @@ pub(crate) fn lines_of(contents: &[u8]) -> InputLines {
     }
 }
 
+/// An iterator over the lines of the file contents, without line terminators.
+/// That is, from each line we strip `\r\n` or `\n`, whichever is longest.
 impl<'data> Iterator for InputLines<'data> {
     type Item = &'data [u8];
     fn next(&mut self) -> Option<Self::Item> {
         match memchr(b'\n', self.remaining) {
-            None => None,
-            Some(end) => {
-                let line = &self.remaining[..=end];
-                self.remaining = &self.remaining[end + 1..];
+            None => {
+                if self.remaining.is_empty() {
+                    None
+                } else {
+                    // last line doesn't end with `\n`
+                    let line = self.remaining;
+                    self.remaining = b"";
+                    Some(line)
+                }
+            }
+            Some(mut end) => {
+                let restart = end + 1;
+                if end > 0 && self.remaining[end - 1] == b'\r' {
+                    end -= 1
+                }
+                let line = &self.remaining[..end];
+                self.remaining = &self.remaining[restart..];
                 Some(line)
             }
         }
@@ -243,9 +266,9 @@ mod test {
     }
 
     #[test]
-    fn fn_lines_of_strips_utf8_bom() {
+    fn fn_lines_of_strips_utf8_bom_and_line_terminators() {
         let with_bom = UTF8_BOM.to_string() + "abc\ndefg\nxyz\n";
-        let expected: Vec<&[u8]> = vec![b"abc\n", b"defg\n", b"xyz\n"];
+        let expected: Vec<&[u8]> = vec![b"abc", b"defg", b"xyz"];
         let result = lines_of(with_bom.as_bytes()).collect::<Vec<_>>();
         assert_eq!(expected, result);
     }
