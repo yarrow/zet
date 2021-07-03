@@ -31,7 +31,7 @@ use crate::io::lines_of;
 /// The `LineIterator` type is used to return the value of a `SetExpression` `s`:
 /// `s.iter()` returns an iterator over the lines (elements) of `s`.
 ///
-pub type LineIterator<'a> = Box<dyn Iterator<Item = &'a [u8]> + 'a>;
+pub(crate) type LineIterator<'a> = Box<dyn Iterator<Item = &'a [u8]> + 'a>;
 
 // A `SliceSet` is a set of slices borrowed from a text string, each slice
 // corresponding to a line.

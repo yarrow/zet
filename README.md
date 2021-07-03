@@ -5,7 +5,8 @@ This is a command-line utility for doing set operations on files considered as
 sets of lines. For instance, `zet union x y z` outputs the lines that occur in
 any of `x`, `y`, or `z`, and `zet intersect x y z` those that occur in all of them.
 
-[![ci](https://github.com/yarrow/zet/actions/workflows/ci.yml/badge.svg)](https://github.com/yarrow/zet/actions/workflows/ci.yml)
+[![Build status](https://github.com/yarrow/zet/actions/workflows/ci.yml/badge.svg)](https://github.com/yarrow/zet/actions)
+[![Crates.io](https://img.shields.io/crates/v/zet.svg)](https://crates.io/crates/zet)
 
 Here are the subcommands of `zet` and what they do:
 
