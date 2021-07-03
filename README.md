@@ -17,19 +17,25 @@ Here are the subcommands of `zet` and what they do:
 * `zet multiple x y z` outputs the lines that occur in two or more of `x`, `y`,
   and `z`.
 
-Two notes:
+## Notes
 
 * Each output line occurs only once, because we're treating the files as sets
   and the lines as their elements.
 * We do take the file structure into account in one respect: the lines are
-  output in the same order as they are encountered. So `zet union x` prints
-  out the lines of `x`, in order, with duplicates removed.
-
-## Plans
-
-* Zet translates UTF-16LE and UTF-16BE files to UTF-8, and strips Byte Order Marks (BOMs) from UTF-8 files. Currently, its output never has a BOM; the plan is to prepend a BOM to Zet's output if and only if its first file argument begins with a BOM.
-
-* Plan: Zet will strip all lines endings (`\r\n` or `\n`) from its inputs, so two input lines compare the same if their only difference is that one ends in `\r\n` and the other in `\r`. Zet will end each output line with `\r\n` if the first line of its first file argument ends in `\r\n`, and `\n` otherwise.
+  output in the same order as they are encountered. So `zet union x` prints out
+  the lines of `x`, in order, with duplicates removed.
+* Zet translates UTF-16LE and UTF-16BE files to UTF-8, and ignores Byte Order
+  Marks (BOMs) when comparing lines. It prepends a BOM to its output if and
+  only if its first file argument begins with a BOM.
+* Zet ignores all lines endings (`\r\n` or `\n`) when comparing lines, so two
+  input lines compare the same if their only difference is that one ends in
+  `\r\n` and the other in `\r`. Zet ends each output line with `\r\n` if the
+  first line of its first file argument ends in `\r\n`, and `\n` otherwise (if
+  the first line ends in `\n` or the first file has only one line and that line
+  has no line terminator.)
+* Zet reads entire files into memory. Its memory usage is roughly proportional
+  to the file size of its largest argument plus the size of the (eventual)
+  output.
 
 ## License
 
