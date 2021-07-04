@@ -1,8 +1,5 @@
 //! Input/Output structs and functions
-use std::{
-    fs, io,
-    path::{Path, PathBuf},
-};
+use std::{fs, io, path::PathBuf};
 
 /// Returns a triple consisting of:
 ///
@@ -64,13 +61,14 @@ impl SetWriter {
     }
 }
 
-/// Given a list of file paths (as a vector of `PathBuf`s), iterates over their contents.
-/// We guarantee that each non-empty file's contents ends with `\n` (and with `\r\n` if the
-/// file's penultimate line ends with `\r\n`).
+/// Given a list of file paths (as a vector of `PathBuf`s), iterates over their contents. We
+/// guarantee that each non-empty file's contents ends with `\n` (and with `\r\n` if the file's
+/// penultimate line ends with `\r\n`).
 ///
-/// If `files` is a `Vec<PathBuf>`, then `ContentsIter::from(files)` returns an iterator over
-/// the *contents* of the given `files`.  If we want to print out the (entire!) contents of
-/// a file if it contains a `b'Z'` anywhere, we could use
+/// If `files` is a `Vec<PathBuf>`, then `ContentsIter::from(files)` returns an iterator over the
+/// *contents* of the given `files`, decoded from UTF-16 to UTF-8 if a UTF-16 Byte Order Mark is
+/// detected.  If we want to print out the (entire!) contents of a file if it contains a `b'Z'`
+/// anywhere, we could use
 ///
 /// ```no_run
 /// # fn main() -> Result<(), failure::Error> {
@@ -99,8 +97,8 @@ impl Iterator for ContentsIter {
     type Item = Result<Vec<u8>, failure::Error>;
     fn next(&mut self) -> Option<Self::Item> {
         let path = self.files.next()?;
-        Some(match read_file_and_adjust(&path) {
-            Ok(contents) => Ok(contents),
+        Some(match fs::read(&path) {
+            Ok(contents) => Ok(decode_if_utf16(contents)),
             Err(io_err) => {
                 let path = path.to_string_lossy();
                 Err(format_err!("Can't read file `{}`: {}", path, io_err))
@@ -111,57 +109,21 @@ impl Iterator for ContentsIter {
 
 use memchr::memchr;
 
-fn read_and_adjust(
-    source: &mut impl io::Read,
-    initial_buffer_size: usize,
-) -> Result<Vec<u8>, std::io::Error> {
-    let mut bytes: Vec<u8> = Vec::with_capacity(initial_buffer_size);
-    source.read_to_end(&mut bytes)?;
-
+fn decode_if_utf16(candidate: Vec<u8>) -> Vec<u8> {
     // Translate UTF16 to UTF8
     // Note: `decode_without_bom_handling` will change malformed sequences to the
     // Unicode REPLACEMENT CHARACTER. Should we report an error instead?
     //
     // "with BOM handling" means that the UTF-16 BOM is translated to a UTF-8 BOM
     //
-    if let Some((enc, _)) = encoding_rs::Encoding::for_bom(&bytes) {
+    if let Some((enc, _)) = encoding_rs::Encoding::for_bom(&candidate) {
         if [encoding_rs::UTF_16LE, encoding_rs::UTF_16BE].contains(&enc) {
-            let (new_bytes, _had_malformed_sequences) = enc.decode_without_bom_handling(&bytes);
-            bytes = new_bytes.into_owned().into_bytes();
+            let (translated, _had_malformed_sequences) =
+                enc.decode_without_bom_handling(&candidate);
+            return translated.into_owned().into_bytes();
         }
     }
-
-    // If the last line has no end-of-line marker (either `\r\n` or `\n`), then use the first
-    // line's marker. (Or '\n' if there is just one line and it has no marker.)
-    match &bytes.last() {
-        None | Some(b'\n') => {}
-        _ => {
-            if let Some(n) = memchr(b'\n', &bytes) {
-                if n > 0 && bytes[n - 1] == b'\r' {
-                    bytes.push(b'\r')
-                }
-            }
-            bytes.push(b'\n')
-        }
-    }
-    Ok(bytes)
-}
-
-/// The following function is based on `std::fs::read` — we can't use
-/// `fs::read` directly, because we want to allocate *two* extra bytes
-/// (to add `\r\n` if need be), and `fs::read` only allocates one.
-pub fn read_file_and_adjust<P: AsRef<Path>>(path: P) -> Result<Vec<u8>, std::io::Error> {
-    #[allow(clippy::cast_possible_truncation)]
-    fn initial_buffer_size(file: &fs::File) -> usize {
-        // Allocate TWO extra bytes so the buffer doesn't need to grow
-        // before the final `read` call at the end of the file.
-        // Don't worry about `usize` overflow because reading will fail
-        // regardless in that case.
-        file.metadata().map(|m| m.len() as usize + 2).unwrap_or(0)
-    }
-    let mut file = std::fs::File::open(path.as_ref())?;
-    let size = initial_buffer_size(&file);
-    read_and_adjust(&mut file, size)
+    return candidate;
 }
 
 pub(crate) struct InputLines<'data> {
@@ -234,19 +196,6 @@ mod test {
         result
     }
 
-    fn abominate(expected: &str) -> String {
-        UTF8_BOM.to_string() + expected
-    }
-
-    #[test]
-    fn utf_16le_is_translated_to_utf8() {
-        let expected = "The cute red crab\n jumps over the lazy blue gopher\n";
-        let utf16 = utf_16le(&expected);
-        let mut source = &utf16[..];
-        let result = read_and_adjust(&mut source, 100).unwrap();
-        assert_eq!(result, abominate(expected).as_bytes());
-    }
-
     fn utf_16be(source: &str) -> Vec<u8> {
         let mut result = b"\xfe\xff".to_vec();
         for b in source.as_bytes().iter() {
@@ -256,13 +205,20 @@ mod test {
         result
     }
 
+    fn abominate(expected: &str) -> String {
+        UTF8_BOM.to_string() + expected
+    }
+
+    #[test]
+    fn utf_16le_is_translated_to_utf8() {
+        let expected = "The cute red crab\n jumps over the lazy blue gopher\n";
+        assert_eq!(decode_if_utf16(utf_16le(&expected)), abominate(expected).as_bytes());
+    }
+
     #[test]
     fn utf_16be_is_translated_to_utf8() {
         let expected = "The cute red crab\n jumps over the lazy blue gopher\n";
-        let utf16 = utf_16be(&expected);
-        let mut source = &utf16[..];
-        let result = read_and_adjust(&mut source, 100).unwrap();
-        assert_eq!(result, abominate(expected).as_bytes());
+        assert_eq!(decode_if_utf16(utf_16be(&expected)), abominate(expected).as_bytes());
     }
 
     #[test]
@@ -271,20 +227,5 @@ mod test {
         let expected: Vec<&[u8]> = vec![b"abc", b"defg", b"xyz"];
         let result = lines_of(with_bom.as_bytes()).collect::<Vec<_>>();
         assert_eq!(expected, result);
-    }
-
-    #[test]
-    fn read_and_adjust_adds_the_eol_of_the_first_line_to_every_line() {
-        let mut cr_lf: &[u8] = b"a\r\nb";
-        assert_eq!(read_and_adjust(&mut cr_lf, 10).unwrap(), b"a\r\nb\r\n");
-
-        let mut lf: &[u8] = b"a\nb";
-        assert_eq!(read_and_adjust(&mut lf, 10).unwrap(), b"a\nb\n");
-
-        let mut no_newline: &[u8] = b"b";
-        assert_eq!(read_and_adjust(&mut no_newline, 10).unwrap(), b"b\n");
-
-        let mut empty: &[u8] = b"";
-        assert_eq!(read_and_adjust(&mut empty, 10).unwrap(), b"");
     }
 }

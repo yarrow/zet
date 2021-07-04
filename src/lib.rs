@@ -11,9 +11,10 @@
 #![cfg_attr(debug_assertions, allow(dead_code, unused_imports))]
 #![deny(unused_must_use)]
 #![deny(clippy::all)]
+#![allow(clippy::needless_return)]
 #![deny(clippy::pedantic)]
 #![allow(clippy::missing_errors_doc)]
-#![warn(missing_docs)]
+#![deny(missing_docs)]
 
 use std::vec::Vec;
 
