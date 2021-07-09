@@ -129,9 +129,12 @@ pub fn do_calculation(
                 let operand = operand?;
                 let other = slice_set(&operand);
                 for line in other.iter() {
-                    let found_in =
-                        if set.contains_key(*line) { FoundIn::Many } else { FoundIn::One };
-                    set.insert(Cow::from(line.to_vec()), found_in);
+                    match set.get_mut(*line) {
+                        None => {
+                            set.insert(Cow::from(line.to_vec()), FoundIn::One);
+                        }
+                        Some(v) => *v = FoundIn::Many,
+                    }
                 }
             }
             let wanted = if operation == OpName::Single { FoundIn::One } else { FoundIn::Many };
