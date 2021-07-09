@@ -16,6 +16,7 @@
 #![allow(clippy::missing_errors_doc)]
 #![deny(missing_docs)]
 
+use std::borrow::Cow;
 use std::vec::Vec;
 
 #[macro_use]
@@ -46,19 +47,20 @@ fn slice_set(operand: &[u8]) -> SliceSet {
     set
 }
 
-// The members of a `UnionSet` are owned, not borrowed — we assume that the
-// files whose lines we're taking the union of will often be substantially
-// identical, so we'll use less memory overall if we allocate line by (unique)
-// line rather than keeping the text of every file in member to borrow from.
+// The members of a `UnionSet` are borrowed if they come from the first file
+// argument and owned otherwise. If the files whose lines we're taking the union
+// of are substantially identical, we'll use memory roughly equal to the size of
+// the first file. If most of the lines come from the second and subsequent files,
+// then we don't gain much, but we don't lose much either.
 //
-type UnionSet = IndexSet<Vec<u8>>;
+type UnionSet<'data> = IndexSet<Cow<'data, [u8]>>;
 
 // A `CountedSet` must keep track of whether its members were found in just
 // one file, or in multiple files. After processing all files, we return
 // for OpName::Single the lines found in just one file, and for
 // OpName::Multiple the lines found in more than one file.
 //
-type CountedSet = IndexMap<Vec<u8>, FoundIn>;
+type CountedSet<'data> = IndexMap<Cow<'data, [u8]>, FoundIn>;
 
 #[derive(PartialEq)]
 enum FoundIn {
@@ -82,18 +84,19 @@ pub fn do_calculation(
     output: impl FnOnce(LineIterator) -> Result<(), failure::Error>,
 ) -> Result<(), failure::Error> {
     let rest = rest.into_iter();
+
     match operation {
         OpName::Union => {
             let mut set = UnionSet::default();
             for line in lines_of(first_operand) {
-                set.insert(line.to_vec());
+                set.insert(Cow::Borrowed(line));
             }
             for operand in rest {
                 for line in lines_of(&operand?) {
-                    set.insert(line.to_vec());
+                    set.insert(Cow::from(line.to_vec()));
                 }
             }
-            return output(Box::new(&mut set.iter().map(Vec::as_slice)));
+            return output(Box::new(set.iter().map(Cow::as_ref)));
         }
 
         OpName::Intersect | OpName::Diff => {
@@ -120,7 +123,7 @@ pub fn do_calculation(
         OpName::Single | OpName::Multiple => {
             let mut set = CountedSet::default();
             for line in lines_of(first_operand) {
-                set.insert(line.to_vec(), FoundIn::One);
+                set.insert(Cow::Borrowed(line), FoundIn::One);
             }
             for operand in rest {
                 let operand = operand?;
@@ -128,12 +131,12 @@ pub fn do_calculation(
                 for line in other.iter() {
                     let found_in =
                         if set.contains_key(*line) { FoundIn::Many } else { FoundIn::One };
-                    set.insert(line.to_vec(), found_in);
+                    set.insert(Cow::from(line.to_vec()), found_in);
                 }
             }
             let wanted = if operation == OpName::Single { FoundIn::One } else { FoundIn::Many };
             set.retain(|_k, v| *v == wanted);
-            return output(Box::new(set.keys().map(Vec::as_slice)));
+            return output(Box::new(set.keys().map(Cow::as_ref)));
         }
     };
 }
