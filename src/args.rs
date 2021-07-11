@@ -2,7 +2,6 @@
 //! of the parsed result
 
 use std::path::PathBuf;
-use std::result;
 use std::str::FromStr;
 
 use structopt::StructOpt;
@@ -58,7 +57,7 @@ pub enum OpName {
 }
 impl FromStr for OpName {
     type Err = String;
-    fn from_str(s: &str) -> result::Result<Self, <Self as FromStr>::Err> {
+    fn from_str(s: &str) -> Result<Self, <Self as FromStr>::Err> {
         match &*s.to_ascii_lowercase() {
             "intersect" => Ok(OpName::Intersect),
             "union" => Ok(OpName::Union),

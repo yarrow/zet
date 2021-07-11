@@ -16,11 +16,9 @@
 #![allow(clippy::missing_errors_doc)]
 #![deny(missing_docs)]
 
+use anyhow::Result;
 use std::borrow::Cow;
 use std::vec::Vec;
-
-#[macro_use]
-extern crate failure;
 
 use indexmap::{IndexMap, IndexSet};
 
@@ -80,9 +78,9 @@ enum FoundIn {
 pub fn do_calculation(
     operation: OpName,
     first_operand: &[u8],
-    rest: impl IntoIterator<Item = Result<Vec<u8>, failure::Error>>,
-    output: impl FnOnce(LineIterator) -> Result<(), failure::Error>,
-) -> Result<(), failure::Error> {
+    rest: impl IntoIterator<Item = Result<Vec<u8>>>,
+    output: impl FnOnce(LineIterator) -> Result<()>,
+) -> Result<()> {
     let rest = rest.into_iter();
 
     match operation {

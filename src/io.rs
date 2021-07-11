@@ -1,4 +1,5 @@
 //! Input/Output structs and functions
+use anyhow::{Context, Result};
 use std::{fs, io, path::PathBuf};
 
 /// Returns a triple consisting of:
@@ -8,9 +9,7 @@ use std::{fs, io, path::PathBuf};
 /// * A `SetWriter` that knows
 ///     * whether or not to output a Byte Order Mark at the start of output, and
 ///     * whether to end each line with `\r\n` or just '\n`.
-pub fn prepare(
-    files: Vec<PathBuf>,
-) -> Result<(Option<Vec<u8>>, ContentsIter, SetWriter), failure::Error> {
+pub fn prepare(files: Vec<PathBuf>) -> Result<(Option<Vec<u8>>, ContentsIter, SetWriter)> {
     let mut rest = ContentsIter::from(files);
     let first = rest.next();
     match first {
@@ -39,18 +38,14 @@ pub struct SetWriter {
 impl SetWriter {
     /// Write the result of `do_calculation` to stdout, buffered if not going to the terminal
     /// and locked in any case.
-    pub fn output(&self, result: crate::LineIterator) -> Result<(), failure::Error> {
+    pub fn output(&self, result: crate::LineIterator) -> Result<()> {
         if atty::is(atty::Stream::Stdout) {
             self.inner(result, io::stdout().lock())
         } else {
             self.inner(result, io::BufWriter::new(io::stdout().lock()))
         }
     }
-    fn inner(
-        &self,
-        result: crate::LineIterator,
-        mut out: impl io::Write,
-    ) -> Result<(), failure::Error> {
+    fn inner(&self, result: crate::LineIterator, mut out: impl io::Write) -> Result<()> {
         out.write_all(self.bom)?;
         for line in result {
             out.write_all(line)?;
@@ -71,7 +66,8 @@ impl SetWriter {
 /// anywhere, we could use
 ///
 /// ```no_run
-/// # fn main() -> Result<(), failure::Error> {
+/// # use anyhow::Result;
+/// # fn main() -> Result<()> {
 /// use std::{io::stdout, io::Write, path::PathBuf};
 /// use zet::io::ContentsIter;
 ///
@@ -94,15 +90,14 @@ impl From<Vec<PathBuf>> for ContentsIter {
     }
 }
 impl Iterator for ContentsIter {
-    type Item = Result<Vec<u8>, failure::Error>;
+    type Item = Result<Vec<u8>>;
     fn next(&mut self) -> Option<Self::Item> {
         let path = self.files.next()?;
-        Some(match fs::read(&path) {
+        let attempt =
+            fs::read(&path).with_context(|| format!("Can't read file: {}", path.to_string_lossy()));
+        Some(match attempt {
             Ok(contents) => Ok(decode_if_utf16(contents)),
-            Err(io_err) => {
-                let path = path.to_string_lossy();
-                Err(format_err!("Can't read file `{}`: {}", path, io_err))
-            }
+            Err(err) => Err(err),
         })
     }
 }

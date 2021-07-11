@@ -1,4 +1,5 @@
-fn main() -> Result<(), failure::Error> {
+use anyhow::Result;
+fn main() -> Result<()> {
     let args = zet::args::parsed();
 
     // We use `(first, rest, set_writer)` because the `io` module needs to examine the first
