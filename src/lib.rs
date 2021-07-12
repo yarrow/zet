@@ -20,7 +20,10 @@ use anyhow::Result;
 use std::borrow::Cow;
 use std::vec::Vec;
 
+use fxhash::FxBuildHasher;
 use indexmap::{IndexMap, IndexSet};
+type FxIndexMap<K, V> = IndexMap<K, V, FxBuildHasher>;
+type FxIndexSet<T> = IndexSet<T, FxBuildHasher>;
 
 pub mod args;
 use crate::args::OpName;
@@ -35,7 +38,7 @@ pub(crate) type LineIterator<'a> = Box<dyn Iterator<Item = &'a [u8]> + 'a>;
 // A `SliceSet` is a set of slices borrowed from a text string, each slice
 // corresponding to a line.
 //
-type SliceSet<'data> = IndexSet<&'data [u8]>;
+type SliceSet<'data> = FxIndexSet<&'data [u8]>;
 
 fn slice_set(operand: &[u8]) -> SliceSet {
     let mut set = SliceSet::default();
@@ -51,14 +54,14 @@ fn slice_set(operand: &[u8]) -> SliceSet {
 // the first file. If most of the lines come from the second and subsequent files,
 // then we don't gain much, but we don't lose much either.
 //
-type UnionSet<'data> = IndexSet<Cow<'data, [u8]>>;
+type UnionSet<'data> = FxIndexSet<Cow<'data, [u8]>>;
 
 // A `CountedSet` must keep track of whether its members were found in just
 // one file, or in multiple files. After processing all files, we return
 // for OpName::Single the lines found in just one file, and for
 // OpName::Multiple the lines found in more than one file.
 //
-type CountedSet<'data> = IndexMap<Cow<'data, [u8]>, FoundIn>;
+type CountedSet<'data> = FxIndexMap<Cow<'data, [u8]>, FoundIn>;
 
 #[derive(PartialEq)]
 enum FoundIn {
@@ -98,7 +101,7 @@ pub fn do_calculation(
         }
 
         OpName::Intersect | OpName::Diff => {
-            // Note: IndexSet's `retain` method keeps the order of the retained
+            // Note: FxIndexSet's `retain` method keeps the order of the retained
             // elements, but `remove` does not. So we can't just remove elements one by
             // one when they're not wanted. We'll execute the order(n) `retain` operation
             // `f - 1` times, where `f` is the number of files we examine.
