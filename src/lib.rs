@@ -65,19 +65,6 @@ fn borrow_from<Bookkeeping: Copy>(operand: &[u8], b: Bookkeeping) -> CowSet<Book
 //
 type UnionSet<'data> = FxIndexSet<Cow<'data, [u8]>>;
 
-// A `CountedSet` must keep track of whether its members were found in just
-// one file, or in multiple files. After processing all files, we return
-// for OpName::Single the lines found in just one file, and for
-// OpName::Multiple the lines found in more than one file.
-//
-type CountedSet<'data> = CowSet<'data, FoundIn>;
-
-#[derive(PartialEq)]
-enum FoundIn {
-    One,
-    Many,
-}
-
 /// Calculates and prints the set operation named by `op`. Each file in `files`
 /// is treated as a set of lines:
 ///
@@ -140,27 +127,38 @@ pub fn do_calculation(
         }
 
         OpName::Single | OpName::Multiple => {
-            let mut set = CountedSet::default();
-            for line in lines_of(first_operand) {
-                set.insert(Cow::Borrowed(line), FoundIn::One);
+            #[derive(Clone, Copy)]
+            struct SeenIn {
+                first: u32,
+                last: u32,
             }
+            let mut operand_count = 0_u32;
+            let mut set = borrow_from(first_operand, SeenIn { first: 0_u32, last: 0_u32 });
             for operand in rest {
-                let operand = operand?;
-                let other = slice_set(&operand);
-                for line in other.iter() {
-                    match set.get_mut(*line) {
+                if operand_count == std::u32::MAX {
+                    anyhow::bail!("Can't handle more than {} arguments", std::u32::MAX);
+                }
+                operand_count = operand_count.wrapping_add(1);
+
+                let seen_now = SeenIn { first: operand_count, last: operand_count };
+
+                for line in lines_of(&operand?) {
+                    match set.get_mut(line) {
                         None => {
-                            set.insert(Cow::from(line.to_vec()), FoundIn::One);
+                            set.insert(Cow::from(line.to_vec()), seen_now);
                         }
-                        Some(v) => *v = FoundIn::Many,
+                        Some(seen_in) => seen_in.last = operand_count,
                     }
                 }
             }
-            let wanted = if operation == OpName::Single { FoundIn::One } else { FoundIn::Many };
-            set.retain(|_k, v| *v == wanted);
+            if operation == OpName::Single {
+                set.retain(|_k, seen_in| seen_in.first == seen_in.last);
+            } else {
+                set.retain(|_k, seen_in| seen_in.first != seen_in.last);
+            }
             return output(Box::new(set.keys().map(Cow::as_ref)));
         }
-    };
+    }
 }
 
 #[allow(clippy::pedantic)]
