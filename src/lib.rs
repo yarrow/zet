@@ -35,19 +35,6 @@ use crate::io::lines_of;
 ///
 pub(crate) type LineIterator<'a> = Box<dyn Iterator<Item = &'a [u8]> + 'a>;
 
-// A `SliceSet` is a set of slices borrowed from a text string, each slice
-// corresponding to a line.
-//
-type SliceSet<'data> = FxIndexSet<&'data [u8]>;
-
-fn slice_set(operand: &[u8]) -> SliceSet {
-    let mut set = SliceSet::default();
-    for line in lines_of(operand) {
-        set.insert(line);
-    }
-    set
-}
-
 type CowSet<'data, Bookkeeping> = FxIndexMap<Cow<'data, [u8]>, Bookkeeping>;
 fn borrow_from<Bookkeeping: Copy>(operand: &[u8], b: Bookkeeping) -> CowSet<Bookkeeping> {
     let mut set = CowSet::default();
@@ -110,20 +97,20 @@ pub fn do_calculation(
         }
 
         OpName::Intersect => {
-            // Note: FxIndexSet's `retain` method keeps the order of the retained
-            // elements, but `remove` does not. So we can't just remove elements one by
-            // one when they're not wanted. We'll execute the order(n) `retain` operation
-            // `f - 1` times, where `f` is the number of files we examine.
-            //
-            let mut set = slice_set(first_operand);
+            const BLUE: bool = true; //  We're using Booleans, but we could
+            const _RED: bool = false; // be using two different colors
+            let mut this_cycle = BLUE;
+            let mut set = borrow_from(first_operand, this_cycle);
             for operand in rest {
-                // I don't know why this has to be two statements, but the borrow
-                // checker hates us if we just use `slice_set(&operand?)`
-                let operand = operand?;
-                let other = slice_set(&operand);
-                set.retain(|x| other.contains(x))
+                this_cycle = !this_cycle; // flip BLUE -> RED and RED -> BLUE
+                for line in lines_of(&operand?) {
+                    if let Some(when_seen) = set.get_mut(line) {
+                        *when_seen = this_cycle;
+                    }
+                }
+                set.retain(|_k, when_seen| *when_seen == this_cycle);
             }
-            return output(Box::new(set.iter().copied()));
+            return output(Box::new(set.keys().map(Cow::as_ref)));
         }
 
         OpName::Single | OpName::Multiple => {
