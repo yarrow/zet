@@ -48,6 +48,15 @@ fn slice_set(operand: &[u8]) -> SliceSet {
     set
 }
 
+type CowSet<'data, Bookkeeping> = FxIndexMap<Cow<'data, [u8]>, Bookkeeping>;
+fn borrow_from<Bookkeeping: Copy>(operand: &[u8], b: Bookkeeping) -> CowSet<Bookkeeping> {
+    let mut set = CowSet::default();
+    for line in lines_of(operand) {
+        set.insert(Cow::Borrowed(line), b);
+    }
+    set
+}
+
 // The members of a `UnionSet` are borrowed if they come from the first file
 // argument and owned otherwise. If the files whose lines we're taking the union
 // of are substantially identical, we'll use memory roughly equal to the size of
@@ -61,7 +70,7 @@ type UnionSet<'data> = FxIndexSet<Cow<'data, [u8]>>;
 // for OpName::Single the lines found in just one file, and for
 // OpName::Multiple the lines found in more than one file.
 //
-type CountedSet<'data> = FxIndexMap<Cow<'data, [u8]>, FoundIn>;
+type CountedSet<'data> = CowSet<'data, FoundIn>;
 
 #[derive(PartialEq)]
 enum FoundIn {
@@ -100,7 +109,20 @@ pub fn do_calculation(
             return output(Box::new(set.iter().map(Cow::as_ref)));
         }
 
-        OpName::Intersect | OpName::Diff => {
+        OpName::Diff => {
+            let mut set = borrow_from(first_operand, true);
+            for operand in rest {
+                for line in lines_of(&operand?) {
+                    if let Some(keepme) = set.get_mut(line) {
+                        *keepme = false;
+                    }
+                }
+            }
+            set.retain(|_k, keepme| *keepme);
+            return output(Box::new(set.keys().map(Cow::as_ref)));
+        }
+
+        OpName::Intersect => {
             // Note: FxIndexSet's `retain` method keeps the order of the retained
             // elements, but `remove` does not. So we can't just remove elements one by
             // one when they're not wanted. We'll execute the order(n) `retain` operation
@@ -112,11 +134,7 @@ pub fn do_calculation(
                 // checker hates us if we just use `slice_set(&operand?)`
                 let operand = operand?;
                 let other = slice_set(&operand);
-                if operation == OpName::Intersect {
-                    set.retain(|x| other.contains(x))
-                } else {
-                    set.retain(|x| !other.contains(x))
-                }
+                set.retain(|x| other.contains(x))
             }
             return output(Box::new(set.iter().copied()));
         }
