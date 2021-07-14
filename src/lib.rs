@@ -21,9 +21,7 @@ use std::borrow::Cow;
 use std::vec::Vec;
 
 use fxhash::FxBuildHasher;
-use indexmap::{IndexMap, IndexSet};
-type FxIndexMap<K, V> = IndexMap<K, V, FxBuildHasher>;
-type FxIndexSet<T> = IndexSet<T, FxBuildHasher>;
+use indexmap::IndexMap;
 
 pub mod args;
 use crate::args::OpName;
@@ -35,7 +33,7 @@ use crate::io::lines_of;
 ///
 pub(crate) type LineIterator<'a> = Box<dyn Iterator<Item = &'a [u8]> + 'a>;
 
-type CowSet<'data, Bookkeeping> = FxIndexMap<Cow<'data, [u8]>, Bookkeeping>;
+type CowSet<'data, Bookkeeping> = IndexMap<Cow<'data, [u8]>, Bookkeeping, FxBuildHasher>;
 fn borrow_from<Bookkeeping: Copy>(operand: &[u8], b: Bookkeeping) -> CowSet<Bookkeeping> {
     let mut set = CowSet::default();
     for line in lines_of(operand) {
@@ -43,14 +41,6 @@ fn borrow_from<Bookkeeping: Copy>(operand: &[u8], b: Bookkeeping) -> CowSet<Book
     }
     set
 }
-
-// The members of a `UnionSet` are borrowed if they come from the first file
-// argument and owned otherwise. If the files whose lines we're taking the union
-// of are substantially identical, we'll use memory roughly equal to the size of
-// the first file. If most of the lines come from the second and subsequent files,
-// then we don't gain much, but we don't lose much either.
-//
-type UnionSet<'data> = FxIndexSet<Cow<'data, [u8]>>;
 
 /// Calculates and prints the set operation named by `op`. Each file in `files`
 /// is treated as a set of lines:
@@ -71,16 +61,13 @@ pub fn do_calculation(
 
     match operation {
         OpName::Union => {
-            let mut set = UnionSet::default();
-            for line in lines_of(first_operand) {
-                set.insert(Cow::Borrowed(line));
-            }
+            let mut set = borrow_from(first_operand, ());
             for operand in rest {
                 for line in lines_of(&operand?) {
-                    set.insert(Cow::from(line.to_vec()));
+                    set.insert(Cow::from(line.to_vec()), ());
                 }
             }
-            return output(Box::new(set.iter().map(Cow::as_ref)));
+            return output(Box::new(set.keys().map(Cow::as_ref)));
         }
 
         OpName::Diff => {
