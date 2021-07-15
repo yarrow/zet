@@ -10,7 +10,7 @@ fn main() -> Result<()> {
     //
     let (first, rest, set_writer) = zet::io::prepare(args.files)?;
     if let Some(first_operand) = first {
-        zet::do_calculation(args.op, &first_operand, rest, |harvest| set_writer.output(harvest))?;
+        zet::calculate::exec(args.op, &first_operand, rest, |harvest| set_writer.output(harvest))?;
     }
     Ok(())
 }
