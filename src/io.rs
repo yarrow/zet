@@ -1,5 +1,7 @@
 //! Input/Output structs and functions
+use crate::CowSet;
 use anyhow::{Context, Result};
+use std::borrow::Cow;
 use std::{fs, io, path::PathBuf};
 
 /// Returns a triple consisting of:
@@ -26,6 +28,14 @@ pub fn prepare(files: Vec<PathBuf>) -> Result<(Option<Vec<u8>>, ContentsIter, Se
             Ok((Some(first), rest, SetWriter { bom, eol }))
         }
     }
+}
+
+const BOM_0: u8 = b'\xEF';
+const BOM_1: u8 = b'\xBB';
+const BOM_2: u8 = b'\xBF';
+const BOM_BYTES: &[u8] = b"\xEF\xBB\xBF";
+fn has_bom(contents: &[u8]) -> bool {
+    contents.len() >= 3 && contents[0] == BOM_0 && contents[1] == BOM_1 && contents[2] == BOM_2
 }
 
 /// Remember whether the first file had a BOM, and whether lines should end with `\r\n` or `\n`
@@ -125,12 +135,28 @@ pub(crate) struct InputLines<'data> {
     remaining: &'data [u8],
 }
 
-const BOM_0: u8 = b'\xEF';
-const BOM_1: u8 = b'\xBB';
-const BOM_2: u8 = b'\xBF';
-const BOM_BYTES: &[u8] = b"\xEF\xBB\xBF";
-pub(crate) fn has_bom(contents: &[u8]) -> bool {
-    contents.len() >= 3 && contents[0] == BOM_0 && contents[1] == BOM_1 && contents[2] == BOM_2
+pub(crate) fn borrow_from<Bookkeeping: Copy>(
+    mut contents: &[u8],
+    b: Bookkeeping,
+) -> CowSet<Bookkeeping> {
+    if has_bom(contents) {
+        contents = &contents[3..];
+    }
+    let mut set = CowSet::default();
+    while let Some(end) = memchr(b'\n', contents) {
+        let (mut line, rest) = contents.split_at(end);
+        contents = &rest[1..];
+        if let Some(&maybe_cr) = line.last() {
+            if maybe_cr == b'\r' {
+                line = &line[..line.len() - 1];
+            }
+        }
+        set.insert(Cow::Borrowed(line), b);
+    }
+    if !contents.is_empty() {
+        set.insert(Cow::Borrowed(contents), b);
+    }
+    set
 }
 
 pub(crate) fn lines_of(contents: &[u8]) -> InputLines {

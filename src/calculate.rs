@@ -5,19 +5,8 @@ use std::borrow::Cow;
 use std::vec::Vec;
 
 use crate::args::OpName;
-use crate::io::lines_of;
+use crate::io::{borrow_from, lines_of};
 use crate::LineIterator;
-use fxhash::FxBuildHasher;
-use indexmap::IndexMap;
-
-type CowSet<'data, Bookkeeping> = IndexMap<Cow<'data, [u8]>, Bookkeeping, FxBuildHasher>;
-fn borrow_from<Bookkeeping: Copy>(operand: &[u8], b: Bookkeeping) -> CowSet<Bookkeeping> {
-    let mut set = CowSet::default();
-    for line in lines_of(operand) {
-        set.insert(Cow::Borrowed(line), b);
-    }
-    set
-}
 
 /// Calculates and prints the set operation named by `op`. Each file in `files`
 /// is treated as a set of lines:
@@ -117,7 +106,7 @@ pub fn exec(
 mod test {
     use super::*;
 
-    fn calc(operation: OpName, operands: &[&[u8]]) -> Vec<u8> {
+    fn calc(operation: OpName, operands: &[&[u8]]) -> String {
         fn add_eol(s: &[u8]) -> Vec<u8> {
             let mut s = s.to_owned();
             s.push(b'\n');
@@ -133,7 +122,7 @@ mod test {
             }
         })
         .unwrap();
-        answer
+        String::from_utf8(answer).unwrap()
     }
 
     use self::OpName::*;
@@ -141,11 +130,11 @@ mod test {
     #[test]
     fn given_a_single_argument_all_ops_but_multiple_return_its_lines_in_order_without_dups() {
         let arg: Vec<&[u8]> = vec![b"xxx\nabc\nxxx\nyyy\nxxx\nabc\n"];
-        let uniq = b"xxx\nabc\nyyy\n".to_vec();
-        let empty = b"".to_vec();
+        let uniq = "xxx\nabc\nyyy\n";
+        let empty = "";
         for op in &[Intersect, Union, Diff, Single, Multiple] {
             let result = calc(*op, &arg);
-            let expected = if *op == Multiple { &empty } else { &uniq };
+            let expected = if *op == Multiple { empty } else { uniq };
             assert_eq!(result, *expected, "for {:?}", op);
         }
     }
@@ -156,10 +145,10 @@ mod test {
             b"xyz\nabc\nxy\nyz\ny\n", // Strings containing "y" (and "abc")
             b"xyz\nabc\nxz\nyz\nz\n", // Strings containing "z" (and "abc")
         ];
-        assert_eq!(calc(Union, &args), b"xyz\nabc\nxy\nxz\nx\nyz\ny\nz\n", "for {:?}", Union);
-        assert_eq!(calc(Intersect, &args), b"xyz\nabc\n", "for {:?}", Intersect);
-        assert_eq!(calc(Diff, &args), b"x\n", "for {:?}", Diff);
-        assert_eq!(calc(Single, &args), b"x\ny\nz\n", "for {:?}", Single);
-        assert_eq!(calc(Multiple, &args), b"xyz\nabc\nxy\nxz\nyz\n", "for {:?}", Multiple);
+        assert_eq!(calc(Union, &args), "xyz\nabc\nxy\nxz\nx\nyz\ny\nz\n", "for {:?}", Union);
+        assert_eq!(calc(Intersect, &args), "xyz\nabc\n", "for {:?}", Intersect);
+        assert_eq!(calc(Diff, &args), "x\n", "for {:?}", Diff);
+        assert_eq!(calc(Single, &args), "x\ny\nz\n", "for {:?}", Single);
+        assert_eq!(calc(Multiple, &args), "xyz\nabc\nxy\nxz\nyz\n", "for {:?}", Multiple);
     }
 }
