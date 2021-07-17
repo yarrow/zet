@@ -1,12 +1,10 @@
 //! Houses the `exec` function
 //!
 use anyhow::Result;
-use std::borrow::Cow;
 use std::vec::Vec;
 
 use crate::args::OpName;
-use crate::io::{borrow_from, lines_of};
-use crate::LineIterator;
+use crate::io::{lines_of, zet_set_from};
 
 /// Calculates and prints the set operation named by `op`. Each file in `files`
 /// is treated as a set of lines:
@@ -21,23 +19,23 @@ pub fn exec(
     operation: OpName,
     first_operand: &[u8],
     rest: impl IntoIterator<Item = Result<Vec<u8>>>,
-    output: impl FnOnce(LineIterator) -> Result<()>,
+    out: impl std::io::Write,
 ) -> Result<()> {
     let rest = rest.into_iter();
 
     match operation {
         OpName::Union => {
-            let mut set = borrow_from(first_operand, ());
+            let mut set = zet_set_from(first_operand, ());
             for operand in rest {
                 for line in lines_of(&operand?) {
-                    set.insert(Cow::from(line.to_vec()), ());
+                    set.insert(line, ());
                 }
             }
-            return output(Box::new(set.keys().map(Cow::as_ref)));
+            return set.output_to(out);
         }
 
         OpName::Diff => {
-            let mut set = borrow_from(first_operand, true);
+            let mut set = zet_set_from(first_operand, true);
             for operand in rest {
                 for line in lines_of(&operand?) {
                     if let Some(keepme) = set.get_mut(line) {
@@ -45,15 +43,15 @@ pub fn exec(
                     }
                 }
             }
-            set.retain(|_k, keepme| *keepme);
-            return output(Box::new(set.keys().map(Cow::as_ref)));
+            set.retain(|keepme| *keepme);
+            return set.output_to(out);
         }
 
         OpName::Intersect => {
             const BLUE: bool = true; //  We're using Booleans, but we could
             const _RED: bool = false; // be using two different colors
             let mut this_cycle = BLUE;
-            let mut set = borrow_from(first_operand, this_cycle);
+            let mut set = zet_set_from(first_operand, this_cycle);
             for operand in rest {
                 this_cycle = !this_cycle; // flip BLUE -> RED and RED -> BLUE
                 for line in lines_of(&operand?) {
@@ -61,9 +59,9 @@ pub fn exec(
                         *when_seen = this_cycle;
                     }
                 }
-                set.retain(|_k, when_seen| *when_seen == this_cycle);
+                set.retain(|when_seen| *when_seen == this_cycle);
             }
-            return output(Box::new(set.keys().map(Cow::as_ref)));
+            return set.output_to(out);
         }
 
         OpName::Single | OpName::Multiple => {
@@ -73,7 +71,7 @@ pub fn exec(
                 last: u32,
             }
             let mut operand_count = 0_u32;
-            let mut set = borrow_from(first_operand, SeenIn { first: 0_u32, last: 0_u32 });
+            let mut set = zet_set_from(first_operand, SeenIn { first: 0_u32, last: 0_u32 });
             for operand in rest {
                 if operand_count == std::u32::MAX {
                     anyhow::bail!("Can't handle more than {} arguments", std::u32::MAX);
@@ -85,18 +83,18 @@ pub fn exec(
                 for line in lines_of(&operand?) {
                     match set.get_mut(line) {
                         None => {
-                            set.insert(Cow::from(line.to_vec()), seen_now);
+                            set.insert(line, seen_now);
                         }
                         Some(seen_in) => seen_in.last = operand_count,
                     }
                 }
             }
             if operation == OpName::Single {
-                set.retain(|_k, seen_in| seen_in.first == seen_in.last);
+                set.retain(|seen_in| seen_in.first == seen_in.last);
             } else {
-                set.retain(|_k, seen_in| seen_in.first != seen_in.last);
+                set.retain(|seen_in| seen_in.first != seen_in.last);
             }
-            return output(Box::new(set.keys().map(Cow::as_ref)));
+            return set.output_to(out);
         }
     }
 }
@@ -112,16 +110,10 @@ mod test {
             s.push(b'\n');
             s
         }
-        let mut answer = Vec::<u8>::new();
         let mut operands = operands.iter().map(|s| Ok(s.to_vec()));
         let first = operands.next().unwrap().unwrap();
-        exec(operation, &first, operands, {
-            |iter| {
-                answer = iter.map(|s| add_eol(s)).flatten().collect();
-                Ok(())
-            }
-        })
-        .unwrap();
+        let mut answer = Vec::new();
+        exec(operation, &first, operands, &mut answer).unwrap();
         String::from_utf8(answer).unwrap()
     }
 

@@ -1,4 +1,5 @@
 use anyhow::Result;
+use std::io;
 fn main() -> Result<()> {
     let args = zet::args::parsed();
 
@@ -8,9 +9,18 @@ fn main() -> Result<()> {
     // argument specially anyway, there's no great motivation to disguise this by using a
     // `Peekable` iterator.
     //
-    let (first, rest, set_writer) = zet::io::prepare(args.files)?;
+    let (first, rest) = zet::io::prep(args.files)?;
     if let Some(first_operand) = first {
-        zet::calculate::exec(args.op, &first_operand, rest, |harvest| set_writer.output(harvest))?;
+        if atty::is(atty::Stream::Stdout) {
+            zet::calculate::exec(args.op, &first_operand, rest, io::stdout().lock())?;
+        } else {
+            zet::calculate::exec(
+                args.op,
+                &first_operand,
+                rest,
+                io::BufWriter::new(io::stdout().lock()),
+            )?;
+        };
     }
     Ok(())
 }

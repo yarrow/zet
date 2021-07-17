@@ -20,5 +20,4 @@ use std::borrow::Cow;
 /// The `LineIterator` type is used to return the value of a `SetExpression` `s`:
 /// `s.iter()` returns an iterator over the lines (elements) of `s`.
 ///
-pub(crate) type LineIterator<'a> = Box<dyn Iterator<Item = &'a [u8]> + 'a>;
 pub(crate) type CowSet<'data, Bookkeeping> = IndexMap<Cow<'data, [u8]>, Bookkeeping, FxBuildHasher>;

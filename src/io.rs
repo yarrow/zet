@@ -2,68 +2,91 @@
 use crate::CowSet;
 use anyhow::{Context, Result};
 use std::borrow::Cow;
-use std::{fs, io, path::PathBuf};
+use std::{fs, io, ops::FnMut, path::PathBuf};
 
-/// Returns a triple consisting of:
-///
-/// * The contents of the first file in `files`, or `None` if there were no files;
-/// * An iterator over the (contents of) the remaing files;
-/// * A `SetWriter` that knows
-///     * whether or not to output a Byte Order Mark at the start of output, and
-///     * whether to end each line with `\r\n` or just '\n`.
-pub fn prepare(files: Vec<PathBuf>) -> Result<(Option<Vec<u8>>, ContentsIter, SetWriter)> {
+/// FIXME
+pub fn prep(files: Vec<PathBuf>) -> Result<(Option<Vec<u8>>, ContentsIter)> {
     let mut rest = ContentsIter::from(files);
-    let first = rest.next();
-    match first {
-        None => Ok((None, rest, SetWriter { bom: b"", eol: b"" })),
-        Some(Err(e)) => Err(e),
-        Some(Ok(first)) => {
-            let mut eol: &[u8] = b"\n";
-            if let Some(n) = memchr(b'\n', &first) {
-                if n > 0 && first[n - 1] == b'\r' {
-                    eol = b"\r\n";
-                }
-            }
-            let bom = if has_bom(&first) { BOM_BYTES } else { b"" };
-            Ok((Some(first), rest, SetWriter { bom, eol }))
-        }
-    }
+    let first = rest.next().transpose()?;
+    Ok((first, rest))
 }
 
+pub(crate) fn zet_set_from<Bookkeeping: Copy>(
+    first_operand: &[u8],
+    b: Bookkeeping,
+) -> ZetSet<Bookkeeping> {
+    let (bom, line_terminator) = output_info(first_operand);
+    let first_operand = &first_operand[bom.len()..];
+
+    let set = borrowed_map_of(first_operand, b);
+
+    ZetSet { bom, line_terminator, set }
+}
+
+fn output_info(contents: &[u8]) -> (&'static [u8], &'static [u8]) {
+    let mut bom: &'static [u8] = b"";
+    let mut line_terminator: &'static [u8] = b"\n";
+    if has_bom(contents) {
+        bom = BOM_BYTES;
+    }
+    if let Some(n) = memchr(b'\n', contents) {
+        if n > 0 && contents[n - 1] == b'\r' {
+            line_terminator = b"\r\n"
+        }
+    }
+    (bom, line_terminator)
+}
+
+fn borrowed_map_of<Bookkeeping: Copy>(mut contents: &[u8], b: Bookkeeping) -> CowSet<Bookkeeping> {
+    let mut set = CowSet::default();
+    while let Some(end) = memchr(b'\n', contents) {
+        let (mut line, rest) = contents.split_at(end);
+        contents = &rest[1..];
+        if let Some(&maybe_cr) = line.last() {
+            if maybe_cr == b'\r' {
+                line = &line[..line.len() - 1];
+            }
+        }
+        set.insert(Cow::Borrowed(line), b);
+    }
+    if !contents.is_empty() {
+        set.insert(Cow::Borrowed(contents), b);
+    }
+    set
+}
+
+pub(crate) struct ZetSet<'data, Bookkeeping: Copy> {
+    bom: &'static [u8],
+    line_terminator: &'static [u8],
+    set: CowSet<'data, Bookkeeping>,
+}
+
+impl<'data, Bookkeeping: Copy> ZetSet<'data, Bookkeeping> {
+    pub(crate) fn insert(&mut self, line: &[u8], b: Bookkeeping) {
+        self.set.insert(Cow::from(line.to_vec()), b);
+    }
+    pub(crate) fn get_mut(&mut self, line: &[u8]) -> Option<&mut Bookkeeping> {
+        self.set.get_mut(line)
+    }
+    pub(crate) fn retain(&mut self, mut keep: impl FnMut(&mut Bookkeeping) -> bool) {
+        self.set.retain(|_k, v| keep(v));
+    }
+    pub(crate) fn output_to(&self, mut out: impl io::Write) -> Result<()> {
+        out.write_all(self.bom)?;
+        for line in self.set.keys() {
+            out.write_all(line)?;
+            out.write_all(self.line_terminator)?;
+        }
+        out.flush()?;
+        Ok(())
+    }
+}
 const BOM_0: u8 = b'\xEF';
 const BOM_1: u8 = b'\xBB';
 const BOM_2: u8 = b'\xBF';
 const BOM_BYTES: &[u8] = b"\xEF\xBB\xBF";
 fn has_bom(contents: &[u8]) -> bool {
     contents.len() >= 3 && contents[0] == BOM_0 && contents[1] == BOM_1 && contents[2] == BOM_2
-}
-
-/// Remember whether the first file had a BOM, and whether lines should end with `\r\n` or `\n`
-#[derive(Debug)]
-pub struct SetWriter {
-    bom: &'static [u8],
-    eol: &'static [u8],
-}
-
-impl SetWriter {
-    /// Write the result of `do_calculation` to stdout, buffered if not going to the terminal
-    /// and locked in any case.
-    pub fn output(&self, result: crate::LineIterator) -> Result<()> {
-        if atty::is(atty::Stream::Stdout) {
-            self.inner(result, io::stdout().lock())
-        } else {
-            self.inner(result, io::BufWriter::new(io::stdout().lock()))
-        }
-    }
-    fn inner(&self, result: crate::LineIterator, mut out: impl io::Write) -> Result<()> {
-        out.write_all(self.bom)?;
-        for line in result {
-            out.write_all(line)?;
-            out.write_all(self.eol)?;
-        }
-        out.flush()?;
-        Ok(())
-    }
 }
 
 /// Given a list of file paths (as a vector of `PathBuf`s), iterates over their contents. We
@@ -133,30 +156,6 @@ fn decode_if_utf16(candidate: Vec<u8>) -> Vec<u8> {
 
 pub(crate) struct InputLines<'data> {
     remaining: &'data [u8],
-}
-
-pub(crate) fn borrow_from<Bookkeeping: Copy>(
-    mut contents: &[u8],
-    b: Bookkeeping,
-) -> CowSet<Bookkeeping> {
-    if has_bom(contents) {
-        contents = &contents[3..];
-    }
-    let mut set = CowSet::default();
-    while let Some(end) = memchr(b'\n', contents) {
-        let (mut line, rest) = contents.split_at(end);
-        contents = &rest[1..];
-        if let Some(&maybe_cr) = line.last() {
-            if maybe_cr == b'\r' {
-                line = &line[..line.len() - 1];
-            }
-        }
-        set.insert(Cow::Borrowed(line), b);
-    }
-    if !contents.is_empty() {
-        set.insert(Cow::Borrowed(contents), b);
-    }
-    set
 }
 
 pub(crate) fn lines_of(contents: &[u8]) -> InputLines {
