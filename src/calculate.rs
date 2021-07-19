@@ -103,17 +103,26 @@ pub fn exec(
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::io::ContentsIter;
+    use assert_fs::{prelude::*, TempDir};
+    use std::path::PathBuf;
 
     fn calc(operation: OpName, operands: &[&[u8]]) -> String {
-        fn add_eol(s: &[u8]) -> Vec<u8> {
-            let mut s = s.to_owned();
-            s.push(b'\n');
-            s
+        let mut operands = operands.iter().map(|s| s.to_vec());
+        let first = operands.next().unwrap();
+
+        let temp_dir = TempDir::new().unwrap();
+        let mut rest = Vec::new();
+
+        for operand in operands {
+            let name = format!("operand{}", rest.len());
+            let op = temp_dir.child(name);
+            op.write_binary(&operand[..]).unwrap();
+            rest.push(PathBuf::from(op.path()));
         }
-        let mut operands = operands.iter().map(|s| Ok(s.to_vec()));
-        let first = operands.next().unwrap().unwrap();
+
         let mut answer = Vec::new();
-        exec(operation, &first, operands, &mut answer).unwrap();
+        exec(operation, &first, ContentsIter::from(rest), &mut answer).unwrap();
         String::from_utf8(answer).unwrap()
     }
 
