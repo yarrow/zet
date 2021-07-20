@@ -2,10 +2,14 @@
 use crate::CowSet;
 use anyhow::{Context, Result};
 use std::borrow::Cow;
-use std::{fs, io, ops::FnMut, path::PathBuf};
+use std::{
+    fs, io,
+    ops::FnMut,
+    path::{Path, PathBuf},
+};
 
-pub(crate) fn first_and_rest(files: Vec<PathBuf>) -> Option<(Result<Vec<u8>>, ContentsIter)> {
-    match files.as_slice() {
+pub(crate) fn first_and_rest(files: &[PathBuf]) -> Option<(Result<Vec<u8>>, ContentsIter)> {
+    match files {
         [] => None,
         [first, rest @ ..] => {
             let attempt = fs::read(&first).with_context(|| path_context(&first));
@@ -15,7 +19,7 @@ pub(crate) fn first_and_rest(files: Vec<PathBuf>) -> Option<(Result<Vec<u8>>, Co
     }
 }
 
-fn path_context(path: &PathBuf) -> String {
+fn path_context(path: &Path) -> String {
     format!("Can't read file: {}", path.to_string_lossy())
 }
 

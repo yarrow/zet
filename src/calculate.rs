@@ -16,7 +16,7 @@ use crate::io::{lines_of, zet_set_from, ContentsIter};
 /// * `OpName::Single` prints the lines that occur in exactly one file, and
 /// * `OpName::Multiple` prints the lines that occur in more than one file.
 ///
-pub fn exec(operation: OpName, operands: Vec<PathBuf>, out: impl std::io::Write) -> Result<()> {
+pub fn exec(operation: OpName, operands: &[PathBuf], out: impl std::io::Write) -> Result<()> {
     let (first_operand, rest) = match crate::io::first_and_rest(operands) {
         None => return Ok(()),
         Some((first, others)) => (first?, others),
@@ -120,7 +120,7 @@ mod test {
         }
 
         let mut answer = Vec::new();
-        exec(operation, paths, &mut answer).unwrap();
+        exec(operation, &paths, &mut answer).unwrap();
         String::from_utf8(answer).unwrap()
     }
 

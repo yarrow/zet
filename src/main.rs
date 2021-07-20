@@ -10,9 +10,9 @@ fn main() -> Result<()> {
     // `Peekable` iterator.
     //
     if atty::is(atty::Stream::Stdout) {
-        zet::calculate::exec(args.op, args.files, io::stdout().lock())?;
+        zet::calculate::exec(args.op, &args.files, io::stdout().lock())?;
     } else {
-        zet::calculate::exec(args.op, args.files, io::BufWriter::new(io::stdout().lock()))?;
+        zet::calculate::exec(args.op, &args.files, io::BufWriter::new(io::stdout().lock()))?;
     };
     Ok(())
 }
