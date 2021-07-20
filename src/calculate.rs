@@ -2,10 +2,9 @@
 //!
 use anyhow::Result;
 use std::path::PathBuf;
-use std::vec::Vec;
 
 use crate::args::OpName;
-use crate::io::{lines_of, zet_set_from, ContentsIter};
+use crate::io::{lines_of, zet_set_from};
 
 /// Calculates and prints the set operation named by `op`. Each file in `files`
 /// is treated as a set of lines:

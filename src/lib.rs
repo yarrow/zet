@@ -7,8 +7,15 @@
 #![allow(clippy::needless_return)]
 #![deny(clippy::pedantic)]
 #![allow(clippy::missing_errors_doc)]
-#![deny(missing_docs)]
-
+#![deny(warnings)]
+#![deny(
+    missing_docs,
+    trivial_casts,
+    trivial_numeric_casts,
+    unused_extern_crates,
+    unused_import_braces,
+    unused_qualifications
+)]
 pub mod args;
 pub mod calculate;
 pub mod io;
