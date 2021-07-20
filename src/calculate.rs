@@ -1,10 +1,11 @@
 //! Houses the `exec` function
 //!
 use anyhow::Result;
+use std::path::PathBuf;
 use std::vec::Vec;
 
 use crate::args::OpName;
-use crate::io::{lines_of, zet_set_from};
+use crate::io::{lines_of, zet_set_from, ContentsIter};
 
 /// Calculates and prints the set operation named by `op`. Each file in `files`
 /// is treated as a set of lines:
@@ -15,13 +16,14 @@ use crate::io::{lines_of, zet_set_from};
 /// * `OpName::Single` prints the lines that occur in exactly one file, and
 /// * `OpName::Multiple` prints the lines that occur in more than one file.
 ///
-pub fn exec(
-    operation: OpName,
-    first_operand: &[u8],
-    rest: impl IntoIterator<Item = Result<Vec<u8>>>,
-    out: impl std::io::Write,
-) -> Result<()> {
-    let rest = rest.into_iter();
+pub fn exec(operation: OpName, operands: Vec<PathBuf>, out: impl std::io::Write) -> Result<()> {
+    let mut rest = ContentsIter::from(operands);
+    let first_operand;
+    match rest.next() {
+        None => return Ok(()),
+        Some(result) => first_operand = result?,
+    }
+    let first_operand = first_operand.as_slice();
 
     match operation {
         OpName::Union => {
@@ -105,24 +107,22 @@ mod test {
     use super::*;
     use crate::io::ContentsIter;
     use assert_fs::{prelude::*, TempDir};
-    use std::path::PathBuf;
 
     fn calc(operation: OpName, operands: &[&[u8]]) -> String {
-        let mut operands = operands.iter().map(|s| s.to_vec());
-        let first = operands.next().unwrap();
+        let operands = operands.iter().map(|s| s.to_vec());
 
         let temp_dir = TempDir::new().unwrap();
-        let mut rest = Vec::new();
+        let mut paths = Vec::new();
 
         for operand in operands {
-            let name = format!("operand{}", rest.len());
+            let name = format!("operand{}", paths.len());
             let op = temp_dir.child(name);
             op.write_binary(&operand[..]).unwrap();
-            rest.push(PathBuf::from(op.path()));
+            paths.push(PathBuf::from(op.path()));
         }
 
         let mut answer = Vec::new();
-        exec(operation, &first, ContentsIter::from(rest), &mut answer).unwrap();
+        exec(operation, paths, &mut answer).unwrap();
         String::from_utf8(answer).unwrap()
     }
 

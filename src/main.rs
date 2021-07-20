@@ -9,18 +9,10 @@ fn main() -> Result<()> {
     // argument specially anyway, there's no great motivation to disguise this by using a
     // `Peekable` iterator.
     //
-    let (first, rest) = zet::io::prep(args.files)?;
-    if let Some(first_operand) = first {
-        if atty::is(atty::Stream::Stdout) {
-            zet::calculate::exec(args.op, &first_operand, rest, io::stdout().lock())?;
-        } else {
-            zet::calculate::exec(
-                args.op,
-                &first_operand,
-                rest,
-                io::BufWriter::new(io::stdout().lock()),
-            )?;
-        };
-    }
+    if atty::is(atty::Stream::Stdout) {
+        zet::calculate::exec(args.op, args.files, io::stdout().lock())?;
+    } else {
+        zet::calculate::exec(args.op, args.files, io::BufWriter::new(io::stdout().lock()))?;
+    };
     Ok(())
 }
