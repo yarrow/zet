@@ -4,11 +4,19 @@ use anyhow::{Context, Result};
 use std::borrow::Cow;
 use std::{fs, io, ops::FnMut, path::PathBuf};
 
-/// FIXME
-pub fn prep(files: Vec<PathBuf>) -> Result<(Option<Vec<u8>>, ContentsIter)> {
-    let mut rest = ContentsIter::from(files);
-    let first = rest.next().transpose()?;
-    Ok((first, rest))
+pub(crate) fn first_and_rest(files: Vec<PathBuf>) -> Option<(Result<Vec<u8>>, ContentsIter)> {
+    match files.as_slice() {
+        [] => None,
+        [first, rest @ ..] => {
+            let attempt = fs::read(&first).with_context(|| path_context(&first));
+            let first_operand = attempt.map(decode_if_utf16);
+            Some((first_operand, ContentsIter::from(rest.to_vec())))
+        }
+    }
+}
+
+fn path_context(path: &PathBuf) -> String {
+    format!("Can't read file: {}", path.to_string_lossy())
 }
 
 pub(crate) fn zet_set_from<Bookkeeping: Copy>(
