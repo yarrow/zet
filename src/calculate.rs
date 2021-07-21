@@ -4,7 +4,7 @@ use anyhow::Result;
 use std::path::PathBuf;
 
 use crate::args::OpName;
-use crate::io::{lines_of, zet_set_from};
+use crate::io::zet_set_from;
 
 /// Calculates and prints the set operation named by `op`. Each file in `files`
 /// is treated as a set of lines:
@@ -26,9 +26,9 @@ pub fn exec(operation: OpName, operands: &[PathBuf], out: impl std::io::Write) -
         OpName::Union => {
             let mut set = zet_set_from(first_operand, ());
             for operand in rest {
-                for line in lines_of(&operand?) {
+                operand.for_byte_line(|line| {
                     set.insert(line, ());
-                }
+                })?
             }
             return set.output_to(out);
         }
@@ -36,11 +36,11 @@ pub fn exec(operation: OpName, operands: &[PathBuf], out: impl std::io::Write) -
         OpName::Diff => {
             let mut set = zet_set_from(first_operand, true);
             for operand in rest {
-                for line in lines_of(&operand?) {
+                operand.for_byte_line(|line| {
                     if let Some(keepme) = set.get_mut(line) {
                         *keepme = false;
                     }
-                }
+                })?
             }
             set.retain(|keepme| *keepme);
             return set.output_to(out);
@@ -53,11 +53,11 @@ pub fn exec(operation: OpName, operands: &[PathBuf], out: impl std::io::Write) -
             let mut set = zet_set_from(first_operand, this_cycle);
             for operand in rest {
                 this_cycle = !this_cycle; // flip BLUE -> RED and RED -> BLUE
-                for line in lines_of(&operand?) {
+                operand.for_byte_line(|line| {
                     if let Some(when_seen) = set.get_mut(line) {
                         *when_seen = this_cycle;
                     }
-                }
+                })?;
                 set.retain(|when_seen| *when_seen == this_cycle);
             }
             return set.output_to(out);
@@ -79,14 +79,12 @@ pub fn exec(operation: OpName, operands: &[PathBuf], out: impl std::io::Write) -
 
                 let seen_now = SeenIn { first: operand_count, last: operand_count };
 
-                for line in lines_of(&operand?) {
-                    match set.get_mut(line) {
-                        None => {
-                            set.insert(line, seen_now);
-                        }
-                        Some(seen_in) => seen_in.last = operand_count,
+                operand.for_byte_line(|line| match set.get_mut(line) {
+                    None => {
+                        set.insert(line, seen_now);
                     }
-                }
+                    Some(seen_in) => seen_in.last = operand_count,
+                })?
             }
             if operation == OpName::Single {
                 set.retain(|seen_in| seen_in.first == seen_in.last);

@@ -101,32 +101,19 @@ fn has_bom(contents: &[u8]) -> bool {
     contents.len() >= 3 && contents[0] == BOM_0 && contents[1] == BOM_1 && contents[2] == BOM_2
 }
 
-/// Given a list of file paths (as a vector of `PathBuf`s), iterates over their contents. We
-/// guarantee that each non-empty file's contents ends with `\n` (and with `\r\n` if the file's
-/// penultimate line ends with `\r\n`).
-///
-/// If `files` is a `Vec<PathBuf>`, then `ContentsIter::from(files)` returns an iterator over the
-/// *contents* of the given `files`, decoded from UTF-16 to UTF-8 if a UTF-16 Byte Order Mark is
-/// detected.  If we want to print out the (entire!) contents of a file if it contains a `b'Z'`
-/// anywhere, we could use
-///
-/// ```no_run
-/// # use anyhow::Result;
-/// # fn main() -> Result<()> {
-/// use std::{io::stdout, io::Write, path::PathBuf};
-/// use zet::io::ContentsIter;
-///
-/// let files = vec![PathBuf::from("a.txt"), PathBuf::from("b.txt"), PathBuf::from("c.txt")];
-/// for result in ContentsIter::from(files) {
-///     let contents = result?;
-///     if contents.contains(&b'Z') {
-///         stdout().write(&contents);
-///     }
-///  }
-///  # Ok(())
-///  # }
-/// ```
-pub struct ContentsIter {
+pub(crate) struct FakeBstrIo(Result<Vec<u8>>);
+impl FakeBstrIo {
+    pub(crate) fn for_byte_line<F>(self, mut for_each_line: F) -> Result<()>
+    where
+        F: FnMut(&[u8]) -> (),
+    {
+        for line in lines_of(&self.0?) {
+            for_each_line(line);
+        }
+        Ok(())
+    }
+}
+pub(crate) struct ContentsIter {
     files: std::vec::IntoIter<PathBuf>,
 }
 impl From<Vec<PathBuf>> for ContentsIter {
@@ -135,15 +122,15 @@ impl From<Vec<PathBuf>> for ContentsIter {
     }
 }
 impl Iterator for ContentsIter {
-    type Item = Result<Vec<u8>>;
+    type Item = FakeBstrIo;
     fn next(&mut self) -> Option<Self::Item> {
         let path = self.files.next()?;
         let attempt =
             fs::read(&path).with_context(|| format!("Can't read file: {}", path.to_string_lossy()));
-        Some(match attempt {
+        Some(FakeBstrIo(match attempt {
             Ok(contents) => Ok(decode_if_utf16(contents)),
             Err(err) => Err(err),
-        })
+        }))
     }
 }
 
