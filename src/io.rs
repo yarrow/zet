@@ -1,9 +1,14 @@
 //! Input/Output structs and functions
 use crate::CowSet;
 use anyhow::{Context, Result};
+use bstr::io::BufReadExt;
+use encoding_rs_io::{DecodeReaderBytes, DecodeReaderBytesBuilder};
 use std::borrow::Cow;
 use std::{
-    fs, io,
+    fs,
+    fs::File,
+    io,
+    io::BufReader,
     ops::FnMut,
     path::{Path, PathBuf},
 };
@@ -20,7 +25,7 @@ pub(crate) fn first_and_rest(files: &[PathBuf]) -> Option<(Result<Vec<u8>>, Cont
 }
 
 fn path_context(path: &Path) -> String {
-    format!("Can't read file: {}", path.to_string_lossy())
+    format!("Can't read file: {}", path.display())
 }
 
 pub(crate) fn zet_set_from<Bookkeeping: Copy>(
@@ -101,36 +106,59 @@ fn has_bom(contents: &[u8]) -> bool {
     contents.len() >= 3 && contents[0] == BOM_0 && contents[1] == BOM_1 && contents[2] == BOM_2
 }
 
-pub(crate) struct FakeBstrIo(Result<Vec<u8>>);
-impl FakeBstrIo {
-    pub(crate) fn for_byte_line<F>(self, mut for_each_line: F) -> Result<()>
+type NextOperand = BufReader<DecodeReaderBytes<File, Vec<u8>>>;
+pub(crate) struct SubsequentOperand {
+    path: PathBuf,
+    reader: io::Result<NextOperand>,
+}
+fn maybe_decoded(path: &Path) -> SubsequentOperand {
+    let reader = File::open(path).map(|f| {
+        BufReader::with_capacity(
+            32 * 1024,
+            DecodeReaderBytesBuilder::new()
+                .bom_sniffing(true)
+                .strip_bom(true)
+                .utf8_passthru(true)
+                .build(f),
+        )
+    });
+    SubsequentOperand { path: path.to_owned(), reader }
+}
+impl SubsequentOperand {
+    pub(crate) fn for_byte_line<F>(self, for_each_line: F) -> Result<()>
     where
-        F: FnMut(&[u8]) -> (),
+        F: FnMut(&[u8]),
     {
-        for line in lines_of(&self.0?) {
-            for_each_line(line);
-        }
+        let complaint = format!("Error processing file {}", self.path.display());
+        f_b_line(self.reader, for_each_line).context(complaint)?;
         Ok(())
     }
 }
+fn f_b_line<F>(reader: io::Result<NextOperand>, mut for_each_line: F) -> Result<()>
+where
+    F: FnMut(&[u8]),
+{
+    reader?.for_byte_line(|line| {
+        for_each_line(line);
+        Ok(true)
+    })?;
+    Ok(())
+}
+
 pub(crate) struct ContentsIter {
     files: std::vec::IntoIter<PathBuf>,
 }
+
 impl From<Vec<PathBuf>> for ContentsIter {
     fn from(files: Vec<PathBuf>) -> Self {
         ContentsIter { files: files.into_iter() }
     }
 }
+
 impl Iterator for ContentsIter {
-    type Item = FakeBstrIo;
+    type Item = SubsequentOperand;
     fn next(&mut self) -> Option<Self::Item> {
-        let path = self.files.next()?;
-        let attempt =
-            fs::read(&path).with_context(|| format!("Can't read file: {}", path.to_string_lossy()));
-        Some(FakeBstrIo(match attempt {
-            Ok(contents) => Ok(decode_if_utf16(contents)),
-            Err(err) => Err(err),
-        }))
+        self.files.next().map(|path| maybe_decoded(&path))
     }
 }
 
@@ -155,14 +183,6 @@ fn decode_if_utf16(candidate: Vec<u8>) -> Vec<u8> {
 
 pub(crate) struct InputLines<'data> {
     remaining: &'data [u8],
-}
-
-pub(crate) fn lines_of(contents: &[u8]) -> InputLines {
-    if has_bom(contents) {
-        InputLines { remaining: &contents[3..] }
-    } else {
-        InputLines { remaining: contents }
-    }
 }
 
 /// An iterator over the lines of the file contents, without line terminators.
@@ -238,13 +258,5 @@ mod test {
     fn utf_16be_is_translated_to_utf8() {
         let expected = "The cute red crab\n jumps over the lazy blue gopher\n";
         assert_eq!(decode_if_utf16(utf_16be(&expected)), abominate(expected).as_bytes());
-    }
-
-    #[test]
-    fn fn_lines_of_strips_utf8_bom_and_line_terminators() {
-        let with_bom = UTF8_BOM.to_string() + "abc\ndefg\nxyz\n";
-        let expected: Vec<&[u8]> = vec![b"abc", b"defg", b"xyz"];
-        let result = lines_of(with_bom.as_bytes()).collect::<Vec<_>>();
-        assert_eq!(expected, result);
     }
 }

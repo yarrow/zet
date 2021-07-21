@@ -1,6 +1,6 @@
 [package]
 name = "zet"
-version = "0.2.4"
+version = "0.2.5"
 authors = ["Yarrow Angelweed <yarrow.angelweed@gmail.com>"]
 description = "zet finds the union, intersection, set difference, etc of files considered as sets of lines"
 documentation = "https://github.com/yarrow/zet"
@@ -15,7 +15,9 @@ edition = '2018'
 [dependencies]
 anyhow = "1.0.42"
 atty = "0.2.14"
+bstr = "0.2.16"
 encoding_rs = "0.8.28"
+encoding_rs_io = "0.1.7"
 fxhash = "0.2.1"
 structopt = {version = "0.3.21", features=["wrap_help"]}
 structopt-derive = "0.4.14"
