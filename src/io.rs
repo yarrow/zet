@@ -1,8 +1,10 @@
 //! Input/Output structs and functions
-use crate::CowSet;
 use anyhow::{Context, Result};
 use bstr::io::BufReadExt;
 use encoding_rs_io::{DecodeReaderBytes, DecodeReaderBytesBuilder};
+use fxhash::FxBuildHasher;
+use indexmap::IndexMap;
+use memchr::memchr;
 use std::borrow::Cow;
 use std::{
     fs,
@@ -13,157 +15,22 @@ use std::{
     path::{Path, PathBuf},
 };
 
-pub(crate) fn first_and_rest(files: &[PathBuf]) -> Option<(Result<Vec<u8>>, ContentsIter)> {
+/// Return the contents of the first file named in `files` as a Vec<u8>, and an iterator over the
+/// subsequent arguments.
+pub(crate) fn first_and_rest(files: &[PathBuf]) -> Option<(Result<Vec<u8>>, RemainingOperands)> {
     match files {
         [] => None,
         [first, rest @ ..] => {
-            let attempt = fs::read(&first).with_context(|| path_context(&first));
-            let first_operand = attempt.map(decode_if_utf16);
-            Some((first_operand, ContentsIter::from(rest.to_vec())))
+            let first_operand = fs::read(&first)
+                .with_context(|| format!("Can't read file: {}", first.display()))
+                .map(decode_if_utf16);
+            Some((first_operand, RemainingOperands::from(rest.to_vec())))
         }
     }
 }
 
-fn path_context(path: &Path) -> String {
-    format!("Can't read file: {}", path.display())
-}
-
-pub(crate) fn zet_set_from<Bookkeeping: Copy>(
-    first_operand: &[u8],
-    b: Bookkeeping,
-) -> ZetSet<Bookkeeping> {
-    let (bom, line_terminator) = output_info(first_operand);
-    let first_operand = &first_operand[bom.len()..];
-
-    let set = borrowed_map_of(first_operand, b);
-
-    ZetSet { bom, line_terminator, set }
-}
-
-fn output_info(contents: &[u8]) -> (&'static [u8], &'static [u8]) {
-    let mut bom: &'static [u8] = b"";
-    let mut line_terminator: &'static [u8] = b"\n";
-    if has_bom(contents) {
-        bom = BOM_BYTES;
-    }
-    if let Some(n) = memchr(b'\n', contents) {
-        if n > 0 && contents[n - 1] == b'\r' {
-            line_terminator = b"\r\n"
-        }
-    }
-    (bom, line_terminator)
-}
-
-fn borrowed_map_of<Bookkeeping: Copy>(mut contents: &[u8], b: Bookkeeping) -> CowSet<Bookkeeping> {
-    let mut set = CowSet::default();
-    while let Some(end) = memchr(b'\n', contents) {
-        let (mut line, rest) = contents.split_at(end);
-        contents = &rest[1..];
-        if let Some(&maybe_cr) = line.last() {
-            if maybe_cr == b'\r' {
-                line = &line[..line.len() - 1];
-            }
-        }
-        set.insert(Cow::Borrowed(line), b);
-    }
-    if !contents.is_empty() {
-        set.insert(Cow::Borrowed(contents), b);
-    }
-    set
-}
-
-pub(crate) struct ZetSet<'data, Bookkeeping: Copy> {
-    bom: &'static [u8],
-    line_terminator: &'static [u8],
-    set: CowSet<'data, Bookkeeping>,
-}
-
-impl<'data, Bookkeeping: Copy> ZetSet<'data, Bookkeeping> {
-    pub(crate) fn insert(&mut self, line: &[u8], b: Bookkeeping) {
-        self.set.insert(Cow::from(line.to_vec()), b);
-    }
-    pub(crate) fn get_mut(&mut self, line: &[u8]) -> Option<&mut Bookkeeping> {
-        self.set.get_mut(line)
-    }
-    pub(crate) fn retain(&mut self, mut keep: impl FnMut(&mut Bookkeeping) -> bool) {
-        self.set.retain(|_k, v| keep(v));
-    }
-    pub(crate) fn output_to(&self, mut out: impl io::Write) -> Result<()> {
-        out.write_all(self.bom)?;
-        for line in self.set.keys() {
-            out.write_all(line)?;
-            out.write_all(self.line_terminator)?;
-        }
-        out.flush()?;
-        Ok(())
-    }
-}
-const BOM_0: u8 = b'\xEF';
-const BOM_1: u8 = b'\xBB';
-const BOM_2: u8 = b'\xBF';
-const BOM_BYTES: &[u8] = b"\xEF\xBB\xBF";
-fn has_bom(contents: &[u8]) -> bool {
-    contents.len() >= 3 && contents[0] == BOM_0 && contents[1] == BOM_1 && contents[2] == BOM_2
-}
-
-type NextOperand = BufReader<DecodeReaderBytes<File, Vec<u8>>>;
-pub(crate) struct SubsequentOperand {
-    path: PathBuf,
-    reader: io::Result<NextOperand>,
-}
-fn maybe_decoded(path: &Path) -> SubsequentOperand {
-    let reader = File::open(path).map(|f| {
-        BufReader::with_capacity(
-            32 * 1024,
-            DecodeReaderBytesBuilder::new()
-                .bom_sniffing(true)
-                .strip_bom(true)
-                .utf8_passthru(true)
-                .build(f),
-        )
-    });
-    SubsequentOperand { path: path.to_owned(), reader }
-}
-impl SubsequentOperand {
-    pub(crate) fn for_byte_line<F>(self, for_each_line: F) -> Result<()>
-    where
-        F: FnMut(&[u8]),
-    {
-        let complaint = format!("Error processing file {}", self.path.display());
-        f_b_line(self.reader, for_each_line).context(complaint)?;
-        Ok(())
-    }
-}
-fn f_b_line<F>(reader: io::Result<NextOperand>, mut for_each_line: F) -> Result<()>
-where
-    F: FnMut(&[u8]),
-{
-    reader?.for_byte_line(|line| {
-        for_each_line(line);
-        Ok(true)
-    })?;
-    Ok(())
-}
-
-pub(crate) struct ContentsIter {
-    files: std::vec::IntoIter<PathBuf>,
-}
-
-impl From<Vec<PathBuf>> for ContentsIter {
-    fn from(files: Vec<PathBuf>) -> Self {
-        ContentsIter { files: files.into_iter() }
-    }
-}
-
-impl Iterator for ContentsIter {
-    type Item = SubsequentOperand;
-    fn next(&mut self) -> Option<Self::Item> {
-        self.files.next().map(|path| maybe_decoded(&path))
-    }
-}
-
-use memchr::memchr;
-
+/// Decode UTF-16 to UTF-8 if we see a UTF-16 Byte Order Mark at the beginning of `candidate`.
+/// Otherwise return `candidate` unchanged
 fn decode_if_utf16(candidate: Vec<u8>) -> Vec<u8> {
     // Translate UTF16 to UTF8
     // Note: `decode_without_bom_handling` will change malformed sequences to the
@@ -181,36 +48,187 @@ fn decode_if_utf16(candidate: Vec<u8>) -> Vec<u8> {
     return candidate;
 }
 
-pub(crate) struct InputLines<'data> {
-    remaining: &'data [u8],
+/// A `ZetSet` is a set of lines, each line represented as a key of an `IndexMap`.
+/// * Keys are `Cow<'data, [u8]>`
+/// * Lines inserted from the first file operand are represented as `Cow::Borrowed` keys
+/// * Lines inserted from the second and following files are represented as `Cow::Owned` keys
+/// * Each set operation (`Union`, `Diff`, etc) associates a small bookkeeping value
+///   with each key. The value type differs from operation to operation.
+/// * A `ZetSet` also keeps information about whether the first file operand began with
+///   a Unicode Byte Order Mark, and what line terminator was used on the first line of
+///   the first file. On output, the `ZetSet` will print a Byte Order Mark if the first
+///   file operand had one, and will use the same line terminator as that file's first
+///   line.
+pub(crate) struct ZetSet<'data, Bookkeeping: Copy> {
+    set: CowSet<'data, Bookkeeping>,
+    bom: &'static [u8],             // Byte Order Mark or empty
+    line_terminator: &'static [u8], // \n or \r\n
+}
+type CowSet<'data, Bookkeeping> = IndexMap<Cow<'data, [u8]>, Bookkeeping, FxBuildHasher>;
+
+impl<'data, Bookkeeping: Copy> ZetSet<'data, Bookkeeping> {
+    /// Insert `line` as `Cow::Owned` to the underlying `IndexMap`
+    pub(crate) fn insert(&mut self, line: &[u8], b: Bookkeeping) {
+        self.set.insert(Cow::from(line.to_vec()), b);
+    }
+
+    /// Sometimes we need to update the bookkeeping information
+    pub(crate) fn get_mut(&mut self, line: &[u8]) -> Option<&mut Bookkeeping> {
+        self.set.get_mut(line)
+    }
+
+    /// `IndexMap`'s `.retain` method is `O(n)` and preserves the order of the
+    /// keys, so it's safe to expose it. We don't expose `.remove`, because it
+    /// doesn't preserve key order, and we don't expose `.shift_remove`, which
+    /// does preserve order, because `.shift_remove` is *also* `O(n)`, and using
+    /// it to remove elements one by one means `O(n^2)` performance.
+    pub(crate) fn retain(&mut self, mut keep: impl FnMut(&mut Bookkeeping) -> bool) {
+        self.set.retain(|_k, v| keep(v));
+    }
+
+    /// Output the `ZetSet`'s lines with the appropriate Byte Order Mark and line
+    /// terminator.
+    pub(crate) fn output_to(&self, mut out: impl io::Write) -> Result<()> {
+        out.write_all(self.bom)?;
+        for line in self.set.keys() {
+            out.write_all(line)?;
+            out.write_all(self.line_terminator)?;
+        }
+        out.flush()?;
+        Ok(())
+    }
 }
 
-/// An iterator over the lines of the file contents, without line terminators.
-/// That is, from each line we strip `\r\n` or `\n`, whichever is longest.
-impl<'data> Iterator for InputLines<'data> {
-    type Item = &'data [u8];
-    fn next(&mut self) -> Option<Self::Item> {
-        match memchr(b'\n', self.remaining) {
-            None => {
-                if self.remaining.is_empty() {
-                    None
-                } else {
-                    // last line doesn't end with `\n`
-                    let line = self.remaining;
-                    self.remaining = b"";
-                    Some(line)
-                }
-            }
-            Some(mut end) => {
-                let restart = end + 1;
-                if end > 0 && self.remaining[end - 1] == b'\r' {
-                    end -= 1
-                }
-                let line = &self.remaining[..end];
-                self.remaining = &self.remaining[restart..];
-                Some(line)
+pub(crate) trait ToZetSet<'data> {
+    fn to_zet_set_with<Bookkeeping: Copy>(
+        &'data self,
+        b: Bookkeeping,
+    ) -> ZetSet<'data, Bookkeeping>;
+}
+
+impl<'data> ToZetSet<'data> for &[u8] {
+    /// `slice.to_zet_set_with(b)` takes a byte slice (`&[u8]`) with multiple
+    /// lines and returns a `ZetSet` with line terminator and Byte Order Mark
+    /// (or empty string) taken from the slice, and with each line of the slice
+    /// represented in the set by a `Cow::Borrowed` key with the bookkeeping
+    /// value `b`.
+    fn to_zet_set_with<Bookkeeping: Copy>(&self, b: Bookkeeping) -> ZetSet<Bookkeeping> {
+        let (bom, line_terminator) = output_info(self);
+        let all_lines = &self[bom.len()..];
+
+        let set = borrowed_map_of(all_lines, b);
+
+        ZetSet { set, bom, line_terminator }
+    }
+}
+
+/// Returns `(bom, line_terminator)`, where `bom` is the (UTF-8) Byte Order
+/// Mark, or the empty string if `slice` has none, and `line_terminator` is
+/// `\r\n` if the first line of `slice` ends with `\r\n`, and `\n` if the first
+/// line ends just with '\n` (or is the only line in the file and has no line
+/// terminator).
+fn output_info(slice: &[u8]) -> (&'static [u8], &'static [u8]) {
+    let mut bom: &'static [u8] = b"";
+    let mut line_terminator: &'static [u8] = b"\n";
+    if has_bom(slice) {
+        bom = BOM_BYTES;
+    }
+    if let Some(n) = memchr(b'\n', slice) {
+        if n > 0 && slice[n - 1] == b'\r' {
+            line_terminator = b"\r\n"
+        }
+    }
+    (bom, line_terminator)
+}
+
+/// Returns a `CowSet` with every line of `slice` inserted as a `Cow::Borrowed`
+/// key with bookkeeping value `b`
+fn borrowed_map_of<Bookkeeping: Copy>(mut slice: &[u8], b: Bookkeeping) -> CowSet<Bookkeeping> {
+    let mut set = CowSet::default();
+    while let Some(end) = memchr(b'\n', slice) {
+        let (mut line, rest) = slice.split_at(end);
+        slice = &rest[1..];
+        if let Some(&maybe_cr) = line.last() {
+            if maybe_cr == b'\r' {
+                line = &line[..line.len() - 1];
             }
         }
+        set.insert(Cow::Borrowed(line), b);
+    }
+    if !slice.is_empty() {
+        set.insert(Cow::Borrowed(slice), b);
+    }
+    set
+}
+
+const BOM_0: u8 = b'\xEF';
+const BOM_1: u8 = b'\xBB';
+const BOM_2: u8 = b'\xBF';
+const BOM_BYTES: &[u8] = b"\xEF\xBB\xBF";
+/// Does `first_operand` begin with a (UTF-8) Byte Order Mark?
+fn has_bom(first_operand: &[u8]) -> bool {
+    first_operand.len() >= 3
+        && first_operand[0] == BOM_0
+        && first_operand[1] == BOM_1
+        && first_operand[2] == BOM_2
+}
+
+/// The first operand is read into memory in its entirety, but that's not
+/// efficient for the second and subsequent operands.  The `RemainingOperands`
+/// structure is an iterator over those operands.
+pub(crate) struct RemainingOperands {
+    files: std::vec::IntoIter<PathBuf>,
+}
+
+impl From<Vec<PathBuf>> for RemainingOperands {
+    fn from(files: Vec<PathBuf>) -> Self {
+        RemainingOperands { files: files.into_iter() }
+    }
+}
+
+impl Iterator for RemainingOperands {
+    type Item = Result<NextOperand>;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.files.next().map(|path| reader_for(&path))
+    }
+}
+
+/// `NextOperand` is the `Item` type for the `RemainingOperands` iterator. The
+/// `reader` field is a reader for the file with path `path`. We keep the `path`
+/// field around to improve error messages.
+pub(crate) struct NextOperand {
+    path: PathBuf,
+    reader: BufReader<DecodeReaderBytes<File, Vec<u8>>>,
+}
+
+/// The reader for a second or subsequent operand is a buffered reader with the
+/// ability to decode UTF-16 files.
+fn reader_for(path: &Path) -> Result<NextOperand> {
+    let f = File::open(path).with_context(|| format!("Can't open file: {}", path.display()))?;
+    let reader = BufReader::with_capacity(
+        32 * 1024,
+        DecodeReaderBytesBuilder::new()
+            .bom_sniffing(true) // Look at the BOM to detect UTF-16 files and convert to UTF-8
+            .strip_bom(true) // Remove the BOM before sending data to us
+            .utf8_passthru(true) // Don't enforce UTF-8 (BOM or no BOM)
+            .build(f),
+    );
+    Ok(NextOperand { path: path.to_owned(), reader })
+}
+impl NextOperand {
+    /// A convenience wrapper around `bstr::for_byte_line`
+    pub(crate) fn for_byte_line<F>(self, mut for_each_line: F) -> Result<()>
+    where
+        F: FnMut(&[u8]),
+    {
+        let complaint = format!("Error reading file: {}", self.path.display());
+        self.reader
+            .for_byte_line(|line| {
+                for_each_line(line);
+                Ok(true)
+            })
+            .context(complaint)?;
+        Ok(())
     }
 }
 

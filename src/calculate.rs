@@ -4,7 +4,7 @@ use anyhow::Result;
 use std::path::PathBuf;
 
 use crate::args::OpName;
-use crate::io::zet_set_from;
+use crate::io::ToZetSet;
 
 /// Calculates and prints the set operation named by `op`. Each file in `files`
 /// is treated as a set of lines:
@@ -24,9 +24,9 @@ pub fn exec(operation: OpName, operands: &[PathBuf], out: impl std::io::Write) -
 
     match operation {
         OpName::Union => {
-            let mut set = zet_set_from(first_operand, ());
+            let mut set = first_operand.to_zet_set_with(());
             for operand in rest {
-                operand.for_byte_line(|line| {
+                operand?.for_byte_line(|line| {
                     set.insert(line, ());
                 })?
             }
@@ -34,9 +34,9 @@ pub fn exec(operation: OpName, operands: &[PathBuf], out: impl std::io::Write) -
         }
 
         OpName::Diff => {
-            let mut set = zet_set_from(first_operand, true);
+            let mut set = first_operand.to_zet_set_with(true);
             for operand in rest {
-                operand.for_byte_line(|line| {
+                operand?.for_byte_line(|line| {
                     if let Some(keepme) = set.get_mut(line) {
                         *keepme = false;
                     }
@@ -50,10 +50,10 @@ pub fn exec(operation: OpName, operands: &[PathBuf], out: impl std::io::Write) -
             const BLUE: bool = true; //  We're using Booleans, but we could
             const _RED: bool = false; // be using two different colors
             let mut this_cycle = BLUE;
-            let mut set = zet_set_from(first_operand, this_cycle);
+            let mut set = first_operand.to_zet_set_with(this_cycle);
             for operand in rest {
                 this_cycle = !this_cycle; // flip BLUE -> RED and RED -> BLUE
-                operand.for_byte_line(|line| {
+                operand?.for_byte_line(|line| {
                     if let Some(when_seen) = set.get_mut(line) {
                         *when_seen = this_cycle;
                     }
@@ -70,7 +70,7 @@ pub fn exec(operation: OpName, operands: &[PathBuf], out: impl std::io::Write) -
                 last: u32,
             }
             let mut operand_count = 0_u32;
-            let mut set = zet_set_from(first_operand, SeenIn { first: 0_u32, last: 0_u32 });
+            let mut set = first_operand.to_zet_set_with(SeenIn { first: 0_u32, last: 0_u32 });
             for operand in rest {
                 if operand_count == std::u32::MAX {
                     anyhow::bail!("Can't handle more than {} arguments", std::u32::MAX);
@@ -79,7 +79,7 @@ pub fn exec(operation: OpName, operands: &[PathBuf], out: impl std::io::Write) -
 
                 let seen_now = SeenIn { first: operand_count, last: operand_count };
 
-                operand.for_byte_line(|line| match set.get_mut(line) {
+                operand?.for_byte_line(|line| match set.get_mut(line) {
                     None => {
                         set.insert(line, seen_now);
                     }
@@ -100,7 +100,6 @@ pub fn exec(operation: OpName, operands: &[PathBuf], out: impl std::io::Write) -
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::io::ContentsIter;
     use assert_fs::{prelude::*, TempDir};
 
     fn calc(operation: OpName, operands: &[&[u8]]) -> String {

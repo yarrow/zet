@@ -19,12 +19,3 @@
 pub mod args;
 pub mod calculate;
 pub mod io;
-
-use fxhash::FxBuildHasher;
-use indexmap::IndexMap;
-use std::borrow::Cow;
-
-/// The `LineIterator` type is used to return the value of a `SetExpression` `s`:
-/// `s.iter()` returns an iterator over the lines (elements) of `s`.
-///
-pub(crate) type CowSet<'data, Bookkeeping> = IndexMap<Cow<'data, [u8]>, Bookkeeping, FxBuildHasher>;
