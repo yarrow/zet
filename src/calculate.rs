@@ -23,6 +23,8 @@ pub fn exec(operation: OpName, operands: &[PathBuf], out: impl std::io::Write) -
     let first_operand = first_operand.as_slice();
 
     match operation {
+        // `Union` doesn't need bookkeeping, so we use the unit type as its
+        // bookkeeping value.
         OpName::Union => {
             let mut set = first_operand.to_zet_set_with(());
             for operand in rest {
@@ -33,6 +35,9 @@ pub fn exec(operation: OpName, operands: &[PathBuf], out: impl std::io::Write) -
             return set.output_to(out);
         }
 
+        // For `Diff`, the bookkeeping value of `true` means we've seen the line
+        // only in the first operand, and `false` that the line is present in
+        // some other operand.
         OpName::Diff => {
             let mut set = first_operand.to_zet_set_with(true);
             for operand in rest {
@@ -46,11 +51,29 @@ pub fn exec(operation: OpName, operands: &[PathBuf], out: impl std::io::Write) -
             return set.output_to(out);
         }
 
+        // `Intersect` is more complicated — we start with each line in the
+        // first operand colored with `this_cycle`. So
+        // (1)  All lines in `set` colored with `this_cycle` have been seen in
+        //      every operand so far, and
+        // (2)  All lines in `set` are colored with `this_cycle`, so
+        // (3)  All lines in `set` have been seen in every operand so far.
+        //
+        // When we look at the next operand, (1) becomes unknown. We restore its
+        // truth by
+        // * Flipping `this_cycle` to the opposite color.
+        // * Setting every line that occurs in the the next operand to the new
+        //   value of `this_cycle`.
+        // Then we restore the truth of (2) by removing every line whose
+        // bookkeeping value is not `this_cycle`
+        //
+        // Once we've done this for each operand, the remaining lines are those
+        // occurring in each operand, so we've calculated the intersection of
+        // the operands.
         OpName::Intersect => {
             const BLUE: bool = true; //  We're using Booleans, but we could
             const _RED: bool = false; // be using two different colors
+            let mut set = first_operand.to_zet_set_with(BLUE);
             let mut this_cycle = BLUE;
-            let mut set = first_operand.to_zet_set_with(this_cycle);
             for operand in rest {
                 this_cycle = !this_cycle; // flip BLUE -> RED and RED -> BLUE
                 operand?.for_byte_line(|line| {
@@ -63,22 +86,29 @@ pub fn exec(operation: OpName, operands: &[PathBuf], out: impl std::io::Write) -
             return set.output_to(out);
         }
 
+        // For `Single` and `Multiple`, we keep track of the first and the last
+        // operand in which each line occurs.
+        // At the end,
+        // *  For `Single`, we keep the opertands for which `first == last`
+        // *  For `Multiple`, we keep the opertands for which `first != last`
+        //    (so the line was seen in at least two operands).
         OpName::Single | OpName::Multiple => {
             #[derive(Clone, Copy)]
             struct SeenIn {
                 first: u32,
                 last: u32,
             }
+
             let mut operand_count = 0_u32;
             let mut set = first_operand.to_zet_set_with(SeenIn { first: 0_u32, last: 0_u32 });
+
             for operand in rest {
                 if operand_count == std::u32::MAX {
                     anyhow::bail!("Can't handle more than {} arguments", std::u32::MAX);
                 }
-                operand_count = operand_count.wrapping_add(1);
+                operand_count += 1;
 
                 let seen_now = SeenIn { first: operand_count, last: operand_count };
-
                 operand?.for_byte_line(|line| match set.get_mut(line) {
                     None => {
                         set.insert(line, seen_now);
@@ -86,11 +116,13 @@ pub fn exec(operation: OpName, operands: &[PathBuf], out: impl std::io::Write) -
                     Some(seen_in) => seen_in.last = operand_count,
                 })?
             }
+
             if operation == OpName::Single {
                 set.retain(|seen_in| seen_in.first == seen_in.last);
             } else {
                 set.retain(|seen_in| seen_in.first != seen_in.last);
             }
+
             return set.output_to(out);
         }
     }
