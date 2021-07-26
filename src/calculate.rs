@@ -4,7 +4,7 @@ use anyhow::Result;
 use std::path::PathBuf;
 
 use crate::args::OpName;
-use crate::io::ToZetSet;
+use crate::set::ToZetSet;
 
 /// Calculates and prints the set operation named by `op`. Each file in `files`
 /// is treated as a set of lines:
@@ -15,8 +15,8 @@ use crate::io::ToZetSet;
 /// * `OpName::Single` prints the lines that occur in exactly one file, and
 /// * `OpName::Multiple` prints the lines that occur in more than one file.
 ///
-pub fn exec(operation: OpName, operands: &[PathBuf], out: impl std::io::Write) -> Result<()> {
-    let (first_operand, rest) = match crate::io::first_and_rest(operands) {
+pub fn exec(operation: OpName, files: &[PathBuf], out: impl std::io::Write) -> Result<()> {
+    let (first_operand, rest) = match crate::operands::first_and_rest(files) {
         None => return Ok(()),
         Some((first, others)) => (first?, others),
     };
