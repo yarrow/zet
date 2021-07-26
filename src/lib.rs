@@ -1,5 +1,11 @@
-//! The `calculate::exec` function is the kernel of the appliction.  The `args` module parses
-//! the command line, and the `io` module hides I/O details.
+//! The `args` module parses the command line.
+//! The `operands` module returns a `Vec[u8]` containing the contents of the
+//! first operand and an iterator over the remaining operands.
+//! The `operations` module performs the union, intersection, etc on the sets of
+//! lines in each file.
+//! The `set` module implements those sets, with file lines represented as keys
+//! of a hash map (whose values are small bookkeeping types, varying by
+//! operation).
 
 #![deny(warnings)]
 #![cfg_attr(debug_assertions, allow(dead_code, unused_imports), warn(warnings))]
@@ -17,6 +23,6 @@
     unused_qualifications
 )]
 pub mod args;
-pub mod calculate;
 pub mod operands;
+pub mod operations;
 pub mod set;

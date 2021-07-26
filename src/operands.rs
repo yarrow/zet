@@ -12,14 +12,15 @@ use std::{
 
 /// Return the contents of the first file named in `files` as a Vec<u8>, and an iterator over the
 /// subsequent arguments.
-pub(crate) fn first_and_rest(files: &[PathBuf]) -> Option<(Result<Vec<u8>>, RemainingOperands)> {
+#[must_use]
+pub fn first_and_rest(files: &[PathBuf]) -> Option<(Result<Vec<u8>>, Remaining)> {
     match files {
         [] => None,
         [first, rest @ ..] => {
             let first_operand = fs::read(&first)
                 .with_context(|| format!("Can't read file: {}", first.display()))
                 .map(decode_if_utf16);
-            Some((first_operand, RemainingOperands::from(rest.to_vec())))
+            Some((first_operand, Remaining::from(rest.to_vec())))
         }
     }
 }
@@ -44,29 +45,29 @@ fn decode_if_utf16(candidate: Vec<u8>) -> Vec<u8> {
 }
 
 /// The first operand is read into memory in its entirety, but that's not
-/// efficient for the second and subsequent operands.  The `RemainingOperands`
+/// efficient for the second and subsequent operands.  The `Remaining`
 /// structure is an iterator over those operands.
-pub(crate) struct RemainingOperands {
+pub struct Remaining {
     files: std::vec::IntoIter<PathBuf>,
 }
 
-impl From<Vec<PathBuf>> for RemainingOperands {
+impl From<Vec<PathBuf>> for Remaining {
     fn from(files: Vec<PathBuf>) -> Self {
-        RemainingOperands { files: files.into_iter() }
+        Remaining { files: files.into_iter() }
     }
 }
 
-impl Iterator for RemainingOperands {
+impl Iterator for Remaining {
     type Item = Result<NextOperand>;
     fn next(&mut self) -> Option<Self::Item> {
         self.files.next().map(|path| reader_for(&path))
     }
 }
 
-/// `NextOperand` is the `Item` type for the `RemainingOperands` iterator. The
+/// `NextOperand` is the `Item` type for the `Remaining` iterator. The
 /// `reader` field is a reader for the file with path `path`. We keep the `path`
 /// field around to improve error messages.
-pub(crate) struct NextOperand {
+pub struct NextOperand {
     path: PathBuf,
     reader: BufReader<DecodeReaderBytes<File, Vec<u8>>>,
 }
@@ -113,7 +114,7 @@ mod test {
         UTF8_BOM.to_string() + expected
     }
 
-    fn utf_16le(source: &str) -> Vec<u8> {
+    fn to_utf_16le(source: &str) -> Vec<u8> {
         let mut result = b"\xff\xfe".to_vec();
         for b in source.as_bytes().iter() {
             result.push(*b);
@@ -122,7 +123,7 @@ mod test {
         result
     }
 
-    fn utf_16be(source: &str) -> Vec<u8> {
+    fn to_utf_16be(source: &str) -> Vec<u8> {
         let mut result = b"\xfe\xff".to_vec();
         for b in source.as_bytes().iter() {
             result.push(0);
@@ -134,12 +135,12 @@ mod test {
     #[test]
     fn utf_16le_is_translated_to_utf8() {
         let expected = "The cute red crab\n jumps over the lazy blue gopher\n";
-        assert_eq!(decode_if_utf16(utf_16le(&expected)), abominate(expected).as_bytes());
+        assert_eq!(decode_if_utf16(to_utf_16le(&expected)), abominate(expected).as_bytes());
     }
 
     #[test]
     fn utf_16be_is_translated_to_utf8() {
         let expected = "The cute red crab\n jumps over the lazy blue gopher\n";
-        assert_eq!(decode_if_utf16(utf_16be(&expected)), abominate(expected).as_bytes());
+        assert_eq!(decode_if_utf16(to_utf_16be(&expected)), abominate(expected).as_bytes());
     }
 }

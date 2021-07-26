@@ -1,9 +1,9 @@
-//! Houses the `exec` function
+//! Houses the `calculate` function
 //!
 use anyhow::Result;
-use std::path::PathBuf;
 
 use crate::args::OpName;
+use crate::operands;
 use crate::set::ToZetSet;
 
 /// Calculates and prints the set operation named by `op`. Each file in `files`
@@ -15,13 +15,12 @@ use crate::set::ToZetSet;
 /// * `OpName::Single` prints the lines that occur in exactly one file, and
 /// * `OpName::Multiple` prints the lines that occur in more than one file.
 ///
-pub fn exec(operation: OpName, files: &[PathBuf], out: impl std::io::Write) -> Result<()> {
-    let (first_operand, rest) = match crate::operands::first_and_rest(files) {
-        None => return Ok(()),
-        Some((first, others)) => (first?, others),
-    };
-    let first_operand = first_operand.as_slice();
-
+pub fn calculate(
+    operation: OpName,
+    first_operand: &[u8],
+    rest: operands::Remaining,
+    out: impl std::io::Write,
+) -> Result<()> {
     match operation {
         // `Union` doesn't need bookkeeping, so we use the unit type as its
         // bookkeeping value.
@@ -133,14 +132,15 @@ pub fn exec(operation: OpName, files: &[PathBuf], out: impl std::io::Write) -> R
 mod test {
     use super::*;
     use assert_fs::{prelude::*, TempDir};
+    use std::path::PathBuf;
 
     fn calc(operation: OpName, operands: &[&[u8]]) -> String {
-        let operands = operands.iter().map(|s| s.to_vec());
+        let first = operands[0];
+        let remaining = operands[1..].iter().map(|s| s.to_vec());
 
         let temp_dir = TempDir::new().unwrap();
         let mut paths = Vec::new();
-
-        for operand in operands {
+        for operand in remaining {
             let name = format!("operand{}", paths.len());
             let op = temp_dir.child(name);
             op.write_binary(&operand[..]).unwrap();
@@ -148,7 +148,7 @@ mod test {
         }
 
         let mut answer = Vec::new();
-        exec(operation, &paths, &mut answer).unwrap();
+        calculate(operation, first, operands::Remaining::from(paths), &mut answer).unwrap();
         String::from_utf8(answer).unwrap()
     }
 

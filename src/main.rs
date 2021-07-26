@@ -1,18 +1,20 @@
 use anyhow::Result;
 use std::io;
+use zet::operands::first_and_rest;
+use zet::operations::calculate;
 fn main() -> Result<()> {
     let args = zet::args::parsed();
 
-    // We use `(first, rest, set_writer)` because the `io` module needs to examine the first
-    // file to determine whether to output a BOM and whether to end output lines with `\r\n`
-    // or just '\n'. Because all of the operations except `Union` need to handle the first
-    // argument specially anyway, there's no great motivation to disguise this by using a
-    // `Peekable` iterator.
-    //
+    let (first_operand, rest) = match first_and_rest(&args.files) {
+        None => return Ok(()),
+        Some((first, others)) => (first?, others),
+    };
+    let first = first_operand.as_slice();
+
     if atty::is(atty::Stream::Stdout) {
-        zet::calculate::exec(args.op, &args.files, io::stdout().lock())?;
+        calculate(args.op, first, rest, io::stdout().lock())?;
     } else {
-        zet::calculate::exec(args.op, &args.files, io::BufWriter::new(io::stdout().lock()))?;
+        calculate(args.op, first, rest, io::BufWriter::new(io::stdout().lock()))?;
     };
     Ok(())
 }
