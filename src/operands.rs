@@ -1,4 +1,8 @@
-//! Turning `PathBuf`s into operands
+//! Provides the `first_and_rest` function, which returns a `Vec<u8>` containing
+//! the contents of the first operand and an iterator over the remaining
+//! operands. *Note:* this different treatment of the first and remaining
+//! operands has the unfortunate result of requiring different code paths for
+//! translating UTF16 files into UTF8. That currently seems worth the cost.
 use anyhow::{Context, Result};
 use bstr::io::BufReadExt;
 use encoding_rs_io::{DecodeReaderBytes, DecodeReaderBytesBuilder};
@@ -135,12 +139,12 @@ mod test {
     #[test]
     fn utf_16le_is_translated_to_utf8() {
         let expected = "The cute red crab\n jumps over the lazy blue gopher\n";
-        assert_eq!(decode_if_utf16(to_utf_16le(&expected)), abominate(expected).as_bytes());
+        assert_eq!(decode_if_utf16(to_utf_16le(expected)), abominate(expected).as_bytes());
     }
 
     #[test]
     fn utf_16be_is_translated_to_utf8() {
         let expected = "The cute red crab\n jumps over the lazy blue gopher\n";
-        assert_eq!(decode_if_utf16(to_utf_16be(&expected)), abominate(expected).as_bytes());
+        assert_eq!(decode_if_utf16(to_utf_16be(expected)), abominate(expected).as_bytes());
     }
 }

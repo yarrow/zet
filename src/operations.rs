@@ -29,7 +29,7 @@ pub fn calculate(
             for operand in rest {
                 operand?.for_byte_line(|line| {
                     set.insert(line, ());
-                })?
+                })?;
             }
             return set.output_to(out);
         }
@@ -44,7 +44,7 @@ pub fn calculate(
                     if let Some(keepme) = set.get_mut(line) {
                         *keepme = false;
                     }
-                })?
+                })?;
             }
             set.retain(|keepme| *keepme);
             return set.output_to(out);
@@ -113,7 +113,7 @@ pub fn calculate(
                         set.insert(line, seen_now);
                     }
                     Some(seen_in) => seen_in.last = operand_count,
-                })?
+                })?;
             }
 
             if operation == OpName::Single {

@@ -1,4 +1,5 @@
-//! The `ZetSet` structure
+//! Provides the `ZetSet` structure, intended to be initialized from the
+//! contents of the first input file.
 use anyhow::Result;
 use fxhash::FxBuildHasher;
 use indexmap::IndexMap;
@@ -93,7 +94,7 @@ fn output_info(slice: &[u8]) -> (&'static [u8], &'static [u8]) {
     }
     if let Some(n) = memchr(b'\n', slice) {
         if n > 0 && slice[n - 1] == b'\r' {
-            line_terminator = b"\r\n"
+            line_terminator = b"\r\n";
         }
     }
     (bom, line_terminator)
