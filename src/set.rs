@@ -84,7 +84,7 @@ impl<'data> ToZetSet<'data> for &[u8] {
 /// Returns `(bom, line_terminator)`, where `bom` is the (UTF-8) Byte Order
 /// Mark, or the empty string if `slice` has none, and `line_terminator` is
 /// `\r\n` if the first line of `slice` ends with `\r\n`, and `\n` if the first
-/// line ends just with '\n` (or is the only line in the file and has no line
+/// line ends just with `\n` (or is the only line in the file and has no line
 /// terminator).
 fn output_info(slice: &[u8]) -> (&'static [u8], &'static [u8]) {
     let mut bom: &'static [u8] = b"";

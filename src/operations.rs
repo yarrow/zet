@@ -88,8 +88,8 @@ pub fn calculate(
         // For `Single` and `Multiple`, we keep track of the first and the last
         // operand in which each line occurs.
         // At the end,
-        // *  For `Single`, we keep the opertands for which `first == last`
-        // *  For `Multiple`, we keep the opertands for which `first != last`
+        // *  For `Single`, we keep the operands for which `first == last`
+        // *  For `Multiple`, we keep the operands for which `first != last`
         //    (so the line was seen in at least two operands).
         OpName::Single | OpName::Multiple => {
             #[derive(Clone, Copy)]

@@ -72,23 +72,25 @@ impl Iterator for Remaining {
 /// `reader` field is a reader for the file with path `path`. We keep the `path`
 /// field around to improve error messages.
 pub struct NextOperand {
-    path: PathBuf,
+    path_display: String,
     reader: BufReader<DecodeReaderBytes<File, Vec<u8>>>,
 }
 
 /// The reader for a second or subsequent operand is a buffered reader with the
-/// ability to decode UTF-16 files.
+/// ability to decode UTF-16 files. I think this results in double-buffering,
+/// with one buffer within the `DecodeReaderBytes` value, and another in the
+/// `BufReader` that wraps it. I don't know how to work around that.
 fn reader_for(path: &Path) -> Result<NextOperand> {
-    let f = File::open(path).with_context(|| format!("Can't open file: {}", path.display()))?;
-    let reader = BufReader::with_capacity(
-        32 * 1024,
+    let path_display = format!("{}", path.display());
+    let f = File::open(path).with_context(|| format!("Can't open file: {}", path_display))?;
+    let reader = BufReader::new(
         DecodeReaderBytesBuilder::new()
             .bom_sniffing(true) // Look at the BOM to detect UTF-16 files and convert to UTF-8
             .strip_bom(true) // Remove the BOM before sending data to us
             .utf8_passthru(true) // Don't enforce UTF-8 (BOM or no BOM)
             .build(f),
     );
-    Ok(NextOperand { path: path.to_owned(), reader })
+    Ok(NextOperand { path_display, reader })
 }
 impl NextOperand {
     /// A convenience wrapper around `bstr::for_byte_line`
@@ -96,13 +98,13 @@ impl NextOperand {
     where
         F: FnMut(&[u8]),
     {
-        let complaint = format!("Error reading file: {}", self.path.display());
-        self.reader
+        let NextOperand { reader, path_display } = self;
+        reader
             .for_byte_line(|line| {
                 for_each_line(line);
                 Ok(true)
             })
-            .context(complaint)?;
+            .with_context(|| format!("Error reading file: {}", path_display))?;
         Ok(())
     }
 }

@@ -22,7 +22,7 @@
 //!   have few lines not already present in the first file.
 //! * We start output with a Unicode byte order mark if and only the first input
 //!   file begins with a byte order mark.
-//! * We strip either the line terminator (`\r\n` or `\n`) from the end of each
+//! * We strip the line terminator (either `\r\n` or `\n`) from the end of each
 //!   input line. On output, we use the line terminator found at the end of the
 //!   first line of the first input file.
 //! * We process all input files before doing any output. (This is not
@@ -41,9 +41,9 @@
 //! * A field that holds the line terminator to be used, taken from the first
 //!   line of `slice`.
 //!
-//! `ZetSet` exposes the `.insert` and `retain` of its internal `IndexMap`
-//! operations to mutate the set of lines, and `.get_mut` to update the
-//! bookkeeping value of a line. It provides an `.output_to` method to write
+//! `ZetSet` exposes the `.insert` and `retain` methods of its internal
+//! `IndexMap` operations to mutate the set of lines, and `.get_mut` to update
+//! the bookkeeping value of a line. It provides an `.output_to` method to write
 //! the lines of the set to an `io::Write` sink.
 //!
 #![deny(warnings)]
