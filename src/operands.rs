@@ -17,14 +17,16 @@ use std::{
 /// Return the contents of the first file named in `files` as a Vec<u8>, and an iterator over the
 /// subsequent arguments.
 #[must_use]
-pub fn first_and_rest(files: &[PathBuf]) -> Option<(Result<Vec<u8>>, Remaining)> {
+pub fn first_and_rest(files: &[PathBuf]) -> Option<(Result<Vec<u8>>, Remaining, usize)> {
     match files {
         [] => None,
         [first, rest @ ..] => {
             let first_operand = fs::read(&first)
                 .with_context(|| format!("Can't read file: {}", first.display()))
                 .map(decode_if_utf16);
-            Some((first_operand, Remaining::from(rest.to_vec())))
+            let rest = rest.to_vec();
+            let rest_len = rest.len();
+            Some((first_operand, Remaining::from(rest), rest_len))
         }
     }
 }
