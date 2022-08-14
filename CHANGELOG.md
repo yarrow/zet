@@ -1,6 +1,24 @@
 # Change Log
 
 ## [Unreleased]
+
+Refactor and expand internal documentation.
+
+## [0.2.3 Unreleased] - 2021-07-14
+
+## Changed
+- Bump MSRV to 1.49.0
+- Switch from `failure` to `anyhow`
+- Performance enhancements:
+    - Use `Cow` keys for `UnionSet` and `CountedSet` so we can borrow the lines of
+      the first file rather than allocating them
+    - If `line` is in a `CountedSet`, don't allocate a key
+    - Use `FxHash` — averages 10-15% faster on large files
+    - Convert `Diff` and `Union` to use `CowSet`
+    - Convert `Single`, `Multiple`, and `Intersect` to by-line algorithms
+    - No longer create map/set for args after the 1st
+
+
 ## [0.2.0] - 2021-07-03
 
 ## Changed
@@ -21,6 +39,7 @@
 
 Initial release
 
-[Unreleased]: https://github.com/yarrow/zet/compare/0.2.0...HEAD
+[Unreleased]: https://github.com/yarrow/zet/compare/prerelease-0.2.3...HEAD
+[0.2.3 Unreleased]: https://github.com/yarrow/zet/compare/0.2.0...prerelease-0.2.3
 [0.2.0]: https://github.com/yarrow/zet/compare/v0.1.1...0.2.0
 [0.1.1]: https://github.com/yarrow/zet/compare/v0.1.0...v0.1.1

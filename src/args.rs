@@ -41,7 +41,7 @@ pub struct Args {
     pub files: Vec<PathBuf>,
 }
 
-#[derive(PartialEq, Debug, Clone, Copy)]
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
 /// Name of the requested operation
 pub enum OpName {
     /// Print the lines present in every file
