@@ -34,9 +34,10 @@ Here are the subcommands of `zet` and what they do:
   first line of its first file argument ends in `\r\n`, and `\n` otherwise (if
   the first line ends in `\n` or the first file has only one line and that line
   has no line terminator.)
-* Zet reads entire files into memory. Its memory usage is roughly proportional
-  to the file size of its largest argument plus the size of the (eventual)
-  output.
+* Zet reads its entire first input file into memory. Its memory usage is
+  closely proportional to the size of its first input (`zet intersect` and `zet
+  diff`) or the larger of the size of its first input and the size of its
+  output (`zet union`, `zet single`, and `zet multiple`).
 
 ## License
 
