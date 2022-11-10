@@ -1,5 +1,7 @@
 //! Houses the `calculate` function
 //!
+use std::num::NonZeroUsize;
+
 use anyhow::Result;
 
 use crate::args::OpName;
@@ -85,41 +87,44 @@ pub fn calculate(
             return set.output_to(out);
         }
 
-        // For `Single` and `Multiple`, we keep track of the first and the last
-        // operand in which each line occurs.
-        // At the end,
-        // *  For `Single`, we keep the operands for which `first == last`
-        // *  For `Multiple`, we keep the operands for which `first != last`
-        //    (so the line was seen in at least two operands).
+        // For `Single` and `Multiple`, we keep track of the id number of the
+        // operand in which each line occurs, if there is exactly one such
+        // operand. At the end, if a line has occurred in just one operand,
+        // with id n, then its bookkeeping value will be Some(n).  If it occurs
+        // in multiple operands, then its bookkeeping value will be None.
+        // At the end:
+        // *  For `Single`, we keep the operands with Some(n)
+        // *  For `Multiple`, we keep the operands with None (meaning the line was
+        //    seen in at least two operands).:
+        // As you may have noticed, at the end we don't care *what* the id n is,
+        // just that there is only one.  We keep track of n because a line that
+        // occurs multiple times, but only in a single operand, is still
+        // considered to have occurred once.
         OpName::Single | OpName::Multiple => {
-            #[derive(Clone, Copy)]
-            struct SeenIn {
-                first: u32,
-                last: u32,
-            }
-
-            let mut operand_count = 0_u32;
-            let mut set = first_operand.to_zet_set_with(SeenIn { first: 0_u32, last: 0_u32 });
+            let seen_in_first_operand = NonZeroUsize::new(1);
+            let mut this_operand_uid = seen_in_first_operand.expect("1 is nonzero");
+            let mut set = first_operand.to_zet_set_with(seen_in_first_operand);
 
             for operand in rest {
-                if operand_count == std::u32::MAX {
-                    anyhow::bail!("Can't handle more than {} arguments", std::u32::MAX);
+                let seen_in_this_operand = this_operand_uid.checked_add(1);
+                match seen_in_this_operand {
+                    Some(n) => this_operand_uid = n,
+                    None => anyhow::bail!("Can't handle {} arguments", std::usize::MAX),
                 }
-                operand_count += 1;
-
-                let seen_now = SeenIn { first: operand_count, last: operand_count };
                 operand?.for_byte_line(|line| match set.get_mut(line) {
-                    None => {
-                        set.insert(line, seen_now);
+                    None => set.insert(line, seen_in_this_operand),
+                    Some(unique_source) => {
+                        if *unique_source != seen_in_this_operand {
+                            *unique_source = None;
+                        }
                     }
-                    Some(seen_in) => seen_in.last = operand_count,
                 })?;
             }
 
             if operation == OpName::Single {
-                set.retain(|seen_in| seen_in.first == seen_in.last);
+                set.retain(|unique_source| unique_source.is_some());
             } else {
-                set.retain(|seen_in| seen_in.first != seen_in.last);
+                set.retain(|unique_source| unique_source.is_none());
             }
 
             return set.output_to(out);

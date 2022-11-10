@@ -21,7 +21,7 @@ pub fn first_and_rest(files: &[PathBuf]) -> Option<(Result<Vec<u8>>, Remaining, 
     match files {
         [] => None,
         [first, rest @ ..] => {
-            let first_operand = fs::read(&first)
+            let first_operand = fs::read(first)
                 .with_context(|| format!("Can't read file: {}", first.display()))
                 .map(decode_if_utf16);
             let rest = rest.to_vec();
@@ -70,9 +70,9 @@ impl Iterator for Remaining {
     }
 }
 
-/// `NextOperand` is the `Item` type for the `Remaining` iterator. The
-/// `reader` field is a reader for the file with path `path`. We keep the `path`
-/// field around to improve error messages.
+/// `NextOperand` is the `Item` type for the `Remaining` iterator. For a given
+/// file path, the `reader` field is a reader for the file with that path, and
+/// `path_display` is the path formatted for use in error messages.
 pub struct NextOperand {
     path_display: String,
     reader: BufReader<DecodeReaderBytes<File, Vec<u8>>>,
@@ -84,7 +84,7 @@ pub struct NextOperand {
 /// `BufReader` that wraps it. I don't know how to work around that.
 fn reader_for(path: &Path) -> Result<NextOperand> {
     let path_display = format!("{}", path.display());
-    let f = File::open(path).with_context(|| format!("Can't open file: {}", path_display))?;
+    let f = File::open(path).with_context(|| format!("Can't open file: {path_display}"))?;
     let reader = BufReader::new(
         DecodeReaderBytesBuilder::new()
             .bom_sniffing(true) // Look at the BOM to detect UTF-16 files and convert to UTF-8
@@ -106,7 +106,7 @@ impl NextOperand {
                 for_each_line(line);
                 Ok(true)
             })
-            .with_context(|| format!("Error reading file: {}", path_display))?;
+            .with_context(|| format!("Error reading file: {path_display}"))?;
         Ok(())
     }
 }
