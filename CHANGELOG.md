@@ -1,6 +1,6 @@
 # Change Log
 
-## [Unreleased]
+## [0.2.5] - 2022-11-10
 
 ## Changed
 - Bump Minimum Supported Rust Version to 1.64.0
@@ -16,7 +16,6 @@
 - Refactor and expand internal documentation.
 - Change Single/Multiple code to use a single NonZeroUsize operand ID rather than
   two u32 IDs
-
 
 ## [0.2.0] - 2021-07-03
 
