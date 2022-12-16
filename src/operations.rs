@@ -1,5 +1,6 @@
 //! Houses the `calculate` function
 //!
+use std::io::Read;
 use std::num::NonZeroUsize;
 
 use anyhow::Result;
@@ -17,10 +18,10 @@ use crate::set::ToZetSet;
 /// * `OpName::Single` prints the lines that occur in exactly one file, and
 /// * `OpName::Multiple` prints the lines that occur in more than one file.
 ///
-pub fn calculate(
+pub fn calculate<T: Read>(
     operation: OpName,
     first_operand: &[u8],
-    rest: operands::Remaining,
+    rest: operands::Remaining<T>,
     out: impl std::io::Write,
 ) -> Result<()> {
     match operation {
@@ -29,7 +30,7 @@ pub fn calculate(
         OpName::Union => {
             let mut set = first_operand.to_zet_set_with(());
             for operand in rest {
-                operand?.for_byte_line(|line| {
+                operand.for_byte_line(|line| {
                     set.insert(line, ());
                 })?;
             }
@@ -42,7 +43,7 @@ pub fn calculate(
         OpName::Diff => {
             let mut set = first_operand.to_zet_set_with(true);
             for operand in rest {
-                operand?.for_byte_line(|line| {
+                operand.for_byte_line(|line| {
                     if let Some(keepme) = set.get_mut(line) {
                         *keepme = false;
                     }
@@ -77,7 +78,7 @@ pub fn calculate(
             let mut this_cycle = BLUE;
             for operand in rest {
                 this_cycle = !this_cycle; // flip BLUE -> RED and RED -> BLUE
-                operand?.for_byte_line(|line| {
+                operand.for_byte_line(|line| {
                     if let Some(when_seen) = set.get_mut(line) {
                         *when_seen = this_cycle;
                     }
@@ -111,7 +112,7 @@ pub fn calculate(
                     Some(n) => this_operand_uid = n,
                     None => anyhow::bail!("Can't handle {} arguments", std::usize::MAX),
                 }
-                operand?.for_byte_line(|line| match set.get_mut(line) {
+                operand.for_byte_line(|line| match set.get_mut(line) {
                     None => set.insert(line, seen_in_this_operand),
                     Some(unique_source) => {
                         if *unique_source != seen_in_this_operand {
@@ -135,9 +136,13 @@ pub fn calculate(
 #[allow(clippy::pedantic)]
 #[cfg(test)]
 mod test {
-    use super::*;
-    use assert_fs::{prelude::*, TempDir};
     use std::path::PathBuf;
+
+    use assert_fs::{prelude::*, TempDir};
+
+    use super::*;
+
+    use self::OpName::*;
 
     fn calc(operation: OpName, operands: &[&[u8]]) -> String {
         let first = operands[0];
@@ -153,11 +158,10 @@ mod test {
         }
 
         let mut answer = Vec::new();
-        calculate(operation, first, operands::Remaining::from(paths), &mut answer).unwrap();
+        calculate(operation, first, operands::Remaining::from_paths(paths).unwrap(), &mut answer)
+            .unwrap();
         String::from_utf8(answer).unwrap()
     }
-
-    use self::OpName::*;
 
     #[test]
     fn given_a_single_argument_all_ops_but_multiple_return_its_lines_in_order_without_dups() {
@@ -170,6 +174,7 @@ mod test {
             assert_eq!(result, *expected, "for {:?}", op);
         }
     }
+
     #[test]
     fn results_for_each_operation() {
         let args: Vec<&[u8]> = vec![

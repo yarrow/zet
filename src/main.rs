@@ -1,14 +1,17 @@
-use anyhow::Result;
 use std::io;
+
+use anyhow::Result;
+
 use zet::args::OpName;
 use zet::operands::first_and_rest;
 use zet::operations::calculate;
+
 fn main() -> Result<()> {
     let args = zet::args::parsed();
 
-    let (first_operand, rest, number_of_operands) = match first_and_rest(&args.files) {
+    let (first_operand, rest, number_of_operands) = match first_and_rest(&args.files)? {
         None => return Ok(()), // No operands implies an empty result
-        Some((first, others, others_len)) => (first?, others, others_len + 1),
+        Some((first, others, others_len)) => (first, others, others_len + 1),
     };
 
     let op = if number_of_operands == 1 && args.op == OpName::Multiple {

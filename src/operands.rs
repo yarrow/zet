@@ -3,30 +3,31 @@
 //! operands. *Note:* this different treatment of the first and remaining
 //! operands has the unfortunate result of requiring different code paths for
 //! translating UTF16 files into UTF8. That currently seems worth the cost.
-use anyhow::{Context, Result};
-use bstr::io::BufReadExt;
-use encoding_rs_io::{DecodeReaderBytes, DecodeReaderBytesBuilder};
 use std::{
     fs,
     fs::File,
-    io::BufReader,
+    io::{BufReader, Read},
     ops::FnMut,
     path::{Path, PathBuf},
 };
 
+use anyhow::{Context, Result};
+use bstr::io::BufReadExt;
+use encoding_rs_io::{DecodeReaderBytes, DecodeReaderBytesBuilder};
+
 /// Return the contents of the first file named in `files` as a Vec<u8>, and an iterator over the
 /// subsequent arguments.
-#[must_use]
-pub fn first_and_rest(files: &[PathBuf]) -> Option<(Result<Vec<u8>>, Remaining, usize)> {
+pub fn first_and_rest(files: &[PathBuf]) -> Result<Option<(Vec<u8>, Remaining<File>, usize)>> {
     match files {
-        [] => None,
+        [] => Ok(None),
         [first, rest @ ..] => {
             let first_operand = fs::read(first)
                 .with_context(|| format!("Can't read file: {}", first.display()))
-                .map(decode_if_utf16);
+                .map(decode_if_utf16)?;
             let rest = rest.to_vec();
             let rest_len = rest.len();
-            Some((first_operand, Remaining::from(rest), rest_len))
+            let remaining = Remaining::from_paths(rest)?;
+            Ok(Some((first_operand, remaining, rest_len)))
         }
     }
 }
@@ -53,52 +54,67 @@ fn decode_if_utf16(candidate: Vec<u8>) -> Vec<u8> {
 /// The first operand is read into memory in its entirety, but that's not
 /// efficient for the second and subsequent operands.  The `Remaining`
 /// structure is an iterator over those operands.
-pub struct Remaining {
-    files: std::vec::IntoIter<PathBuf>,
+///
+/// * `T` - The type of the data being read
+pub struct Remaining<T: Read> {
+    files: std::vec::IntoIter<(String, T)>,
 }
 
-impl From<Vec<PathBuf>> for Remaining {
-    fn from(files: Vec<PathBuf>) -> Self {
+impl<T: Read> From<Vec<(String, T)>> for Remaining<T> {
+    fn from(files: Vec<(String, T)>) -> Self {
         Remaining { files: files.into_iter() }
     }
 }
 
-impl Iterator for Remaining {
-    type Item = Result<NextOperand>;
+impl Remaining<File> {
+    /// Create a `Remaining` from the list of paths to the remaining files
+    pub fn from_paths(paths: Vec<PathBuf>) -> Result<Remaining<File>> {
+        let mut files: Vec<(String, File)> = Vec::new();
+        for path in paths {
+            let path_display = format!("{}", path.display());
+            match File::open(path).with_context(|| format!("Can't open file: {path_display}")) {
+                Ok(file) => files.push((path_display, file)),
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(Remaining::from(files))
+    }
+}
+
+impl<T: Read> Iterator for Remaining<T> {
+    type Item = NextOperand<T>;
+
     fn next(&mut self) -> Option<Self::Item> {
-        self.files.next().map(|path| reader_for(&path))
+        self.files.next().map(|(path_display, file)| {
+            // The reader for a second or subsequent operand is a buffered reader with the
+            // ability to decode UTF-16 files. I think this results in double-buffering,
+            // with one buffer within the `DecodeReaderBytes` value, and another in the
+            // `BufReader` that wraps it. I don't know how to work around that.
+            let reader = BufReader::new(
+                DecodeReaderBytesBuilder::new()
+                    .bom_sniffing(true) // Look at the BOM to detect UTF-16 files and convert to UTF-8
+                    .strip_bom(true) // Remove the BOM before sending data to us
+                    .utf8_passthru(true) // Don't enforce UTF-8 (BOM or no BOM)
+                    .build(file),
+            );
+            NextOperand { path_display, reader }
+        })
     }
 }
 
 /// `NextOperand` is the `Item` type for the `Remaining` iterator. For a given
 /// file path, the `reader` field is a reader for the file with that path, and
 /// `path_display` is the path formatted for use in error messages.
-pub struct NextOperand {
+pub struct NextOperand<T: Read> {
     path_display: String,
-    reader: BufReader<DecodeReaderBytes<File, Vec<u8>>>,
+    reader: BufReader<DecodeReaderBytes<T, Vec<u8>>>,
 }
 
-/// The reader for a second or subsequent operand is a buffered reader with the
-/// ability to decode UTF-16 files. I think this results in double-buffering,
-/// with one buffer within the `DecodeReaderBytes` value, and another in the
-/// `BufReader` that wraps it. I don't know how to work around that.
-fn reader_for(path: &Path) -> Result<NextOperand> {
-    let path_display = format!("{}", path.display());
-    let f = File::open(path).with_context(|| format!("Can't open file: {path_display}"))?;
-    let reader = BufReader::new(
-        DecodeReaderBytesBuilder::new()
-            .bom_sniffing(true) // Look at the BOM to detect UTF-16 files and convert to UTF-8
-            .strip_bom(true) // Remove the BOM before sending data to us
-            .utf8_passthru(true) // Don't enforce UTF-8 (BOM or no BOM)
-            .build(f),
-    );
-    Ok(NextOperand { path_display, reader })
-}
-impl NextOperand {
+impl<T: Read> NextOperand<T> {
     /// A convenience wrapper around `bstr::for_byte_line`
     pub(crate) fn for_byte_line<F>(self, mut for_each_line: F) -> Result<()>
-    where
-        F: FnMut(&[u8]),
+        where
+            F: FnMut(&[u8]),
     {
         let NextOperand { reader, path_display } = self;
         reader
