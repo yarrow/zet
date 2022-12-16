@@ -136,13 +136,9 @@ pub fn calculate<T: Read>(
 #[allow(clippy::pedantic)]
 #[cfg(test)]
 mod test {
-    use std::path::PathBuf;
-
-    use assert_fs::{prelude::*, TempDir};
-
     use super::*;
-
-    use self::OpName::*;
+    use assert_fs::{prelude::*, TempDir};
+    use std::path::PathBuf;
 
     fn calc(operation: OpName, operands: &[&[u8]]) -> String {
         let first = operands[0];
@@ -162,6 +158,8 @@ mod test {
             .unwrap();
         String::from_utf8(answer).unwrap()
     }
+
+    use self::OpName::*;
 
     #[test]
     fn given_a_single_argument_all_ops_but_multiple_return_its_lines_in_order_without_dups() {

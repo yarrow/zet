@@ -3,6 +3,9 @@
 //! operands. *Note:* this different treatment of the first and remaining
 //! operands has the unfortunate result of requiring different code paths for
 //! translating UTF16 files into UTF8. That currently seems worth the cost.
+use anyhow::{Context, Result};
+use bstr::io::BufReadExt;
+use encoding_rs_io::{DecodeReaderBytes, DecodeReaderBytesBuilder};
 use std::{
     fs,
     fs::File,
@@ -10,10 +13,6 @@ use std::{
     ops::FnMut,
     path::{Path, PathBuf},
 };
-
-use anyhow::{Context, Result};
-use bstr::io::BufReadExt;
-use encoding_rs_io::{DecodeReaderBytes, DecodeReaderBytesBuilder};
 
 /// Return the contents of the first file named in `files` as a Vec<u8>, and an iterator over the
 /// subsequent arguments.

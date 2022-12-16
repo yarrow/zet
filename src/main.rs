@@ -1,6 +1,5 @@
-use std::io;
-
 use anyhow::Result;
+use std::io;
 
 use zet::args::OpName;
 use zet::operands::first_and_rest;
