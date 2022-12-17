@@ -3,6 +3,7 @@
 //! operands. *Note:* this different treatment of the first and remaining
 //! operands has the unfortunate result of requiring different code paths for
 //! translating UTF16 files into UTF8. That currently seems worth the cost.
+use crate::operations::LaterOperand;
 use anyhow::{Context, Result};
 use bstr::io::BufReadExt;
 use encoding_rs_io::{DecodeReaderBytes, DecodeReaderBytesBuilder};
@@ -94,13 +95,10 @@ fn reader_for(path: &Path) -> Result<NextOperand> {
     );
     Ok(NextOperand { path_display, reader })
 }
-impl NextOperand {
+impl LaterOperand for NextOperand {
     /// A convenience wrapper around `bstr::for_byte_line`
-    pub(crate) fn for_byte_line<F>(self, mut for_each_line: F) -> Result<()>
-    where
-        F: FnMut(&[u8]),
-    {
-        let NextOperand { reader, path_display } = self;
+    fn for_byte_line(self, mut for_each_line: impl FnMut(&[u8])) -> Result<()> {
+        let NextOperand { mut reader, path_display } = self;
         reader
             .for_byte_line(|line| {
                 for_each_line(line);

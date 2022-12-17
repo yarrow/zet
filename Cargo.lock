@@ -32,7 +32,7 @@ version = "1.0.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c98233c6673d8601ab23e77eb38f999c51100d46c5703b17288c57fddf3a1ffe"
 dependencies = [
- "bstr",
+ "bstr 0.2.17",
  "doc-comment",
  "predicates",
  "predicates-core",
@@ -86,6 +86,16 @@ dependencies = [
  "lazy_static",
  "memchr",
  "regex-automata",
+]
+
+[[package]]
+name = "bstr"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b45ea9b00a7b3f2988e9a65ad3917e62123c38dba709b666506207be96d1790b"
+dependencies = [
+ "memchr",
+ "serde",
 ]
 
 [[package]]
@@ -193,7 +203,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0a1e17342619edbc21a964c2afbeb6c820c6a2560032872f397bb97ea127bd0a"
 dependencies = [
  "aho-corasick",
- "bstr",
+ "bstr 0.2.17",
  "fnv",
  "log",
  "regex",
@@ -433,6 +443,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde"
+version = "1.0.151"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "97fed41fc1a24994d044e6db6935e69511a1153b52c15eb42493b26fa87feba0"
+
+[[package]]
 name = "strsim"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -611,7 +627,7 @@ dependencies = [
  "assert_cmd",
  "assert_fs",
  "atty",
- "bstr",
+ "bstr 1.1.0",
  "clap",
  "encoding_rs",
  "encoding_rs_io",
