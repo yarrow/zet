@@ -6,6 +6,7 @@ use anyhow::Result;
 
 use crate::args::OpName;
 use crate::operands;
+use crate::operands::Operand;
 use crate::set::ToZetSet;
 
 /// Calculates and prints the set operation named by `op`. Each file in `files`
@@ -17,10 +18,12 @@ use crate::set::ToZetSet;
 /// * `OpName::Single` prints the lines that occur in exactly one file, and
 /// * `OpName::Multiple` prints the lines that occur in more than one file.
 ///
-pub fn calculate(
+/// The first operand is read into memory in its entirety, but that's not
+/// efficient for the second and subsequent operands.
+pub fn calculate<T: Operand>(
     operation: OpName,
     first_operand: &[u8],
-    rest: operands::Remaining,
+    rest: &[T],
     out: impl std::io::Write,
 ) -> Result<()> {
     match operation {
@@ -29,7 +32,7 @@ pub fn calculate(
         OpName::Union => {
             let mut set = first_operand.to_zet_set_with(());
             for operand in rest {
-                operand?.for_byte_line(|line| {
+                operand.for_byte_line(|line| {
                     set.insert(line, ());
                 })?;
             }
@@ -42,7 +45,7 @@ pub fn calculate(
         OpName::Diff => {
             let mut set = first_operand.to_zet_set_with(true);
             for operand in rest {
-                operand?.for_byte_line(|line| {
+                operand.for_byte_line(|line| {
                     if let Some(keepme) = set.get_mut(line) {
                         *keepme = false;
                     }
@@ -77,7 +80,7 @@ pub fn calculate(
             let mut this_cycle = BLUE;
             for operand in rest {
                 this_cycle = !this_cycle; // flip BLUE -> RED and RED -> BLUE
-                operand?.for_byte_line(|line| {
+                operand.for_byte_line(|line| {
                     if let Some(when_seen) = set.get_mut(line) {
                         *when_seen = this_cycle;
                     }
@@ -111,7 +114,7 @@ pub fn calculate(
                     Some(n) => this_operand_uid = n,
                     None => anyhow::bail!("Can't handle {} arguments", std::usize::MAX),
                 }
-                operand?.for_byte_line(|line| match set.get_mut(line) {
+                operand.for_byte_line(|line| match set.get_mut(line) {
                     None => set.insert(line, seen_in_this_operand),
                     Some(unique_source) => {
                         if *unique_source != seen_in_this_operand {
@@ -153,7 +156,7 @@ mod test {
         }
 
         let mut answer = Vec::new();
-        calculate(operation, first, operands::Remaining::from(paths), &mut answer).unwrap();
+        calculate(operation, first, paths.as_slice(), &mut answer).unwrap();
         String::from_utf8(answer).unwrap()
     }
 

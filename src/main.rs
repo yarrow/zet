@@ -25,9 +25,9 @@ fn main() -> Result<()> {
 
     let first = first_operand.as_slice();
     if atty::is(atty::Stream::Stdout) {
-        calculate(op, first, rest, io::stdout().lock())?;
+        calculate(op, first, rest.as_slice(), io::stdout().lock())?;
     } else {
-        calculate(op, first, rest, io::BufWriter::new(io::stdout().lock()))?;
+        calculate(op, first, rest.as_slice(), io::BufWriter::new(io::stdout().lock()))?;
     };
     Ok(())
 }

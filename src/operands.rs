@@ -17,7 +17,7 @@ use std::{
 /// Return the contents of the first file named in `files` as a Vec<u8>, and an iterator over the
 /// subsequent arguments.
 #[must_use]
-pub fn first_and_rest(files: &[PathBuf]) -> Option<(Result<Vec<u8>>, Remaining, usize)> {
+pub fn first_and_rest(files: &[PathBuf]) -> Option<(Result<Vec<u8>>, Vec<PathBuf>, usize)> {
     match files {
         [] => None,
         [first, rest @ ..] => {
@@ -26,7 +26,7 @@ pub fn first_and_rest(files: &[PathBuf]) -> Option<(Result<Vec<u8>>, Remaining, 
                 .map(decode_if_utf16);
             let rest = rest.to_vec();
             let rest_len = rest.len();
-            Some((first_operand, Remaining::from(rest), rest_len))
+            Some((first_operand, rest, rest_len))
         }
     }
 }
@@ -50,57 +50,17 @@ fn decode_if_utf16(candidate: Vec<u8>) -> Vec<u8> {
     return candidate;
 }
 
-/// The first operand is read into memory in its entirety, but that's not
-/// efficient for the second and subsequent operands.  The `Remaining`
-/// structure is an iterator over those operands.
-pub struct Remaining {
-    files: std::vec::IntoIter<PathBuf>,
-}
-
-impl From<Vec<PathBuf>> for Remaining {
-    fn from(files: Vec<PathBuf>) -> Self {
-        Remaining { files: files.into_iter() }
-    }
-}
-
-impl Iterator for Remaining {
-    type Item = Result<NextOperand>;
-    fn next(&mut self) -> Option<Self::Item> {
-        self.files.next().map(|path| reader_for(&path))
-    }
-}
-
-/// `NextOperand` is the `Item` type for the `Remaining` iterator. For a given
-/// file path, the `reader` field is a reader for the file with that path, and
-/// `path_display` is the path formatted for use in error messages.
-pub struct NextOperand {
-    path_display: String,
-    reader: BufReader<DecodeReaderBytes<File, Vec<u8>>>,
-}
-
-/// The reader for a second or subsequent operand is a buffered reader with the
-/// ability to decode UTF-16 files. I think this results in double-buffering,
-/// with one buffer within the `DecodeReaderBytes` value, and another in the
-/// `BufReader` that wraps it. I don't know how to work around that.
-fn reader_for(path: &Path) -> Result<NextOperand> {
-    let path_display = format!("{}", path.display());
-    let f = File::open(path).with_context(|| format!("Can't open file: {path_display}"))?;
-    let reader = BufReader::new(
-        DecodeReaderBytesBuilder::new()
-            .bom_sniffing(true) // Look at the BOM to detect UTF-16 files and convert to UTF-8
-            .strip_bom(true) // Remove the BOM before sending data to us
-            .utf8_passthru(true) // Don't enforce UTF-8 (BOM or no BOM)
-            .build(f),
-    );
-    Ok(NextOperand { path_display, reader })
-}
-impl NextOperand {
+/// For operands from which one can read lines as bytes
+pub trait Operand {
     /// A convenience wrapper around `bstr::for_byte_line`
-    pub(crate) fn for_byte_line<F>(self, mut for_each_line: F) -> Result<()>
-    where
-        F: FnMut(&[u8]),
-    {
-        let NextOperand { reader, path_display } = self;
+    fn for_byte_line<F>(&self, for_each_line: F) -> Result<()> where F: FnMut(&[u8]);
+}
+
+impl Operand for PathBuf {
+    fn for_byte_line<F>(&self, mut for_each_line: F) -> Result<()> where F: FnMut(&[u8]) {
+        let path_display = format!("{}", self.display());
+        let f = File::open(self).with_context(|| format!("Can't open file: {path_display}"))?;
+        let reader = reader_for(f);
         reader
             .for_byte_line(|line| {
                 for_each_line(line);
@@ -109,6 +69,20 @@ impl NextOperand {
             .with_context(|| format!("Error reading file: {path_display}"))?;
         Ok(())
     }
+}
+
+/// The reader for a second or subsequent operand is a buffered reader with the
+/// ability to decode UTF-16 files. I think this results in double-buffering,
+/// with one buffer within the `DecodeReaderBytes` value, and another in the
+/// `BufReader` that wraps it. I don't know how to work around that.
+fn reader_for(file: File) -> BufReader<DecodeReaderBytes<File, Vec<u8>>> {
+    BufReader::new(
+        DecodeReaderBytesBuilder::new()
+            .bom_sniffing(true) // Look at the BOM to detect UTF-16 files and convert to UTF-8
+            .strip_bom(true) // Remove the BOM before sending data to us
+            .utf8_passthru(true) // Don't enforce UTF-8 (BOM or no BOM)
+            .build(file),
+    )
 }
 
 #[allow(clippy::pedantic)]
