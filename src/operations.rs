@@ -26,6 +26,18 @@ pub fn calculate<T: Operand>(
     rest: &[T],
     out: impl std::io::Write,
 ) -> Result<()> {
+    let operation = if rest.is_empty() && operation == OpName::Multiple {
+        // Since there is only one operand, no line can occur in multiple
+        // operands, so we return at once with an empty result.
+        return Ok(());
+    } else if rest.is_empty() {
+        // For a single operand, all operations except Multiple are equivalent
+        // to Union, and Union is slightly more efficient than the others.
+        OpName::Union
+    } else {
+        operation
+    };
+
     match operation {
         // `Union` doesn't need bookkeeping, so we use the unit type as its
         // bookkeeping value.

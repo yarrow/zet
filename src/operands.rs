@@ -17,7 +17,7 @@ use std::{
 /// Return the contents of the first file named in `files` as a Vec<u8>, and an iterator over the
 /// subsequent arguments.
 #[must_use]
-pub fn first_and_rest(files: &[PathBuf]) -> Option<(Result<Vec<u8>>, Vec<PathBuf>, usize)> {
+pub fn first_and_rest(files: &[PathBuf]) -> Option<(Result<Vec<u8>>, Vec<PathBuf>)> {
     match files {
         [] => None,
         [first, rest @ ..] => {
@@ -25,8 +25,7 @@ pub fn first_and_rest(files: &[PathBuf]) -> Option<(Result<Vec<u8>>, Vec<PathBuf
                 .with_context(|| format!("Can't read file: {}", first.display()))
                 .map(decode_if_utf16);
             let rest = rest.to_vec();
-            let rest_len = rest.len();
-            Some((first_operand, rest, rest_len))
+            Some((first_operand, rest))
         }
     }
 }
