@@ -53,7 +53,7 @@ jobs:
           PWD: ${{ env.GITHUB_WORKSPACE }}
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          args: --workspace --tests --examples
+          args: --workspace --tests --examples --no-deps
 
   # Make sure the docs build without warnings
   docs:
