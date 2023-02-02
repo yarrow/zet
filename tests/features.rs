@@ -26,13 +26,13 @@ fn subcommands_allow_empty_arg_list_and_produce_empty_output() {
 #[test]
 fn fail_on_missing_file() {
     for subcommand in SUBCOMMANDS.iter() {
-        main_binary().args(&[subcommand, "x"]).assert().failure();
+        main_binary().args([subcommand, "x"]).assert().failure();
     }
 }
 
 #[test]
 fn fail_bad_subcommand() {
-    main_binary().args(&["OwOwOwOwOw"]).assert().failure();
+    main_binary().args(["OwOwOwOwOw"]).assert().failure();
 }
 
 #[test]
@@ -43,12 +43,11 @@ fn zet_subcommand_x_y_z_matches_expected_output_for_all_subcommands() {
     let y_path: &str = &path_with(&temp, "y.txt", Y, Encoding::Plain);
     let z_path: &str = &path_with(&temp, "z.txt", Z, Encoding::Plain);
     for sub in SUBCOMMANDS.iter() {
-        let output = main_binary().args(&[sub, &x_path, &y_path, &z_path]).unwrap();
+        let output = main_binary().args([sub, &x_path, &y_path, &z_path]).unwrap();
         assert_eq!(
             String::from_utf8(output.stdout).unwrap(),
             expected(sub),
-            "Output from {} doesn't match expected",
-            sub
+            "Output from {sub} doesn't match expected",
         );
     }
 }
@@ -101,7 +100,7 @@ fn expected(subcommand: &str) -> &'static str {
         "diff" => &DIFF[1..],
         "single" => &SINGLE[1..],
         "multiple" => &MULTIPLE[1..],
-        _ => panic!("There is no subcommand {}", subcommand),
+        _ => panic!("There is no subcommand {subcommand}"),
     }
 }
 
@@ -164,8 +163,7 @@ fn output_is_subsequence_of_union_output_for_all_subcommands() {
     for sub in SUBCOMMANDS.iter() {
         assert!(
             is_subsequence(expected(sub), union),
-            "Expected result for {} is not a subsequence of the expected result for union",
-            sub
+            "Expected result for {sub} is not a subsequence of the expected result for union",
         );
     }
 }
@@ -175,7 +173,7 @@ fn each_line_occurs_at_most_once_in_the_output_of_any_subcommand() {
     for sub in SUBCOMMANDS.iter() {
         let all = expected(sub).lines();
         let uniq = all.clone().unique();
-        assert!(all.eq(uniq), "Output of {} has duplicate lines", sub);
+        assert!(all.eq(uniq), "Output of {sub} has duplicate lines");
     }
 }
 
@@ -183,7 +181,7 @@ fn is_subsequence(needles: &str, haystack: &str) -> bool {
     let needles = needles.lines();
     let mut haystack = haystack.lines();
     'next_needle: for needle in needles {
-        while let Some(hay) = haystack.next() {
+        for hay in haystack.by_ref() {
             if needle == hay {
                 continue 'next_needle;
             }
@@ -241,7 +239,7 @@ fn zet_accepts_all_encodings_and_remembers_the_first_file_has_a_byte_order_mark(
         let x_path: &str = &path_with(&temp, "x.txt", X, *enc);
         let y_path: &str = &path_with(&temp, "y.txt", Y, LE16);
         let z_path: &str = &path_with(&temp, "z.txt", Z, BE16);
-        let output = main_binary().args(&["union", &x_path, &y_path, &z_path]).unwrap();
+        let output = main_binary().args(["union", x_path, y_path, z_path]).unwrap();
         let result_string = String::from_utf8(output.stdout).unwrap();
         let mut result = &result_string[..];
         if *enc == Plain {
@@ -264,7 +262,7 @@ fn single_argument_just_prints_the_unique_lines_for_all_but_multiple() {
     x.write_str(&(XX.to_owned() + XX)).unwrap();
 
     for subcommand in SUBCOMMANDS.iter() {
-        let output = main_binary().args(&[subcommand, x.path().to_str().unwrap()]).unwrap();
+        let output = main_binary().args([subcommand, x.path().to_str().unwrap()]).unwrap();
         let result = String::from_utf8(output.stdout).unwrap();
         assert_eq!(result, if subcommand == &"multiple" { "" } else { EXPECTED });
     }
@@ -293,14 +291,14 @@ fn the_last_line_of_a_file_need_not_end_in_a_newline() {
 
 #[test]
 fn zet_terminates_every_output_line_with_the_line_terminator_of_the_first_input_line() {
-    fn terminate_with(eol: &str, bare: &Vec<&str>) -> String {
+    fn terminate_with(eol: &str, bare: &[&str]) -> String {
         bare.iter().map(|b| b.to_string() + eol).join("")
     }
     let (a, b, c) = ("a".to_string(), "b\r\nB\nbB", "c\nC\r\ncC\r\n");
     let bare = vec!["a", "b", "B", "bB", "c", "C", "cC"];
     let temp = TempDir::new().unwrap();
     for eol in ["", "\n", "\r\n"].iter() {
-        let expected_eol = if *eol == "" { "\n" } else { eol };
+        let expected_eol = if eol.is_empty() { "\n" } else { eol };
         let expected = terminate_with(expected_eol, &bare);
         let a = a.clone() + *eol;
         for enc in [Plain, UTF8, LE16, BE16].iter() {
@@ -311,10 +309,10 @@ fn zet_terminates_every_output_line_with_the_line_terminator_of_the_first_input_
             };
             let a_path: &str = &path_with(&temp, "a.txt", &a, *enc);
             let b_path: &str = &path_with(&temp, "b.txt", b, LE16);
-            let c_path: &str = &path_with(&temp, "c.txt", &c, BE16);
-            let output = main_binary().args(&["union", &a_path, &b_path, &c_path]).unwrap();
+            let c_path: &str = &path_with(&temp, "c.txt", c, BE16);
+            let output = main_binary().args(["union", a_path, b_path, c_path]).unwrap();
             let result_string = String::from_utf8(output.stdout).unwrap();
-            assert_eq!(result_string, expected, "for eol '{}', encoding {:?}", eol, enc);
+            assert_eq!(result_string, expected, "for eol '{eol}', encoding {enc:?}");
         }
     }
 }

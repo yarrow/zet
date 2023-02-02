@@ -15,8 +15,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
-/// Return the contents of the first file named in `files` as a Vec<u8>, and an iterator over the
-/// subsequent arguments.
+/// Return the contents of the first file named in `files` as a `Vec<u8>`, and
+/// an iterator over the subsequent arguments.
 #[must_use]
 pub fn first_and_rest(files: &[PathBuf]) -> Option<(Result<Vec<u8>>, Remaining, usize)> {
     match files {
