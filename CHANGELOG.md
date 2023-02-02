@@ -1,5 +1,11 @@
 # Change Log
 
+## [0.2.6] - 2023-02-02
+
+- Abandon trying to have a Minimum Supported Rust Version (maybe once we're 1.0?)
+- Use cargo-dist to create the release
+- Move `for_byte_lines` from `NextOperand` to a trait (thanks to [ysthakur] for the suggestion)
+
 ## [0.2.5] - 2022-11-10
 
 ## Changed
@@ -37,6 +43,8 @@
 
 Initial release
 
-[Unreleased]: https://github.com/yarrow/zet/compare/0.2.0...HEAD
+[0.2.6]: https://github.com/yarrow/zet/compare/0.2.5...v0.2.6
+[0.2.5]: https://github.com/yarrow/zet/compare/0.2.0...0.2.5
 [0.2.0]: https://github.com/yarrow/zet/compare/v0.1.1...0.2.0
 [0.1.1]: https://github.com/yarrow/zet/compare/v0.1.0...v0.1.1
+[ysthakur]:https://github.com/ysthakur
