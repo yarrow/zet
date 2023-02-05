@@ -1,8 +1,10 @@
 use anyhow::Result;
+use is_terminal::IsTerminal;
 use std::io;
 use zet::args::OpName;
 use zet::operands::first_and_rest;
 use zet::operations::calculate;
+
 fn main() -> Result<()> {
     let args = zet::args::parsed();
 
@@ -24,7 +26,7 @@ fn main() -> Result<()> {
     };
 
     let first = first_operand.as_slice();
-    if atty::is(atty::Stream::Stdout) {
+    if io::stdout().is_terminal() {
         calculate(op, first, rest, io::stdout().lock())?;
     } else {
         calculate(op, first, rest, io::BufWriter::new(io::stdout().lock()))?;

@@ -4,25 +4,25 @@
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use structopt::StructOpt;
+use clap::Parser;
 
 /// Returns the parsed command line: the `Args` return value's `op` field is the set operation
 /// desired, and the `files` field holds the files to take as operands.
 #[must_use]
 pub fn parsed() -> Args {
-    Args::from_args()
+    Args::parse()
 }
 
-#[derive(Debug, StructOpt)]
-#[structopt(
+#[derive(Debug, Parser)]
+#[command(
     name = "zet",
+    version,
     about = "Calcuate the union, intersection, and so forth of files considered as sets of lines",
-    setting = structopt::clap::AppSettings::ColoredHelp,
     after_help = "Each line is output at most once, no matter how many times it occurs in the file(s). Lines are not sorted, but are printed in the order they occur in the input."
 )]
 /// `Args` contains the parsed command line.
 pub struct Args {
-    #[structopt(
+    #[arg(
         name = "intersect|union|diff|single|multiple",
         next_line_help = true,
         long_help = "Each operation prints lines meeting a different condition:
@@ -36,7 +36,7 @@ pub struct Args {
     )]
     /// `op` is the set operation requested
     pub op: OpName,
-    #[structopt(parse(from_os_str), help = "Input files", next_line_help = true)]
+    #[arg(name = "Input files", next_line_help = true)]
     /// `files` is the list of files from the command line
     pub files: Vec<PathBuf>,
 }
