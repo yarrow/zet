@@ -1,6 +1,6 @@
 Calcuate the union, intersection, set difference and so forth of files considered as sets of lines
 
-Usage: spike [OPTIONS] <COMMAND>
+Usage: zet [OPTIONS] <COMMAND>
 
 Commands:
   union      Prints lines appearing in ANY input file

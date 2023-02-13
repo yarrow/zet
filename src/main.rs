@@ -3,7 +3,7 @@ use owo_colors::Style;
 
 enum Line<'a> {
     Paragraph(&'a str),
-    Usage { command: &'a str, args: &'a str },
+    Usage(&'a str),
     Heading(&'a str),
     Entry { item: &'a str, caption: &'a str },
 }
@@ -14,15 +14,15 @@ impl<'a> Help<'a> {
         let plain = Style::new();
         let heading = Style::new().yellow();
         let entry = Style::new().green();
+        let version = std::env!("CARGO_PKG_VERSION");
+        let name = entry.bold().style("zet");
+        println!("{} {}", name, plain.style(version));
         for line in &self.0 {
             match line {
                 Line::Paragraph(text) => println!("{}", plain.style(text)),
-                Line::Usage { command, args } => println!(
-                    "{}{}{}",
-                    heading.style("Usage: "),
-                    entry.style(command),
-                    plain.style(args),
-                ),
+                Line::Usage(args) => {
+                    println!("{}{}{}", heading.style("Usage: "), name, plain.style(args),)
+                }
                 Line::Heading(text) => println!("{}", heading.style(text)),
                 Line::Entry { item, caption } => {
                     println!("{} {}", entry.style(item), plain.style(caption));
@@ -50,8 +50,8 @@ fn parse<'a>(text: &'a str) -> Help<'a> {
                     Line::Entry { item, caption }
                 } else if line.starts_with(USAGE) {
                     let line = &line[USAGE.len()..];
-                    let (command, args) = line.split_at(line.find(' ').unwrap_or(line.len()));
-                    Line::Usage { command, args }
+                    let (_, args) = line.split_at(line.find(' ').unwrap_or(line.len()));
+                    Line::Usage(args)
                 } else {
                     Line::Paragraph(line)
                 }
