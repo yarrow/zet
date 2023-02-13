@@ -3,18 +3,16 @@ Calcuate the union, intersection, set difference and so forth of files considere
 Usage: spike [OPTIONS] <COMMAND>
 
 Commands:
-  union        Prints lines appearing in ANY input file
-  intersect    Prints lines appearing in EVERY input file
-  diff         Prints lines appearing in the FIRST input file and no other
-  single       Prints lines appearing exactly once; with --by-file, in exactly one file
-    --by-file  Prints lines appear...
-  multiple     Prints lines appearing more than once; with --by-file, in more than one file
-    --by-file  Prints lines appear...
-  help         Print this message or the help of the given subcommand(s)
+  union      Prints lines appearing in ANY input file
+  intersect  Prints lines appearing in EVERY input file
+  diff       Prints lines appearing in the FIRST input file and no other
+  single     Prints lines appearing exactly once; with --by-file, in exactly one file
+  multiple   Prints lines appearing more than once; with --by-file, in more than one file
+  help       Print this message
 
 Options:
       --color <COLOR>  [possible values: auto, always, never]
-      --by-file        Makes a line occuring 50 times but in only one file count as single, not multiple
+      --by-file        Lines occuring multiple times, but in only one file, count as single (not multiple)
   -h, --help           Print help (see more with '--help')
   -V, --version        Print version
 
