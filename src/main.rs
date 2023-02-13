@@ -1,31 +1,45 @@
 //use owo_colors::{OwoColorize, Stream::Stdout, Style, Styled};
-use owo_colors::Style;
+use owo_colors::{Style, Styled};
 
-struct Chunk<'a> {
-    style: Style,
-    text: &'a str,
+enum Line<'a> {
+    Paragraph(&'a str),
+    Usage(&'a str),
+    Heading(&'a str),
+    Entry { item: &'a str, caption: &'a str },
 }
-
+impl<'a> Line<'a> {
+    fn styled(&'a self) -> Styled<&'a str> {
+        match self {
+            Line::Paragraph(text) => Style::new().style(text),
+            Line::Usage(text) => Style::new().bold().yellow().style(text),
+            Line::Heading(text) => Style::new().bold().yellow().style(text),
+            Line::Entry { item, caption } => Style::new().green().style(item),
+        }
+    }
+}
 fn main() {
     let input = include_str!("help.txt");
     let help = parse(input);
     for line in help {
-        println!("{}", line.style.style(line.text));
+        println!("{}", line.styled())
     }
 }
 
-fn parse<'a>(text: &'a str) -> Vec<Chunk<'a>> {
-    let color = vec![Style::new().blue(), Style::new().green()];
-    let mut c = 0;
-    let lines = text
-        .lines()
+fn parse<'a>(text: &'a str) -> Vec<Line<'a>> {
+    text.lines()
         .map(|line| {
-            c = (c + 1) & 1;
-            Chunk {
-                style: color[c],
-                text: line,
+            if line.ends_with(':') {
+                Line::Heading(line)
+            } else if line.starts_with(' ') {
+                Line::Entry {
+                    item: line,
+                    caption: "",
+                }
+            } else if line.starts_with("Usage: ") {
+                Line::Usage(line)
+            } else {
+                Line::Paragraph(line)
             }
         })
-        .collect();
-    lines
+        .collect()
 }
