@@ -1,11 +1,17 @@
 //use owo_colors::{OwoColorize, Stream::Stdout, Style, Styled};
 use owo_colors::Style;
 
+struct Entry<'a> {
+    item: &'a str,
+    caption: &'a str,
+}
 enum Part<'a> {
     Paragraph(&'a str),
     Usage(&'a str),
-    Section { title: &'a str },
-    Entry { item: &'a str, caption: &'a str },
+    Section {
+        title: &'a str,
+        entries: Vec<Entry<'a>>,
+    },
 }
 struct Help<'a>(Vec<Part<'a>>);
 
@@ -23,9 +29,11 @@ impl<'a> Help<'a> {
                 Part::Usage(args) => {
                     println!("{}{}{}", heading.style("Usage: "), name, plain.style(args),)
                 }
-                Part::Section { title } => println!("{}", heading.style(title)),
-                Part::Entry { item, caption } => {
-                    println!("{} {}", entry.style(item), plain.style(caption));
+                Part::Section { title, entries } => {
+                    println!("{}", heading.style(title));
+                    for Entry { item, caption } in entries {
+                        println!("{} {}", entry.style(item), plain.style(caption));
+                    }
                 }
             };
         }
@@ -43,30 +51,35 @@ fn parse<'a>(text: &'a str) -> Help<'a> {
     let mut lines = text.lines().fuse();
     while let Some(line) = lines.next() {
         if line.ends_with(':') {
-            help.push(Part::Section { title: line });
+            let title = line;
+            let mut entries = Vec::new();
             while let Some(entry) = lines.next() {
                 let entry = entry.trim_end();
                 if entry.is_empty() {
-                    help.push(Part::Paragraph(""));
                     break;
                 } else {
                     let Some(sp_sp) = entry.rfind("  ") else { panic!("No double space in {entry}") };
                     let (item, caption) = entry.split_at(sp_sp + 2);
-                    help.push(Part::Entry { item, caption })
+                    entries.push(Entry { item, caption });
                 }
             }
+            help.push(Part::Section { title, entries });
+            help.push(Part::Paragraph(""));
         } else {
-            help.push(if line.starts_with(' ') {
-                let Some(sp_sp) = line.rfind("  ") else { panic!("No double space in {line}") };
-                let (item, caption) = line.split_at(sp_sp + 2);
-                Part::Entry { item, caption }
-            } else if line.starts_with(USAGE) {
+            help.push(if line.starts_with(USAGE) {
                 let line = &line[USAGE.len()..];
                 let (_, args) = line.split_at(line.find(' ').unwrap_or(line.len()));
                 Part::Usage(args)
             } else {
                 Part::Paragraph(line)
             });
+        }
+    }
+    if let Some(last) = help.last() {
+        if let Part::Paragraph(text) = last {
+            if text.is_empty() {
+                help.pop();
+            }
         }
     }
     Help(help)
