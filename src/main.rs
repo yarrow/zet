@@ -40,21 +40,34 @@ fn main() {
 fn parse<'a>(text: &'a str) -> Help<'a> {
     const USAGE: &str = "Usage: ";
     let mut help = Vec::new();
-    let mut lines = text.lines();
+    let mut lines = text.lines().fuse();
     while let Some(line) = lines.next() {
-        help.push(if line.ends_with(':') {
-            Part::Section { title: line }
-        } else if line.starts_with(' ') {
-            let Some(sp_sp) = line.rfind("  ") else { panic!("No double space in {line}") };
-            let (item, caption) = line.split_at(sp_sp + 2);
-            Part::Entry { item, caption }
-        } else if line.starts_with(USAGE) {
-            let line = &line[USAGE.len()..];
-            let (_, args) = line.split_at(line.find(' ').unwrap_or(line.len()));
-            Part::Usage(args)
+        if line.ends_with(':') {
+            help.push(Part::Section { title: line });
+            while let Some(entry) = lines.next() {
+                let entry = entry.trim_end();
+                if entry.is_empty() {
+                    help.push(Part::Paragraph(""));
+                    break;
+                } else {
+                    let Some(sp_sp) = entry.rfind("  ") else { panic!("No double space in {entry}") };
+                    let (item, caption) = entry.split_at(sp_sp + 2);
+                    help.push(Part::Entry { item, caption })
+                }
+            }
         } else {
-            Part::Paragraph(line)
-        });
+            help.push(if line.starts_with(' ') {
+                let Some(sp_sp) = line.rfind("  ") else { panic!("No double space in {line}") };
+                let (item, caption) = line.split_at(sp_sp + 2);
+                Part::Entry { item, caption }
+            } else if line.starts_with(USAGE) {
+                let line = &line[USAGE.len()..];
+                let (_, args) = line.split_at(line.find(' ').unwrap_or(line.len()));
+                Part::Usage(args)
+            } else {
+                Part::Paragraph(line)
+            });
+        }
     }
     Help(help)
 }
