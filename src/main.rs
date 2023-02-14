@@ -53,18 +53,21 @@ fn parse<'a>(text: &'a str) -> Help<'a> {
         if line.ends_with(':') {
             let title = line;
             let mut entries = Vec::new();
-            while let Some(entry) = lines.next() {
+            let result = loop {
+                let Some(entry) = lines.next() else { break None };
                 let entry = entry.trim_end();
                 if entry.is_empty() {
-                    break;
+                    break Some(Part::Paragraph(""));
                 } else {
                     let Some(sp_sp) = entry.rfind("  ") else { panic!("No double space in {entry}") };
                     let (item, caption) = entry.split_at(sp_sp + 2);
                     entries.push(Entry { item, caption });
                 }
-            }
+            };
             help.push(Part::Section { title, entries });
-            help.push(Part::Paragraph(""));
+            if let Some(part) = result {
+                help.push(part)
+            }
         } else {
             help.push(if line.starts_with(USAGE) {
                 let line = &line[USAGE.len()..];
@@ -73,13 +76,6 @@ fn parse<'a>(text: &'a str) -> Help<'a> {
             } else {
                 Part::Paragraph(line)
             });
-        }
-    }
-    if let Some(last) = help.last() {
-        if let Part::Paragraph(text) = last {
-            if text.is_empty() {
-                help.pop();
-            }
         }
     }
     Help(help)
