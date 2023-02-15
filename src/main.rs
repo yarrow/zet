@@ -1,3 +1,17 @@
+#![deny(
+    warnings,
+    clippy::all,
+    clippy::pedantic,
+    trivial_casts,
+    trivial_numeric_casts,
+    unused_extern_crates,
+    unused_import_braces,
+    unused_qualifications,
+    unused_must_use
+)]
+#![allow(clippy::missing_errors_doc, clippy::semicolon_if_nothing_returned)]
+#![cfg_attr(debug_assertions, allow(dead_code, unused_imports))]
+
 //use owo_colors::{OwoColorize, Stream::Stdout, Style, Styled};
 use owo_colors::Style;
 
@@ -6,12 +20,12 @@ struct Entry<'a> {
     caption: &'a str,
 }
 enum Part<'a> {
-    Paragraph(&'a str),
     Usage(&'a str),
     Section {
         title: &'a str,
         entries: Vec<Entry<'a>>,
     },
+    Paragraph(&'a str),
 }
 struct Help<'a>(Vec<Part<'a>>);
 
@@ -27,7 +41,7 @@ impl<'a> Help<'a> {
             match line {
                 Part::Paragraph(text) => println!("{}", plain.style(text)),
                 Part::Usage(args) => {
-                    println!("{}{}{}", heading.style("Usage: "), name, plain.style(args),)
+                    println!("{}{}{}", heading.style("Usage: "), name, plain.style(args))
                 }
                 Part::Section { title, entries } => {
                     println!("{}", heading.style(title));
@@ -45,12 +59,15 @@ fn main() {
     help.print();
 }
 
-fn parse<'a>(text: &'a str) -> Help<'a> {
+fn parse(text: &str) -> Help {
     const USAGE: &str = "Usage: ";
     let mut help = Vec::new();
     let mut lines = text.lines().fuse();
     while let Some(line) = lines.next() {
-        if line.ends_with(':') {
+        if let Some(rest) = line.strip_prefix(USAGE) {
+            let (_, args) = rest.split_at(line.find(' ').unwrap_or(rest.len()));
+            help.push(Part::Usage(args))
+        } else if line.ends_with(':') {
             let title = line;
             let mut entries = Vec::new();
             let result = loop {
@@ -58,24 +75,17 @@ fn parse<'a>(text: &'a str) -> Help<'a> {
                 let entry = entry.trim_end();
                 if entry.is_empty() {
                     break Some(Part::Paragraph(""));
-                } else {
-                    let Some(sp_sp) = entry.rfind("  ") else { panic!("No double space in {entry}") };
-                    let (item, caption) = entry.split_at(sp_sp + 2);
-                    entries.push(Entry { item, caption });
                 }
+                let Some(sp_sp) = entry.rfind("  ") else { panic!("No double space in {entry}") };
+                let (item, caption) = entry.split_at(sp_sp + 2);
+                entries.push(Entry { item, caption });
             };
             help.push(Part::Section { title, entries });
             if let Some(part) = result {
                 help.push(part)
             }
         } else {
-            help.push(if line.starts_with(USAGE) {
-                let line = &line[USAGE.len()..];
-                let (_, args) = line.split_at(line.find(' ').unwrap_or(line.len()));
-                Part::Usage(args)
-            } else {
-                Part::Paragraph(line)
-            });
+            help.push(Part::Paragraph(line))
         }
     }
     Help(help)
