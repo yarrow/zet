@@ -31,7 +31,6 @@ struct Constants<'a> {
 }
 
 static C: Lazy<Constants> = Lazy::new(|| {
-    use textwrap::{wrap_algorithms::Penalties, WrapAlgorithm};
     fn from_env() -> Option<usize> {
         std::env::var_os("COLUMNS")?.to_str()?.parse::<usize>().ok()
     }
@@ -40,13 +39,7 @@ static C: Lazy<Constants> = Lazy::new(|| {
     } else {
         from_env().unwrap_or(80)
     };
-    let penalties = Penalties {
-        short_last_line_penalty: 0,
-        ..Penalties::new()
-    };
-    let wrap_options =
-        //textwrap::Options::new(line_width).wrap_algorithm(WrapAlgorithm::OptimalFit(penalties));
-        textwrap::Options::new(line_width);
+    let wrap_options = textwrap::Options::new(line_width);
     let heading = Style::new().yellow();
     let entry = Style::new().green();
     Constants {
@@ -166,7 +159,9 @@ impl<'a> Help<'a> {
         println!("{name} {version}");
         for line in &self.0 {
             match line {
-                Part::Paragraph(text) => println!("{text}"),
+                Part::Paragraph(text) => wrap(text, &C.wrap_options)
+                    .iter()
+                    .for_each(|line| println!("{line}")),
                 Part::Usage(args) => {
                     println!("{}{}{}", C.heading.style("Usage: "), name, args)
                 }
