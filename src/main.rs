@@ -9,7 +9,11 @@
     unused_qualifications,
     unused_must_use
 )]
-#![allow(clippy::missing_errors_doc, clippy::semicolon_if_nothing_returned)]
+#![allow(
+    clippy::missing_errors_doc,
+    clippy::semicolon_if_nothing_returned,
+    clippy::items_after_statements
+)]
 #![cfg_attr(debug_assertions, allow(dead_code, unused_imports, unused_variables))]
 
 use std::borrow::Cow;
@@ -41,7 +45,8 @@ static C: Lazy<Constants> = Lazy::new(|| {
         ..Penalties::new()
     };
     let wrap_options =
-        textwrap::Options::new(line_width).wrap_algorithm(WrapAlgorithm::OptimalFit(penalties));
+        //textwrap::Options::new(line_width).wrap_algorithm(WrapAlgorithm::OptimalFit(penalties));
+        textwrap::Options::new(line_width);
     let heading = Style::new().yellow();
     let entry = Style::new().green();
     Constants {
@@ -71,13 +76,13 @@ impl<'a> Entry<'a> {
             .find_not_byteset(b" ")
             .unwrap_or(self.item.len())
     }
-    fn next_line_caption(&self, indents: &Indent) -> Vec<Cow<'a, str>> {
+    fn next_line_caption(&self, indent: &'a str) -> Vec<Cow<'a, str>> {
         wrap(
             self.caption,
             C.wrap_options
                 .clone()
-                .initial_indent(indents.first)
-                .subsequent_indent(indents.rest),
+                .initial_indent(indent)
+                .subsequent_indent(indent),
         )
     }
     fn same_line_help(&self) -> Vec<Cow<'a, str>> {
@@ -92,52 +97,11 @@ impl<'a> Entry<'a> {
     }
 }
 
-struct Indent<'a> {
-    first: &'a str,
-    rest: &'a str,
-}
-
 struct Section<'a> {
     title: &'a str,
     entries: Vec<Entry<'a>>,
 }
 impl<'a> Section<'a> {
-    fn next_line_help_indents(&self) -> Indent<'a> {
-        let max_blank_prefix_size = self
-            .entries
-            .iter()
-            .map(Entry::blank_prefix_size)
-            .fold(0, std::cmp::Ord::max);
-        let indent_len = (max_blank_prefix_size + 4).min(BLANKS.len());
-        let indent = &BLANKS[..indent_len];
-        Indent {
-            first: indent,
-            rest: indent,
-        }
-    }
-    fn next_line_help_lines(&self) -> Vec<Vec<Cow<'a, str>>> {
-        let mut result = Vec::new();
-        let indents = self.next_line_help_indents();
-        for entry in &self.entries {
-            result.push(vec![Cow::Owned(entry.styled_item())]);
-            result.push(entry.next_line_caption(&indents));
-        }
-        result
-    }
-    fn next_line_help(&self) {
-        for line in self.next_line_help_lines().iter().flatten() {
-            println!("{line}");
-        }
-    }
-    fn same_line_help_lines(&self) -> Vec<Vec<Cow<'a, str>>> {
-        self.entries.iter().map(Entry::same_line_help).collect()
-    }
-    fn same_line_help(&self) {
-        for line in self.same_line_help_lines().iter().flatten() {
-            println!("{line}");
-        }
-    }
-
     fn print(&self) {
         println!("{}", C.heading.style(self.title));
         let fits_in_line = self.entries.iter().all(Entry::fits_in_line);
@@ -146,8 +110,44 @@ impl<'a> Section<'a> {
                 println!("{}{}", entry.styled_item(), entry.caption);
             }
         } else {
-            self.same_line_help();
+            let same_line_help = self.same_line_help_lines();
+            let next_line_help = self.next_line_help_lines();
+            let help = if badness(&same_line_help) <= badness(&next_line_help) {
+                &same_line_help
+            } else {
+                &next_line_help
+            };
+            for line in help.iter().flatten() {
+                println!("{line}");
+            }
         }
+        fn badness<T>(vv: &[Vec<T>]) -> usize {
+            vv.iter().fold(0, |total, v| {
+                let m = v.len().saturating_sub(2);
+                total + v.len() + m * 2
+            })
+        }
+    }
+    fn next_line_help_indent(&self) -> &'a str {
+        let max_blank_prefix_size = self
+            .entries
+            .iter()
+            .map(Entry::blank_prefix_size)
+            .fold(0, std::cmp::Ord::max);
+        let indent_len = (max_blank_prefix_size + 4).min(BLANKS.len());
+        &BLANKS[..indent_len]
+    }
+    fn next_line_help_lines(&self) -> Vec<Vec<Cow<'a, str>>> {
+        let mut result = Vec::new();
+        let indent = self.next_line_help_indent();
+        for entry in &self.entries {
+            result.push(vec![Cow::Owned(entry.styled_item())]);
+            result.push(entry.next_line_caption(indent));
+        }
+        result
+    }
+    fn same_line_help_lines(&self) -> Vec<Vec<Cow<'a, str>>> {
+        self.entries.iter().map(Entry::same_line_help).collect()
     }
 }
 
