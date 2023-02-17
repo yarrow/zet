@@ -144,46 +144,43 @@ impl<'a> Section<'a> {
     }
 }
 
-enum Part<'a> {
+enum HelpItem<'a> {
     Usage(&'a str),
     Paragraph(&'a str),
     Section(Section<'a>),
 }
 
-struct Help<'a>(Vec<Part<'a>>);
-
-impl<'a> Help<'a> {
-    fn print(&'a self) {
-        let version = std::env!("CARGO_PKG_VERSION");
-        let name = C.entry.bold().style("zet");
-        println!("{name} {version}");
-        for line in &self.0 {
-            match line {
-                Part::Paragraph(text) => wrap(text, &C.wrap_options)
-                    .iter()
-                    .for_each(|line| println!("{line}")),
-                Part::Usage(args) => {
-                    println!("{}{}{}", C.heading.style("Usage: "), name, args)
-                }
-                Part::Section(s) => s.print(),
-            };
-        }
+fn print_help(help: &[HelpItem]) {
+    let version = std::env!("CARGO_PKG_VERSION");
+    let name = C.entry.bold().style("zet");
+    println!("{name} {version}");
+    for line in help {
+        match line {
+            HelpItem::Paragraph(text) => wrap(text, &C.wrap_options)
+                .iter()
+                .for_each(|line| println!("{line}")),
+            HelpItem::Usage(args) => {
+                println!("{}{}{}", C.heading.style("Usage: "), name, args)
+            }
+            HelpItem::Section(s) => s.print(),
+        };
     }
 }
+
 fn main() {
     let input = include_str!("help.txt");
     let help = parse(input);
-    help.print();
+    print_help(&help);
 }
 
-fn parse(text: &str) -> Help {
+fn parse(text: &str) -> Vec<HelpItem> {
     const USAGE: &str = "Usage: ";
     let mut help = Vec::new();
     let mut lines = text.lines().fuse();
     while let Some(line) = lines.next() {
         if let Some(rest) = line.strip_prefix(USAGE) {
             let (_, args) = rest.split_at(rest.find(' ').unwrap_or(rest.len()));
-            help.push(Part::Usage(args))
+            help.push(HelpItem::Usage(args))
         } else if line.ends_with(':') {
             let title = line;
             let mut entries = Vec::new();
@@ -191,19 +188,19 @@ fn parse(text: &str) -> Help {
                 let Some(entry) = lines.next() else { break None };
                 let entry = entry.trim_end();
                 if entry.is_empty() {
-                    break Some(Part::Paragraph(""));
+                    break Some(HelpItem::Paragraph(""));
                 }
                 let Some(sp_sp) = entry.rfind("  ") else { panic!("No double space in {entry}") };
                 let (item, caption) = entry.split_at(sp_sp + 2);
                 entries.push(Entry { item, caption });
             };
-            help.push(Part::Section(Section { title, entries }));
+            help.push(HelpItem::Section(Section { title, entries }));
             if let Some(part) = result {
                 help.push(part)
             }
         } else {
-            help.push(Part::Paragraph(line))
+            help.push(HelpItem::Paragraph(line))
         }
     }
-    Help(help)
+    help
 }
