@@ -12,32 +12,41 @@
 #![allow(clippy::missing_errors_doc, clippy::semicolon_if_nothing_returned)]
 #![cfg_attr(debug_assertions, allow(dead_code, unused_imports, unused_variables))]
 
+use std::borrow::Cow;
+
 use once_cell::sync::Lazy;
 use owo_colors::Style;
 use terminal_size::{terminal_size, Height, Width};
+use textwrap::{self, wrap};
 
-struct Constants {
-    term_width: usize,
-    plain: Style,
+struct Constants<'a> {
+    line_width: usize,
+    wrap_options: textwrap::Options<'a>,
     heading: Style,
     entry: Style,
 }
 
 static C: Lazy<Constants> = Lazy::new(|| {
-    fn inner() -> Option<usize> {
+    use textwrap::{wrap_algorithms::Penalties, WrapAlgorithm};
+    fn from_env() -> Option<usize> {
         std::env::var_os("COLUMNS")?.to_str()?.parse::<usize>().ok()
     }
-    let term_width = if let Some((Width(width), Height(_))) = terminal_size() {
+    let line_width = if let Some((Width(width), Height(_))) = terminal_size() {
         width as usize
     } else {
-        inner().unwrap_or(80)
+        from_env().unwrap_or(80)
     };
-    let plain = Style::new();
+    let penalties = Penalties {
+        short_last_line_penalty: 0,
+        ..Penalties::new()
+    };
+    let wrap_options =
+        textwrap::Options::new(line_width).wrap_algorithm(WrapAlgorithm::OptimalFit(penalties));
     let heading = Style::new().yellow();
     let entry = Style::new().green();
     Constants {
-        term_width,
-        plain,
+        line_width,
+        wrap_options,
         heading,
         entry,
     }
@@ -47,66 +56,99 @@ struct Entry<'a> {
     item: &'a str,
     caption: &'a str,
 }
+impl<'a> Entry<'a> {
+    fn fits_in_line(&self) -> bool {
+        self.item.len() + self.caption.len() <= C.line_width
+    }
+    fn blank_prefix_size(&self) -> usize {
+        use bstr::ByteSlice;
+        self.item
+            .as_bytes()
+            .find_not_byteset(b" ")
+            .unwrap_or(self.item.len())
+    }
+    fn next_line_caption(&self, indents: &Indent) -> Vec<Cow<'a, str>> {
+        wrap(
+            self.caption,
+            C.wrap_options
+                .clone()
+                .initial_indent(indents.first)
+                .subsequent_indent(indents.rest),
+        )
+    }
+}
+
+struct Indent<'a> {
+    first: &'a str,
+    rest: &'a str,
+}
+
 struct Section<'a> {
     title: &'a str,
     entries: Vec<Entry<'a>>,
 }
+const BLANKS: &str = "                                                        ";
+impl<'a> Section<'a> {
+    fn next_line_help_indents(&self) -> Indent<'a> {
+        let max_blank_prefix_size = self
+            .entries
+            .iter()
+            .map(Entry::blank_prefix_size)
+            .fold(0, std::cmp::Ord::max);
+        let indent_len = (max_blank_prefix_size + 4).min(BLANKS.len());
+        let indent = &BLANKS[..indent_len];
+        Indent {
+            first: indent,
+            rest: indent,
+        }
+    }
+    fn next_line_help_lines(&self) -> Vec<Vec<Cow<'a, str>>> {
+        let mut result = Vec::new();
+        let indents = self.next_line_help_indents();
+        for entry in &self.entries {
+            result.push(vec![Cow::Owned(format!("{}", C.entry.style(entry.item)))]);
+            result.push(entry.next_line_caption(&indents));
+        }
+        result
+    }
+    fn next_line_help(&self) {
+        for line in self.next_line_help_lines().iter().flatten() {
+            println!("{line}");
+        }
+    }
+    fn print(&self) {
+        println!("{}", C.heading.style(self.title));
+        let fits_in_line = self.entries.iter().all(Entry::fits_in_line);
+        if fits_in_line {
+            for Entry { item, caption } in &self.entries {
+                println!("{}{}", C.entry.style(item), caption);
+            }
+        } else {
+            self.next_line_help();
+        }
+    }
+}
+
 enum Part<'a> {
     Usage(&'a str),
     Paragraph(&'a str),
     Section(Section<'a>),
 }
 
-const OPTION_INDENT: &str = "\n          ";
-const OTHER_INDENT: &str = "\n      ";
-impl<'a> Section<'a> {
-    fn next_line_indent(&'a self) -> &'static str {
-        if self.title.starts_with("Options") {
-            OPTION_INDENT
-        } else {
-            OTHER_INDENT
-        }
-    }
-    fn next_line_help(&self) -> bool {
-        self.entries
-            .iter()
-            .any(|e| e.item.len() + e.caption.len() > C.term_width)
-    }
-}
 struct Help<'a>(Vec<Part<'a>>);
 
 impl<'a> Help<'a> {
     fn print(&'a self) {
         let version = std::env!("CARGO_PKG_VERSION");
         let name = C.entry.bold().style("zet");
-        println!("{} {}", name, C.plain.style(version));
+        println!("{name} {version}");
         for line in &self.0 {
             match line {
-                Part::Paragraph(text) => println!("{}", C.plain.style(text)),
+                Part::Paragraph(text) => println!("{text}"),
                 Part::Usage(args) => {
-                    println!(
-                        "{}{}{}",
-                        C.heading.style("Usage: "),
-                        name,
-                        C.plain.style(args)
-                    )
+                    println!("{}{}{}", C.heading.style("Usage: "), name, args)
                 }
-                Part::Section(s) => {
-                    let between = if s.next_line_help() {
-                        s.next_line_indent()
-                    } else {
-                        ""
-                    };
-                    println!("{}", C.heading.style(s.title));
-                    for Entry { item, caption } in &s.entries {
-                        println!(
-                            "{}{}{}",
-                            C.entry.style(item),
-                            between,
-                            C.plain.style(caption)
-                        );
-                    }
-                }
+                Part::Section(s) => s.print(),
             };
         }
     }
