@@ -58,6 +58,9 @@ struct Entry<'a> {
     caption: &'a str,
 }
 impl<'a> Entry<'a> {
+    fn styled_item(&self) -> String {
+        format!("{}", C.entry.style(self.item))
+    }
     fn fits_in_line(&self) -> bool {
         self.item.len() + self.caption.len() <= C.line_width
     }
@@ -79,7 +82,7 @@ impl<'a> Entry<'a> {
     }
     fn same_line_help(&self) -> Vec<Cow<'a, str>> {
         let rest = &BLANKS[..(self.item.len() + 4).min(BLANKS.len())];
-        let first = format!("{}", C.entry.style(self.item));
+        let first = self.styled_item();
         let options = C
             .wrap_options
             .clone()
@@ -116,7 +119,7 @@ impl<'a> Section<'a> {
         let mut result = Vec::new();
         let indents = self.next_line_help_indents();
         for entry in &self.entries {
-            result.push(vec![Cow::Owned(format!("{}", C.entry.style(entry.item)))]);
+            result.push(vec![Cow::Owned(entry.styled_item())]);
             result.push(entry.next_line_caption(&indents));
         }
         result
@@ -139,8 +142,8 @@ impl<'a> Section<'a> {
         println!("{}", C.heading.style(self.title));
         let fits_in_line = self.entries.iter().all(Entry::fits_in_line);
         if fits_in_line {
-            for Entry { item, caption } in &self.entries {
-                println!("{}{}", C.entry.style(item), caption);
+            for entry in &self.entries {
+                println!("{}{}", entry.styled_item(), entry.caption);
             }
         } else {
             self.same_line_help();
