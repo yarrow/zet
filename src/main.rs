@@ -52,6 +52,7 @@ static C: Lazy<Constants> = Lazy::new(|| {
     }
 });
 
+const BLANKS: &str = "                                                        ";
 struct Entry<'a> {
     item: &'a str,
     caption: &'a str,
@@ -76,6 +77,16 @@ impl<'a> Entry<'a> {
                 .subsequent_indent(indents.rest),
         )
     }
+    fn same_line_help(&self) -> Vec<Cow<'a, str>> {
+        let rest = &BLANKS[..(self.item.len() + 4).min(BLANKS.len())];
+        let first = format!("{}", C.entry.style(self.item));
+        let options = C
+            .wrap_options
+            .clone()
+            .initial_indent(&first)
+            .subsequent_indent(rest);
+        wrap(self.caption, options)
+    }
 }
 
 struct Indent<'a> {
@@ -87,7 +98,6 @@ struct Section<'a> {
     title: &'a str,
     entries: Vec<Entry<'a>>,
 }
-const BLANKS: &str = "                                                        ";
 impl<'a> Section<'a> {
     fn next_line_help_indents(&self) -> Indent<'a> {
         let max_blank_prefix_size = self
@@ -116,6 +126,15 @@ impl<'a> Section<'a> {
             println!("{line}");
         }
     }
+    fn same_line_help_lines(&self) -> Vec<Vec<Cow<'a, str>>> {
+        self.entries.iter().map(Entry::same_line_help).collect()
+    }
+    fn same_line_help(&self) {
+        for line in self.same_line_help_lines().iter().flatten() {
+            println!("{line}");
+        }
+    }
+
     fn print(&self) {
         println!("{}", C.heading.style(self.title));
         let fits_in_line = self.entries.iter().all(Entry::fits_in_line);
@@ -124,7 +143,7 @@ impl<'a> Section<'a> {
                 println!("{}{}", C.entry.style(item), caption);
             }
         } else {
-            self.next_line_help();
+            self.same_line_help();
         }
     }
 }
