@@ -31,17 +31,25 @@ struct Constants<'a> {
 }
 
 static C: Lazy<Constants> = Lazy::new(|| {
+    use supports_color::Stream;
     fn from_env() -> Option<usize> {
         std::env::var_os("COLUMNS")?.to_str()?.parse::<usize>().ok()
     }
     let line_width = if let Some((Width(width), Height(_))) = terminal_size() {
         width as usize
     } else {
-        from_env().unwrap_or(80)
+        from_env().unwrap_or(100)
     };
     let wrap_options = textwrap::Options::new(line_width);
-    let heading = Style::new().yellow();
-    let entry = Style::new().green();
+
+    let (heading, entry) = if supports_color::on(Stream::Stdout).is_some() {
+        (Style::new().yellow(), Style::new().green())
+    } else {
+        debug_assert!(Style::new().is_plain());
+        debug_assert_eq!(Style::new().style("xyz").to_string(), "xyz");
+        (Style::new(), Style::new())
+    };
+
     Constants {
         line_width,
         wrap_options,
@@ -57,7 +65,7 @@ struct Entry<'a> {
 }
 impl<'a> Entry<'a> {
     fn styled_item(&self) -> String {
-        format!("{}", C.entry.style(self.item))
+        C.entry.style(self.item).to_string()
     }
     fn fits_in_line(&self) -> bool {
         self.item.len() + self.caption.len() <= C.line_width
