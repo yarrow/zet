@@ -16,98 +16,94 @@
 )]
 #![cfg_attr(debug_assertions, allow(dead_code, unused_imports, unused_variables))]
 
-use std::borrow::Cow;
-
 use once_cell::sync::{Lazy, OnceCell};
 use owo_colors::Style;
+use std::borrow::Cow;
 use terminal_size::{terminal_size, Height, Width};
 use textwrap::{self, wrap};
 
-struct Constants<'a> {
-    line_width: usize,
-    wrap_options: textwrap::Options<'a>,
-    heading: Style,
-    entry: Style,
-}
-
-static ANSI_SUPPORT: OnceCell<bool> = OnceCell::new();
-static C: Lazy<Constants> = Lazy::new(|| {
+static SUPPORTS_COLOR: OnceCell<bool> = OnceCell::new();
+/// Initializing color support with `enable_ansi_support`, so we can use ANSI escape codes on
+/// Windows 10 and above (as well as on Unix derivatives).
+/// ### Panics
+/// Panics if called more than once
+pub fn init_color_support() {
+    use enable_ansi_support::enable_ansi_support;
     use supports_color::Stream;
-    fn from_env() -> Option<usize> {
-        std::env::var_os("COLUMNS")?.to_str()?.parse::<usize>().ok()
-    }
-    let line_width = if let Some((Width(width), Height(_))) = terminal_size() {
-        width as usize
-    } else {
-        from_env().unwrap_or(100)
-    };
-    let wrap_options = textwrap::Options::new(line_width);
-
-    let color =
-        *ANSI_SUPPORT.get().unwrap_or(&false) && supports_color::on(Stream::Stdout).is_some();
-    let (heading, entry) = if color {
-        (Style::new().yellow(), Style::new().green())
-    } else {
-        debug_assert!(Style::new().is_plain());
-        debug_assert_eq!(Style::new().style("xyz").to_string(), "xyz");
-        (Style::new(), Style::new())
-    };
-
-    Constants {
-        line_width,
-        wrap_options,
-        heading,
-        entry,
-    }
-});
-
-const BLANKS: &str = "                                                        ";
-struct Entry<'a> {
-    item: &'a str,
-    caption: &'a str,
-}
-impl<'a> Entry<'a> {
-    fn styled_item(&self) -> String {
-        C.entry.style(self.item).to_string()
-    }
-    fn fits_in_line(&self) -> bool {
-        self.item.len() + self.caption.len() <= C.line_width
-    }
-    fn blank_prefix_size(&self) -> usize {
-        use bstr::ByteSlice;
-        self.item
-            .as_bytes()
-            .find_not_byteset(b" ")
-            .unwrap_or(self.item.len())
-    }
-    fn next_line_caption(&self, indent: &'a str) -> Vec<Cow<'a, str>> {
-        wrap(
-            self.caption,
-            C.wrap_options
-                .clone()
-                .initial_indent(indent)
-                .subsequent_indent(indent),
-        )
-    }
-    fn same_line_help(&self) -> Vec<Cow<'a, str>> {
-        let rest = &BLANKS[..(self.item.len() + 4).min(BLANKS.len())];
-        let first = self.styled_item();
-        let options = C
-            .wrap_options
-            .clone()
-            .initial_indent(&first)
-            .subsequent_indent(rest);
-        wrap(self.caption, options)
-    }
+    let ansi_support = enable_ansi_support().is_ok();
+    SUPPORTS_COLOR
+        .set(ansi_support && supports_color::on(Stream::Stdout).is_some())
+        .unwrap();
 }
 
+enum HelpItem<'a> {
+    Usage(&'a str),
+    Paragraph(&'a str),
+    Section(Section<'a>),
+}
 struct Section<'a> {
     title: &'a str,
     entries: Vec<Entry<'a>>,
 }
+struct Entry<'a> {
+    item: &'a str,
+    caption: &'a str,
+}
+
+fn print_help() {
+    let input = include_str!("help.txt");
+    let help = parse(input);
+    let version = std::env!("CARGO_PKG_VERSION");
+    let name = C.item.bold().style("zet");
+    println!("{name} {version}");
+    for help_item in help {
+        match help_item {
+            HelpItem::Paragraph(text) => wrap(text, &C.wrap_options)
+                .iter()
+                .for_each(|line| println!("{line}")),
+            HelpItem::Usage(args) => {
+                println!("{}{}{}", C.title.style("Usage: "), name, args)
+            }
+            HelpItem::Section(s) => s.print(),
+        };
+    }
+}
+
+fn parse(text: &str) -> Vec<HelpItem> {
+    const USAGE: &str = "Usage: ";
+    let mut help = Vec::new();
+    let mut lines = text.lines().fuse();
+    while let Some(line) = lines.next() {
+        if let Some(rest) = line.strip_prefix(USAGE) {
+            let (_, args) = rest.split_at(rest.find(' ').unwrap_or(rest.len()));
+            help.push(HelpItem::Usage(args))
+        } else if line.ends_with(':') {
+            let title = line;
+            let mut entries = Vec::new();
+            let result = loop {
+                let Some(entry) = lines.next() else { break None };
+                let entry = entry.trim_end();
+                if entry.is_empty() {
+                    break Some(HelpItem::Paragraph(""));
+                }
+                let Some(sp_sp) = entry.rfind("  ") else { panic!("No double space in {entry}") };
+                let (item, caption) = entry.split_at(sp_sp + 2);
+                entries.push(Entry { item, caption });
+            };
+            help.push(HelpItem::Section(Section { title, entries }));
+            if let Some(part) = result {
+                help.push(part)
+            }
+        } else {
+            help.push(HelpItem::Paragraph(line))
+        }
+    }
+    help
+}
+
 impl<'a> Section<'a> {
     fn print(&self) {
-        println!("{}", C.heading.style(self.title));
+        println!("{}", C.title.style(self.title));
         let fits_in_line = self.entries.iter().all(Entry::fits_in_line);
         if fits_in_line {
             for entry in &self.entries {
@@ -155,67 +151,83 @@ impl<'a> Section<'a> {
     }
 }
 
-enum HelpItem<'a> {
-    Usage(&'a str),
-    Paragraph(&'a str),
-    Section(Section<'a>),
-}
-
-fn print_help(help: &[HelpItem]) {
-    let version = std::env!("CARGO_PKG_VERSION");
-    let name = C.entry.bold().style("zet");
-    println!("{name} {version}");
-    for line in help {
-        match line {
-            HelpItem::Paragraph(text) => wrap(text, &C.wrap_options)
-                .iter()
-                .for_each(|line| println!("{line}")),
-            HelpItem::Usage(args) => {
-                println!("{}{}{}", C.heading.style("Usage: "), name, args)
-            }
-            HelpItem::Section(s) => s.print(),
-        };
+const BLANKS: &str = "                                                        ";
+impl<'a> Entry<'a> {
+    fn styled_item(&self) -> String {
+        C.item.style(self.item).to_string()
+    }
+    fn fits_in_line(&self) -> bool {
+        self.item.len() + self.caption.len() <= C.line_width
+    }
+    fn blank_prefix_size(&self) -> usize {
+        use bstr::ByteSlice;
+        self.item
+            .as_bytes()
+            .find_not_byteset(b" ")
+            .unwrap_or(self.item.len())
+    }
+    fn next_line_caption(&self, indent: &'a str) -> Vec<Cow<'a, str>> {
+        wrap(
+            self.caption,
+            C.wrap_options
+                .clone()
+                .initial_indent(indent)
+                .subsequent_indent(indent),
+        )
+    }
+    fn same_line_help(&self) -> Vec<Cow<'a, str>> {
+        let rest = &BLANKS[..(self.item.len() + 4).min(BLANKS.len())];
+        let first = self.styled_item();
+        let options = C
+            .wrap_options
+            .clone()
+            .initial_indent(&first)
+            .subsequent_indent(rest);
+        wrap(self.caption, options)
     }
 }
+
+struct Constants<'a> {
+    line_width: usize,
+    wrap_options: textwrap::Options<'a>,
+    title: Style,
+    item: Style,
+    name: Style,
+}
+static C: Lazy<Constants> = Lazy::new(|| {
+    fn from_env() -> Option<usize> {
+        std::env::var_os("COLUMNS")?.to_str()?.parse::<usize>().ok()
+    }
+    let line_width = if let Some((Width(width), Height(_))) = terminal_size() {
+        width as usize
+    } else {
+        from_env().unwrap_or(100)
+    };
+    let wrap_options = textwrap::Options::new(line_width);
+
+    let color = *SUPPORTS_COLOR.get().unwrap_or(&false);
+    let (title, item, name) = if color {
+        (
+            Style::new().yellow(),
+            Style::new().green(),
+            Style::new().green().bold(),
+        )
+    } else {
+        debug_assert!(Style::new().is_plain());
+        debug_assert_eq!(Style::new().style("xyz").to_string(), "xyz");
+        (Style::new(), Style::new(), Style::new())
+    };
+
+    Constants {
+        line_width,
+        wrap_options,
+        title,
+        item,
+        name,
+    }
+});
 
 fn main() {
-    use enable_ansi_support::enable_ansi_support;
-    ANSI_SUPPORT
-        .set(enable_ansi_support().map_or(false, |_| true))
-        .unwrap();
-    let input = include_str!("help.txt");
-    let help = parse(input);
-    print_help(&help);
-}
-
-fn parse(text: &str) -> Vec<HelpItem> {
-    const USAGE: &str = "Usage: ";
-    let mut help = Vec::new();
-    let mut lines = text.lines().fuse();
-    while let Some(line) = lines.next() {
-        if let Some(rest) = line.strip_prefix(USAGE) {
-            let (_, args) = rest.split_at(rest.find(' ').unwrap_or(rest.len()));
-            help.push(HelpItem::Usage(args))
-        } else if line.ends_with(':') {
-            let title = line;
-            let mut entries = Vec::new();
-            let result = loop {
-                let Some(entry) = lines.next() else { break None };
-                let entry = entry.trim_end();
-                if entry.is_empty() {
-                    break Some(HelpItem::Paragraph(""));
-                }
-                let Some(sp_sp) = entry.rfind("  ") else { panic!("No double space in {entry}") };
-                let (item, caption) = entry.split_at(sp_sp + 2);
-                entries.push(Entry { item, caption });
-            };
-            help.push(HelpItem::Section(Section { title, entries }));
-            if let Some(part) = result {
-                help.push(part)
-            }
-        } else {
-            help.push(HelpItem::Paragraph(line))
-        }
-    }
-    help
+    init_color_support();
+    print_help();
 }
