@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 bstr = { version = "1.2.0", default-features = false, features = ["std", "alloc"] }
+enable-ansi-support = "0.2.1"
 once_cell = "1.17.1"
 owo-colors = { version = "3.5.0" }
 supports-color = "2.0.0"

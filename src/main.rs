@@ -18,7 +18,7 @@
 
 use std::borrow::Cow;
 
-use once_cell::sync::Lazy;
+use once_cell::sync::{Lazy, OnceCell};
 use owo_colors::Style;
 use terminal_size::{terminal_size, Height, Width};
 use textwrap::{self, wrap};
@@ -30,6 +30,7 @@ struct Constants<'a> {
     entry: Style,
 }
 
+static ANSI_SUPPORT: OnceCell<bool> = OnceCell::new();
 static C: Lazy<Constants> = Lazy::new(|| {
     use supports_color::Stream;
     fn from_env() -> Option<usize> {
@@ -42,7 +43,9 @@ static C: Lazy<Constants> = Lazy::new(|| {
     };
     let wrap_options = textwrap::Options::new(line_width);
 
-    let (heading, entry) = if supports_color::on(Stream::Stdout).is_some() {
+    let color =
+        *ANSI_SUPPORT.get().unwrap_or(&false) && supports_color::on(Stream::Stdout).is_some();
+    let (heading, entry) = if color {
         (Style::new().yellow(), Style::new().green())
     } else {
         debug_assert!(Style::new().is_plain());
@@ -176,6 +179,10 @@ fn print_help(help: &[HelpItem]) {
 }
 
 fn main() {
+    use enable_ansi_support::enable_ansi_support;
+    ANSI_SUPPORT
+        .set(enable_ansi_support().map_or(false, |_| true))
+        .unwrap();
     let input = include_str!("help.txt");
     let help = parse(input);
     print_help(&help);
