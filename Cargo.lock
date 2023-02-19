@@ -61,7 +61,6 @@ dependencies = [
  "bstr",
  "enable-ansi-support",
  "once_cell",
- "owo-colors",
  "supports-color",
  "terminal_size",
  "textwrap",
@@ -124,12 +123,6 @@ name = "once_cell"
 version = "1.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b7e5500299e16ebb147ae15a00a942af264cf3688f47923b8fc2cd5858f23ad3"
-
-[[package]]
-name = "owo-colors"
-version = "3.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c1b04fb49957986fdce4d6ee7a65027d55d4b6d2265e5848bbb507b58ccfdb6f"
 
 [[package]]
 name = "rustix"

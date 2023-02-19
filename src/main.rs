@@ -12,29 +12,17 @@
 #![allow(
     clippy::missing_errors_doc,
     clippy::semicolon_if_nothing_returned,
-    clippy::items_after_statements
+    clippy::items_after_statements,
+    clippy::needless_pass_by_value
 )]
-#![cfg_attr(debug_assertions, allow(dead_code, unused_imports, unused_variables))]
+//#![cfg_attr(debug_assertions, allow(dead_code, unused_imports, unused_variables))]
+#![allow(dead_code, unused_imports, unused_variables)]
 
-use once_cell::sync::{Lazy, OnceCell};
-use owo_colors::Style;
+use help_zet::style;
+use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use terminal_size::{terminal_size, Height, Width};
 use textwrap::{self, wrap};
-
-static SUPPORTS_COLOR: OnceCell<bool> = OnceCell::new();
-/// Initializing color support with `enable_ansi_support`, so we can use ANSI escape codes on
-/// Windows 10 and above (as well as on Unix derivatives).
-/// ### Panics
-/// Panics if called more than once
-pub fn init_color_support() {
-    use enable_ansi_support::enable_ansi_support;
-    use supports_color::Stream;
-    let ansi_support = enable_ansi_support().is_ok();
-    SUPPORTS_COLOR
-        .set(ansi_support && supports_color::on(Stream::Stdout).is_some())
-        .unwrap();
-}
 
 enum HelpItem<'a> {
     Usage(&'a str),
@@ -54,7 +42,7 @@ fn print_help() {
     let input = include_str!("help.txt");
     let help = parse(input);
     let version = std::env!("CARGO_PKG_VERSION");
-    let name = C.item.bold().style("zet");
+    let name = style::app_name("zet");
     println!("{name} {version}");
     for help_item in help {
         match help_item {
@@ -62,7 +50,7 @@ fn print_help() {
                 .iter()
                 .for_each(|line| println!("{line}")),
             HelpItem::Usage(args) => {
-                println!("{}{}{}", C.title.style("Usage: "), name, args)
+                println!("{}{}{}", style::title("Usage: "), name, args)
             }
             HelpItem::Section(s) => s.print(),
         };
@@ -103,7 +91,7 @@ fn parse(text: &str) -> Vec<HelpItem> {
 
 impl<'a> Section<'a> {
     fn print(&self) {
-        println!("{}", C.title.style(self.title));
+        println!("{}", style::title(self.title));
         let fits_in_line = self.entries.iter().all(Entry::fits_in_line);
         if fits_in_line {
             for entry in &self.entries {
@@ -154,7 +142,7 @@ impl<'a> Section<'a> {
 const BLANKS: &str = "                                                        ";
 impl<'a> Entry<'a> {
     fn styled_item(&self) -> String {
-        C.item.style(self.item).to_string()
+        style::item(self.item)
     }
     fn fits_in_line(&self) -> bool {
         self.item.len() + self.caption.len() <= C.line_width
@@ -190,9 +178,6 @@ impl<'a> Entry<'a> {
 struct Constants<'a> {
     line_width: usize,
     wrap_options: textwrap::Options<'a>,
-    title: Style,
-    item: Style,
-    name: Style,
 }
 static C: Lazy<Constants> = Lazy::new(|| {
     fn from_env() -> Option<usize> {
@@ -205,29 +190,14 @@ static C: Lazy<Constants> = Lazy::new(|| {
     };
     let wrap_options = textwrap::Options::new(line_width);
 
-    let color = *SUPPORTS_COLOR.get().unwrap_or(&false);
-    let (title, item, name) = if color {
-        (
-            Style::new().yellow(),
-            Style::new().green(),
-            Style::new().green().bold(),
-        )
-    } else {
-        debug_assert!(Style::new().is_plain());
-        debug_assert_eq!(Style::new().style("xyz").to_string(), "xyz");
-        (Style::new(), Style::new(), Style::new())
-    };
-
     Constants {
         line_width,
         wrap_options,
-        title,
-        item,
-        name,
     }
 });
 
 fn main() {
-    init_color_support();
+    style::init();
+    style::set_color_choice(style::ColorChoice::Auto);
     print_help();
 }
