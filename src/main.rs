@@ -18,7 +18,7 @@
 //#![cfg_attr(debug_assertions, allow(dead_code, unused_imports, unused_variables))]
 #![allow(dead_code, unused_imports, unused_variables)]
 
-use help_zet::style::{self, display_width, ColorChoice, StyleSheet};
+use help_zet::style::{self, ColorChoice, StyleSheet, StyledStr};
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use terminal_size::{terminal_size, Height, Width};
@@ -34,7 +34,7 @@ struct Section<'a> {
     entries: Vec<Entry<'a>>,
 }
 struct Entry<'a> {
-    item: String,
+    item: StyledStr<'a>,
     caption: &'a str,
 }
 
@@ -122,19 +122,19 @@ impl<'a> Section<'a> {
         }
     }
     fn next_line_help_indent(&self) -> &'a str {
-        let max_blank_prefix_size = self
+        let max_indent = self
             .entries
             .iter()
-            .map(Entry::blank_prefix_size)
+            .map(|e| e.item.indented_by())
             .fold(0, std::cmp::Ord::max);
-        let indent_len = (max_blank_prefix_size + 4).min(BLANKS.len());
+        let indent_len = (max_indent + 4).min(BLANKS.len());
         &BLANKS[..indent_len]
     }
     fn next_line_help_lines(&self) -> Vec<Vec<Cow<'a, str>>> {
         let mut result = Vec::new();
         let indent = self.next_line_help_indent();
         for entry in &self.entries {
-            result.push(vec![Cow::from(entry.item.clone())]);
+            result.push(vec![Cow::from(entry.item.to_string())]);
             result.push(entry.next_line_caption(indent));
         }
         result
@@ -146,18 +146,8 @@ impl<'a> Section<'a> {
 
 const BLANKS: &str = "                                                        ";
 impl<'a> Entry<'a> {
-    fn item_len(&self) -> usize {
-        display_width(&self.item)
-    }
     fn fits_in_line(&self) -> bool {
-        self.item_len() + self.caption.len() <= C.line_width
-    }
-    fn blank_prefix_size(&self) -> usize {
-        use bstr::ByteSlice;
-        self.item
-            .as_bytes()
-            .find_not_byteset(b" ")
-            .unwrap_or(self.item_len())
+        self.item.len() + self.caption.len() <= C.line_width
     }
     fn next_line_caption(&self, indent: &'a str) -> Vec<Cow<'a, str>> {
         wrap(
@@ -169,8 +159,8 @@ impl<'a> Entry<'a> {
         )
     }
     fn same_line_help(&self) -> Vec<Cow<'a, str>> {
-        let rest = &BLANKS[..(self.item_len() + 4).min(BLANKS.len())];
-        let first = &self.item;
+        let first = &self.item.to_string();
+        let rest = &BLANKS[..(self.item.len() + 4).min(BLANKS.len())];
         let options = C
             .wrap_options
             .clone()

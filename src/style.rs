@@ -1,4 +1,5 @@
 use once_cell::sync::Lazy;
+use std::fmt;
 
 pub enum ColorChoice {
     Auto,
@@ -7,40 +8,73 @@ pub enum ColorChoice {
 }
 #[derive(Debug, Clone, Copy)]
 pub struct StyleSheet {
-    app_start: &'static str,
-    item_start: &'static str,
-    title_start: &'static str,
-    end: &'static str,
+    app_prefix: &'static str,
+    item_prefix: &'static str,
+    title_prefix: &'static str,
 }
-
 impl StyleSheet {
-    pub fn app_name(&self, s: &str) -> String {
-        format!("{}{}{}", self.app_start, s, self.end)
+    pub fn app_name<'a>(&self, content: &'a str) -> StyledStr<'a> {
+        StyledStr {
+            prefix: self.app_prefix,
+            content,
+        }
     }
-    pub fn item(&self, s: &str) -> String {
-        format!("{}{}{}", self.item_start, s, self.end)
+    pub fn item<'a>(&self, content: &'a str) -> StyledStr<'a> {
+        StyledStr {
+            prefix: self.item_prefix,
+            content,
+        }
     }
-    pub fn title(&self, s: &str) -> String {
-        format!("{}{}{}", self.title_start, s, self.end)
+    pub fn title<'a>(&self, content: &'a str) -> StyledStr<'a> {
+        StyledStr {
+            prefix: self.title_prefix,
+            content,
+        }
     }
 }
 
-const ESC: u8 = b'\x1B';
+pub struct StyledStr<'a> {
+    prefix: &'static str,
+    content: &'a str,
+}
+impl<'a> StyledStr<'a> {
+    pub fn len(&self) -> usize {
+        self.content.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.content.is_empty()
+    }
+    pub fn indented_by(&self) -> usize {
+        use bstr::ByteSlice;
+        self.content
+            .as_bytes()
+            .find_not_byteset(b" ")
+            .unwrap_or(self.len())
+    }
+}
+impl<'a> fmt::Display for StyledStr<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.prefix.is_empty() {
+            write!(f, "{}", self.content)
+        } else {
+            write!(f, "{}{}{}", self.prefix, self.content, RESET)
+        }
+    }
+}
+
 const GREEN: &str = "\x1B[32m";
 const BOLD_GREEN: &str = "\x1B[32;1m";
 const YELLOW: &str = "\x1B[33m";
 const RESET: &str = "\x1B[m";
 const ALWAYS: StyleSheet = StyleSheet {
-    app_start: BOLD_GREEN,
-    item_start: GREEN,
-    title_start: YELLOW,
-    end: RESET,
+    app_prefix: BOLD_GREEN,
+    item_prefix: GREEN,
+    title_prefix: YELLOW,
 };
 const NEVER: StyleSheet = StyleSheet {
-    app_start: "",
-    item_start: "",
-    title_start: "",
-    end: "",
+    app_prefix: "",
+    item_prefix: "",
+    title_prefix: "",
 };
 static AUTO: Lazy<StyleSheet> = Lazy::new(|| {
     use enable_ansi_support::enable_ansi_support;
@@ -65,33 +99,17 @@ pub fn colored(cc: ColorChoice) -> &'static StyleSheet {
     }
 }
 
-pub fn display_width(s: &str) -> usize {
-    use bstr::ByteSlice;
-    let s = s.as_bytes();
-    if s.len() < GREEN.len() + RESET.len() {
-        return s.len();
-    }
-    if s[0] == ESC && s[1] == b'[' && s.ends_with_str(RESET) {
-        match s.find_byte(b'm') {
-            Some(m) => s.len() - (m + 1 + RESET.len()),
-            None => s.len(),
-        }
-    } else {
-        s.len()
-    }
-}
-
 #[cfg(test)]
 mod test {
     use super::*;
 
     #[test]
-    fn test_display_width() {
+    fn test_len() {
         let contents = "abc";
         for choice in [ALWAYS, NEVER] {
-            assert_eq!(display_width(&choice.app_name(&contents)), contents.len());
-            assert_eq!(display_width(&choice.item(&contents)), contents.len());
-            assert_eq!(display_width(&choice.title(&contents)), contents.len());
+            assert_eq!(choice.app_name(&contents).len(), contents.len());
+            assert_eq!(choice.item(&contents).len(), contents.len());
+            assert_eq!(choice.title(&contents).len(), contents.len());
         }
     }
 }
