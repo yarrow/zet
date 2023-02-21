@@ -18,7 +18,7 @@
 //#![cfg_attr(debug_assertions, allow(dead_code, unused_imports, unused_variables))]
 #![allow(dead_code, unused_imports, unused_variables)]
 
-use help_zet::style;
+use help_zet::style::{self, display_width, ColorChoice, StyleSheet};
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use terminal_size::{terminal_size, Height, Width};
@@ -34,15 +34,15 @@ struct Section<'a> {
     entries: Vec<Entry<'a>>,
 }
 struct Entry<'a> {
-    item: &'a str,
+    item: String,
     caption: &'a str,
 }
 
-fn print_help() {
+fn print_help(style: &StyleSheet) {
     let input = include_str!("help.txt");
-    let help = parse(input);
+    let help = parse(style, input);
     let version = std::env!("CARGO_PKG_VERSION");
-    let name = style::app_name("zet");
+    let name = style.app_name("zet");
     println!("{name} {version}");
     for help_item in help {
         match help_item {
@@ -50,14 +50,17 @@ fn print_help() {
                 .iter()
                 .for_each(|line| println!("{line}")),
             HelpItem::Usage(args) => {
-                println!("{}{}{}", style::title("Usage: "), name, args)
+                println!("{}{}{}", style.title("Usage: "), name, args)
             }
-            HelpItem::Section(s) => s.print(),
+            HelpItem::Section(s) => {
+                println!("{}", style.title(s.title));
+                s.print_entries();
+            }
         };
     }
 }
 
-fn parse(text: &str) -> Vec<HelpItem> {
+fn parse<'a>(style: &StyleSheet, text: &'a str) -> Vec<HelpItem<'a>> {
     const USAGE: &str = "Usage: ";
     let mut help = Vec::new();
     let mut lines = text.lines().fuse();
@@ -76,7 +79,10 @@ fn parse(text: &str) -> Vec<HelpItem> {
                 }
                 let Some(sp_sp) = entry.rfind("  ") else { panic!("No double space in {entry}") };
                 let (item, caption) = entry.split_at(sp_sp + 2);
-                entries.push(Entry { item, caption });
+                entries.push(Entry {
+                    item: style.item(item),
+                    caption,
+                });
             };
             help.push(HelpItem::Section(Section { title, entries }));
             if let Some(part) = result {
@@ -90,12 +96,11 @@ fn parse(text: &str) -> Vec<HelpItem> {
 }
 
 impl<'a> Section<'a> {
-    fn print(&self) {
-        println!("{}", style::title(self.title));
+    fn print_entries(&self) {
         let fits_in_line = self.entries.iter().all(Entry::fits_in_line);
         if fits_in_line {
             for entry in &self.entries {
-                println!("{}{}", entry.styled_item(), entry.caption);
+                println!("{}{}", entry.item, entry.caption);
             }
         } else {
             let same_line_help = self.same_line_help_lines();
@@ -129,7 +134,7 @@ impl<'a> Section<'a> {
         let mut result = Vec::new();
         let indent = self.next_line_help_indent();
         for entry in &self.entries {
-            result.push(vec![Cow::Owned(entry.styled_item())]);
+            result.push(vec![Cow::from(entry.item.clone())]);
             result.push(entry.next_line_caption(indent));
         }
         result
@@ -141,18 +146,18 @@ impl<'a> Section<'a> {
 
 const BLANKS: &str = "                                                        ";
 impl<'a> Entry<'a> {
-    fn styled_item(&self) -> String {
-        style::item(self.item)
+    fn item_len(&self) -> usize {
+        display_width(&self.item)
     }
     fn fits_in_line(&self) -> bool {
-        self.item.len() + self.caption.len() <= C.line_width
+        self.item_len() + self.caption.len() <= C.line_width
     }
     fn blank_prefix_size(&self) -> usize {
         use bstr::ByteSlice;
         self.item
             .as_bytes()
             .find_not_byteset(b" ")
-            .unwrap_or(self.item.len())
+            .unwrap_or(self.item_len())
     }
     fn next_line_caption(&self, indent: &'a str) -> Vec<Cow<'a, str>> {
         wrap(
@@ -164,12 +169,12 @@ impl<'a> Entry<'a> {
         )
     }
     fn same_line_help(&self) -> Vec<Cow<'a, str>> {
-        let rest = &BLANKS[..(self.item.len() + 4).min(BLANKS.len())];
-        let first = self.styled_item();
+        let rest = &BLANKS[..(self.item_len() + 4).min(BLANKS.len())];
+        let first = &self.item;
         let options = C
             .wrap_options
             .clone()
-            .initial_indent(&first)
+            .initial_indent(first)
             .subsequent_indent(rest);
         wrap(self.caption, options)
     }
@@ -198,6 +203,5 @@ static C: Lazy<Constants> = Lazy::new(|| {
 
 fn main() {
     style::init();
-    style::set_color_choice(style::ColorChoice::Auto);
-    print_help();
+    print_help(style::colored(ColorChoice::Auto));
 }
