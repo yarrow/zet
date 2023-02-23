@@ -1,6 +1,6 @@
 Calcuate the union, intersection, set difference and so forth of files considered as sets of lines
 
-Usage: zet [OPTIONS] <COMMAND>
+Usage: zet [OPTIONS] <COMMAND> <PATH...>
 
 Commands:
   union      Prints lines appearing in ANY input file
@@ -11,10 +11,10 @@ Commands:
   help       Print this message
 
 Options:
-      --color <COLOR>  [possible values: auto, always, never]
-      --by-file        Lines occuring multiple times, but in only one file, count as single (not multiple)
-  -h, --help           Print help (see more with '--help')
-  -V, --version        Print version
+      --color <WHEN>  [possible values: auto, always, never]
+      --by-file       Lines occuring multiple times, but in only one file, count as single (not multiple)
+  -h, --help          Print this message
+  -V, --version       Print version
 
 Each line is output at most once, no matter how many times it occurs in the input. Lines are printed in the order they occur in the input.
 
