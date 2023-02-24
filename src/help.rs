@@ -1,4 +1,4 @@
-use crate::style::{StyleSheet, StyledStr};
+use crate::styles::{StyleSheet, StyledStr};
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use terminal_size::{terminal_size, Height, Width};
@@ -26,9 +26,9 @@ pub fn print(style: &StyleSheet) {
     println!("{name} {version}");
     for help_item in help {
         match help_item {
-            HelpItem::Paragraph(text) => wrap(text, &C.wrap_options)
-                .iter()
-                .for_each(|line| println!("{line}")),
+            HelpItem::Paragraph(text) => {
+                wrap(text, &C.wrap_options).iter().for_each(|line| println!("{line}"))
+            }
             HelpItem::Usage(args) => {
                 println!("{}{}{}", style.title("Usage: "), name, args)
             }
@@ -59,10 +59,7 @@ fn parse<'a>(style: &StyleSheet, text: &'a str) -> Vec<HelpItem<'a>> {
                 }
                 let Some(sp_sp) = entry.rfind("  ") else { panic!("No double space in {entry}") };
                 let (item, caption) = entry.split_at(sp_sp + 2);
-                entries.push(Entry {
-                    item: style.item(item),
-                    caption,
-                });
+                entries.push(Entry { item: style.item(item), caption });
             };
             help.push(HelpItem::Section(Section { title, entries }));
             if let Some(part) = result {
@@ -102,11 +99,8 @@ impl<'a> Section<'a> {
         }
     }
     fn next_line_help_indent(&self) -> &'a str {
-        let max_indent = self
-            .entries
-            .iter()
-            .map(|e| e.item.indented_by())
-            .fold(0, std::cmp::Ord::max);
+        let max_indent =
+            self.entries.iter().map(|e| e.item.indented_by()).fold(0, std::cmp::Ord::max);
         let indent_len = (max_indent + 4).min(BLANKS.len());
         &BLANKS[..indent_len]
     }
@@ -130,22 +124,12 @@ impl<'a> Entry<'a> {
         self.item.len() + self.caption.len() <= C.line_width
     }
     fn next_line_caption(&self, indent: &'a str) -> Vec<Cow<'a, str>> {
-        wrap(
-            self.caption,
-            C.wrap_options
-                .clone()
-                .initial_indent(indent)
-                .subsequent_indent(indent),
-        )
+        wrap(self.caption, C.wrap_options.clone().initial_indent(indent).subsequent_indent(indent))
     }
     fn same_line_help(&self) -> Vec<Cow<'a, str>> {
         let first = &self.item.to_string();
         let rest = &BLANKS[..(self.item.len() + 4).min(BLANKS.len())];
-        let options = C
-            .wrap_options
-            .clone()
-            .initial_indent(first)
-            .subsequent_indent(rest);
+        let options = C.wrap_options.clone().initial_indent(first).subsequent_indent(rest);
         wrap(self.caption, options)
     }
 }
@@ -165,8 +149,5 @@ static C: Lazy<Constants> = Lazy::new(|| {
     };
     let wrap_options = textwrap::Options::new(line_width);
 
-    Constants {
-        line_width,
-        wrap_options,
-    }
+    Constants { line_width, wrap_options }
 });

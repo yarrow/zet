@@ -18,10 +18,10 @@ bstr = { version = "1.1.0", default-features = false, features = ["std", "alloc"
 encoding_rs = "0.8.28"
 encoding_rs_io = "0.1.7"
 fxhash = "0.2.1"
-clap = { version = "4.1.4", features = ["derive","cargo"] }
+clap = { version = "4.1.4", default-features = false, features = ["std","error-context","suggestions", "derive","cargo"] }
 memchr = "2.4.0"
 indexmap = "1.7.0"
-is-terminal = "0.4.3"
+is-terminal = "0.4.2"
 enable-ansi-support = "0.2.1"
 supports-color = "2.0.0"
 textwrap = "0.16.0"

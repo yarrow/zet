@@ -13,23 +13,17 @@ pub struct StyleSheet {
     title_prefix: &'static str,
 }
 impl StyleSheet {
+    #[must_use]
     pub fn app_name<'a>(&self, content: &'a str) -> StyledStr<'a> {
-        StyledStr {
-            prefix: self.app_prefix,
-            content,
-        }
+        StyledStr { prefix: self.app_prefix, content }
     }
+    #[must_use]
     pub fn item<'a>(&self, content: &'a str) -> StyledStr<'a> {
-        StyledStr {
-            prefix: self.item_prefix,
-            content,
-        }
+        StyledStr { prefix: self.item_prefix, content }
     }
+    #[must_use]
     pub fn title<'a>(&self, content: &'a str) -> StyledStr<'a> {
-        StyledStr {
-            prefix: self.title_prefix,
-            content,
-        }
+        StyledStr { prefix: self.title_prefix, content }
     }
 }
 
@@ -38,18 +32,18 @@ pub struct StyledStr<'a> {
     content: &'a str,
 }
 impl<'a> StyledStr<'a> {
+    #[must_use]
     pub fn len(&self) -> usize {
         self.content.len()
     }
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.content.is_empty()
     }
+    #[must_use]
     pub fn indented_by(&self) -> usize {
         use bstr::ByteSlice;
-        self.content
-            .as_bytes()
-            .find_not_byteset(b" ")
-            .unwrap_or(self.len())
+        self.content.as_bytes().find_not_byteset(b" ").unwrap_or(self.len())
     }
 }
 impl<'a> fmt::Display for StyledStr<'a> {
@@ -66,16 +60,9 @@ const GREEN: &str = "\x1B[32m";
 const BOLD_GREEN: &str = "\x1B[32;1m";
 const YELLOW: &str = "\x1B[33m";
 const RESET: &str = "\x1B[m";
-const ALWAYS: StyleSheet = StyleSheet {
-    app_prefix: BOLD_GREEN,
-    item_prefix: GREEN,
-    title_prefix: YELLOW,
-};
-const NEVER: StyleSheet = StyleSheet {
-    app_prefix: "",
-    item_prefix: "",
-    title_prefix: "",
-};
+const ALWAYS: StyleSheet =
+    StyleSheet { app_prefix: BOLD_GREEN, item_prefix: GREEN, title_prefix: YELLOW };
+const NEVER: StyleSheet = StyleSheet { app_prefix: "", item_prefix: "", title_prefix: "" };
 static AUTO: Lazy<StyleSheet> = Lazy::new(|| {
     use enable_ansi_support::enable_ansi_support;
     use supports_color::Stream;
@@ -91,6 +78,7 @@ pub fn init() {
     Lazy::force(&AUTO);
 }
 
+#[must_use]
 pub fn colored(cc: ColorChoice) -> &'static StyleSheet {
     match cc {
         ColorChoice::Always => &ALWAYS,
@@ -107,9 +95,9 @@ mod test {
     fn test_len() {
         let contents = "abc";
         for choice in [ALWAYS, NEVER] {
-            assert_eq!(choice.app_name(&contents).len(), contents.len());
-            assert_eq!(choice.item(&contents).len(), contents.len());
-            assert_eq!(choice.title(&contents).len(), contents.len());
+            assert_eq!(choice.app_name(contents).len(), contents.len());
+            assert_eq!(choice.item(contents).len(), contents.len());
+            assert_eq!(choice.title(contents).len(), contents.len());
         }
     }
 }

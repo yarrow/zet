@@ -46,23 +46,31 @@
 //! the bookkeeping value of a line. It provides an `.output_to` method to write
 //! the lines of the set to an `io::Write` sink.
 //!
-#![deny(warnings)]
-#![cfg_attr(debug_assertions, allow(dead_code, unused_imports), warn(warnings))]
-#![deny(unused_must_use)]
-#![deny(clippy::all)]
-#![allow(clippy::needless_return)]
-#![deny(clippy::pedantic)]
-#![allow(clippy::missing_errors_doc)]
 #![deny(
-    missing_docs,
+    warnings,
+    clippy::all,
+    clippy::cargo,
+    clippy::pedantic,
     trivial_casts,
     trivial_numeric_casts,
     unused_extern_crates,
     unused_import_braces,
-    unused_qualifications
+    unused_qualifications,
+    unused_must_use
 )]
+#![allow(clippy::cargo)] // FIXME
+#![allow(
+    clippy::items_after_statements,
+    clippy::missing_errors_doc,
+    clippy::needless_pass_by_value,
+    clippy::needless_return,
+    clippy::semicolon_if_nothing_returned
+)]
+#![cfg_attr(debug_assertions, allow(dead_code, unused_imports, unused_variables))]
 
 pub mod args;
+pub mod help;
 pub mod operands;
 pub mod operations;
 pub mod set;
+pub mod styles;
