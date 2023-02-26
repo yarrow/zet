@@ -9,8 +9,9 @@ fn main_binary() -> Command {
 }
 
 #[test]
-fn requires_subcommand() {
-    main_binary().assert().failure();
+fn prints_help_if_no_subcommand() {
+    let output = main_binary().unwrap();
+    assert!(String::from_utf8(output.stdout).unwrap().contains("Usage:"));
 }
 
 const SUBCOMMANDS: [&str; 5] = ["intersect", "union", "diff", "single", "multiple"];

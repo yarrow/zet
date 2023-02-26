@@ -1,6 +1,8 @@
 //! Code to parse the command line using `structop` and `clap`, and definitions
 //! of the parsed result
 
+use crate::help;
+use crate::styles::{self, ColorChoice};
 use clap::{Parser, ValueEnum};
 use std::path::PathBuf;
 
@@ -9,8 +11,12 @@ use std::path::PathBuf;
 #[must_use]
 pub fn parsed() -> Args {
     let parsed = CliArgs::parse();
-    let op = match parsed.op {
-        CliName::Help => unimplemented!(),
+    if parsed.help {
+        help_and_exit()
+    }
+    let Some(op) = parsed.op else { help_and_exit() };
+    let op = match op {
+        CliName::Help => help_and_exit(),
         CliName::Intersect => OpName::Intersect,
         CliName::Union => OpName::Union,
         CliName::Diff => OpName::Diff,
@@ -18,6 +24,12 @@ pub fn parsed() -> Args {
         CliName::Multiple => OpName::Multiple,
     };
     Args { op, files: parsed.files }
+}
+
+fn help_and_exit() -> ! {
+    styles::init();
+    help::print(styles::colored(ColorChoice::Auto));
+    std::process::exit(0);
 }
 
 pub struct Args {
@@ -44,9 +56,13 @@ pub enum OpName {
 #[command(name = "zet")]
 /// `Args` contains the parsed command line.
 struct CliArgs {
+    #[arg(short, long)]
+    /// Like the `help` command, the `-h` or `--help` flags tell us to print the help message
+    /// and exit
+    help: bool,
     #[arg(value_enum)]
     /// `op` is the set operation requested
-    op: CliName,
+    op: Option<CliName>,
     #[arg(name = "Input files")]
     /// `files` is the list of files from the command line
     files: Vec<PathBuf>,
