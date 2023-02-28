@@ -8,9 +8,9 @@ pub enum ColorChoice {
 }
 #[derive(Debug, Clone, Copy)]
 pub struct StyleSheet {
-    app_prefix: &'static str,
-    item_prefix: &'static str,
-    title_prefix: &'static str,
+    app_prefix: Option<&'static str>,
+    item_prefix: Option<&'static str>,
+    title_prefix: Option<&'static str>,
 }
 impl StyleSheet {
     #[must_use]
@@ -28,7 +28,7 @@ impl StyleSheet {
 }
 
 pub struct StyledStr<'a> {
-    prefix: &'static str,
+    prefix: Option<&'static str>,
     content: &'a str,
 }
 impl<'a> StyledStr<'a> {
@@ -48,10 +48,10 @@ impl<'a> StyledStr<'a> {
 }
 impl<'a> fmt::Display for StyledStr<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.prefix.is_empty() {
-            write!(f, "{}", self.content)
+        if let Some(prefix) = self.prefix {
+            write!(f, "{}{}{}", prefix, self.content, RESET)
         } else {
-            write!(f, "{}{}{}", self.prefix, self.content, RESET)
+            write!(f, "{}", self.content)
         }
     }
 }
@@ -60,9 +60,12 @@ const GREEN: &str = "\x1B[32m";
 const BOLD_GREEN: &str = "\x1B[32;1m";
 const YELLOW: &str = "\x1B[33m";
 const RESET: &str = "\x1B[m";
-const ALWAYS: StyleSheet =
-    StyleSheet { app_prefix: BOLD_GREEN, item_prefix: GREEN, title_prefix: YELLOW };
-const NEVER: StyleSheet = StyleSheet { app_prefix: "", item_prefix: "", title_prefix: "" };
+const ALWAYS: StyleSheet = StyleSheet {
+    app_prefix: Some(BOLD_GREEN),
+    item_prefix: Some(GREEN),
+    title_prefix: Some(YELLOW),
+};
+const NEVER: StyleSheet = StyleSheet { app_prefix: None, item_prefix: None, title_prefix: None };
 static AUTO: Lazy<StyleSheet> = Lazy::new(|| {
     use enable_ansi_support::enable_ansi_support;
     use supports_color::Stream;
