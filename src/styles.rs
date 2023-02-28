@@ -1,5 +1,6 @@
-use clap::{Parser, ValueEnum};
-use once_cell::sync::Lazy;
+use clap::ValueEnum;
+use enable_ansi_support::enable_ansi_support;
+use once_cell::sync::OnceCell;
 use std::fmt;
 
 #[derive(Debug, Clone, ValueEnum)]
@@ -62,14 +63,14 @@ const GREEN: &str = "\x1B[32m";
 const BOLD_GREEN: &str = "\x1B[32;1m";
 const YELLOW: &str = "\x1B[33m";
 const RESET: &str = "\x1B[m";
+
+const NEVER: StyleSheet = StyleSheet { app_prefix: None, item_prefix: None, title_prefix: None };
 const ALWAYS: StyleSheet = StyleSheet {
     app_prefix: Some(BOLD_GREEN),
     item_prefix: Some(GREEN),
     title_prefix: Some(YELLOW),
 };
-const NEVER: StyleSheet = StyleSheet { app_prefix: None, item_prefix: None, title_prefix: None };
-static AUTO: Lazy<StyleSheet> = Lazy::new(|| {
-    use enable_ansi_support::enable_ansi_support;
+fn auto() -> StyleSheet {
     use supports_color::Stream;
     let use_color = enable_ansi_support().is_ok() && supports_color::on(Stream::Stdout).is_some();
     if use_color {
@@ -77,18 +78,28 @@ static AUTO: Lazy<StyleSheet> = Lazy::new(|| {
     } else {
         NEVER
     }
-});
-
-pub fn init() {
-    Lazy::force(&AUTO);
 }
 
-#[must_use]
-pub fn colored(cc: ColorChoice) -> &'static StyleSheet {
-    match cc {
-        ColorChoice::Always => &ALWAYS,
-        ColorChoice::Never => &NEVER,
-        ColorChoice::Auto => Lazy::<StyleSheet>::get(&AUTO).unwrap_or(&NEVER),
+static COLOR_CHOICE: OnceCell<ColorChoice> = OnceCell::new();
+static STYLE_SHEET: OnceCell<StyleSheet> = OnceCell::new();
+pub(crate) fn set_color_choice(cc: ColorChoice) {
+    COLOR_CHOICE.set(cc).expect("set_color_choice may only be called once");
+}
+pub(crate) fn global_style() -> &'static StyleSheet {
+    if let Some(style) = STYLE_SHEET.get() {
+        style
+    } else {
+        let cc = COLOR_CHOICE.get().expect("Please call set_color_choice before calling style");
+        let style = match cc {
+            ColorChoice::Always => {
+                let _ = enable_ansi_support();
+                ALWAYS
+            }
+            ColorChoice::Never => NEVER,
+            ColorChoice::Auto => auto(),
+        };
+        let _ = STYLE_SHEET.set(style); // .set only errors if the value was already set
+        STYLE_SHEET.get().expect("This can't happen: STYLE_SHEET was unset after being set")
     }
 }
 

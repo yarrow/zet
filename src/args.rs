@@ -2,7 +2,7 @@
 //! of the parsed result
 
 use crate::help;
-use crate::styles::{self, ColorChoice, StyleSheet};
+use crate::styles::{set_color_choice, ColorChoice};
 use clap::{Parser, ValueEnum};
 use std::path::PathBuf;
 
@@ -11,16 +11,17 @@ use std::path::PathBuf;
 #[must_use]
 pub fn parsed() -> Args {
     let parsed = CliArgs::parse();
-    let color = parsed.color.unwrap_or(ColorChoice::Auto);
+    let cc = parsed.color.unwrap_or(ColorChoice::Auto);
+    set_color_choice(cc);
     if parsed.help {
-        help_and_exit(color);
+        help_and_exit();
     }
     if parsed.version {
-        version_and_exit(color);
+        version_and_exit();
     }
-    let Some(op) = parsed.op else { help_and_exit(dbg!(color)) };
+    let Some(op) = parsed.op else { help_and_exit() };
     let op = match op {
-        CliName::Help => help_and_exit(color),
+        CliName::Help => help_and_exit(),
         CliName::Intersect => OpName::Intersect,
         CliName::Union => OpName::Union,
         CliName::Diff => OpName::Diff,
@@ -30,15 +31,12 @@ pub fn parsed() -> Args {
     Args { op, files: parsed.files }
 }
 
-fn help_and_exit(color: ColorChoice) -> ! {
-    exit_after(color, help::print)
+fn help_and_exit() -> ! {
+    help::print();
+    std::process::exit(0);
 }
-fn version_and_exit(color: ColorChoice) -> ! {
-    exit_after(color, help::print_version)
-}
-fn exit_after(color: ColorChoice, print_something: impl FnOnce(&StyleSheet)) -> ! {
-    styles::init();
-    print_something(styles::colored(color));
+fn version_and_exit() -> ! {
+    help::print_version();
     std::process::exit(0);
 }
 

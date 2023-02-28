@@ -1,4 +1,4 @@
-use crate::styles::{StyleSheet, StyledStr};
+use crate::styles::{global_style, StyleSheet, StyledStr};
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use terminal_size::{terminal_size, Height, Width};
@@ -22,15 +22,16 @@ fn name(style: &StyleSheet) -> StyledStr {
     style.app_name("zet")
 }
 
-pub(crate) fn print_version(style: &StyleSheet) {
+pub(crate) fn print_version() {
     let version = std::env!("CARGO_PKG_VERSION");
-    let name = name(style);
+    let name = name(global_style());
     println!("{name} {version}");
 }
-pub(crate) fn print(style: &StyleSheet) {
+pub(crate) fn print() {
     let input = include_str!("help.txt");
+    let style = global_style();
     let help = parse(style, input);
-    print_version(style);
+    print_version();
     for help_item in help {
         match help_item {
             HelpItem::Paragraph(text) => {
