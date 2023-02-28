@@ -1,5 +1,9 @@
 # Change Log
 
+## [Unreleased]
+
+- Self-indulgent recreation of (part of) clap's `help` feature, because I like the `clap 4`'s help format, but really miss the colored (rather than gray-scale) help.
+
 ## [0.2.6] - 2023-02-02
 
 - Abandon trying to have a Minimum Supported Rust Version (maybe once we're 1.0?)
@@ -43,6 +47,7 @@
 
 Initial release
 
+[Unreleased]: https://github.com/yarrow/zet/compare/0.2.6...HEAD
 [0.2.6]: https://github.com/yarrow/zet/compare/0.2.5...v0.2.6
 [0.2.5]: https://github.com/yarrow/zet/compare/0.2.0...0.2.5
 [0.2.0]: https://github.com/yarrow/zet/compare/v0.1.1...0.2.0
