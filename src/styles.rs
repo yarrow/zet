@@ -1,6 +1,8 @@
+use clap::{Parser, ValueEnum};
 use once_cell::sync::Lazy;
 use std::fmt;
 
+#[derive(Debug, Clone, ValueEnum)]
 pub enum ColorChoice {
     Auto,
     Always,

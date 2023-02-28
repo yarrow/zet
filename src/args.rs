@@ -11,15 +11,16 @@ use std::path::PathBuf;
 #[must_use]
 pub fn parsed() -> Args {
     let parsed = CliArgs::parse();
+    let color = parsed.color.unwrap_or(ColorChoice::Auto);
     if parsed.help {
-        help_and_exit();
+        help_and_exit(color);
     }
     if parsed.version {
-        version_and_exit();
+        version_and_exit(color);
     }
-    let Some(op) = parsed.op else { help_and_exit() };
+    let Some(op) = parsed.op else { help_and_exit(dbg!(color)) };
     let op = match op {
-        CliName::Help => help_and_exit(),
+        CliName::Help => help_and_exit(color),
         CliName::Intersect => OpName::Intersect,
         CliName::Union => OpName::Union,
         CliName::Diff => OpName::Diff,
@@ -29,15 +30,15 @@ pub fn parsed() -> Args {
     Args { op, files: parsed.files }
 }
 
-fn help_and_exit() -> ! {
-    exit_after(help::print);
+fn help_and_exit(color: ColorChoice) -> ! {
+    exit_after(color, help::print)
 }
-fn version_and_exit() -> ! {
-    exit_after(help::print_version)
+fn version_and_exit(color: ColorChoice) -> ! {
+    exit_after(color, help::print_version)
 }
-fn exit_after(print_something: impl FnOnce(&StyleSheet)) -> ! {
+fn exit_after(color: ColorChoice, print_something: impl FnOnce(&StyleSheet)) -> ! {
     styles::init();
-    print_something(styles::colored(ColorChoice::Auto));
+    print_something(styles::colored(color));
     std::process::exit(0);
 }
 
@@ -72,6 +73,10 @@ struct CliArgs {
     #[arg(short('V'), long)]
     /// The `-V` or `--version` flags tell us to print our name and version, then exit
     version: bool,
+    #[arg(long)]
+    /// The `color` flag tells us whether to print color or not (Auto means Yes, if
+    /// stdout is a terminal that supports color)
+    color: Option<ColorChoice>,
     #[arg(value_enum)]
     /// `op` is the set operation requested
     op: Option<CliName>,
