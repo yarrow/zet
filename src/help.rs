@@ -18,19 +18,26 @@ struct Entry<'a> {
     caption: &'a str,
 }
 
-pub fn print(style: &StyleSheet) {
+fn name(style: &StyleSheet) -> StyledStr {
+    style.app_name("zet")
+}
+
+pub(crate) fn print_version(style: &StyleSheet) {
+    let version = std::env!("CARGO_PKG_VERSION");
+    let name = name(style);
+    println!("{name} {version}");
+}
+pub(crate) fn print(style: &StyleSheet) {
     let input = include_str!("help.txt");
     let help = parse(style, input);
-    let version = std::env!("CARGO_PKG_VERSION");
-    let name = style.app_name("zet");
-    println!("{name} {version}");
+    print_version(style);
     for help_item in help {
         match help_item {
             HelpItem::Paragraph(text) => {
                 wrap(text, &C.wrap_options).iter().for_each(|line| println!("{line}"))
             }
             HelpItem::Usage(args) => {
-                println!("{}{}{}", style.title("Usage: "), name, args)
+                println!("{}{}{}", style.title("Usage: "), name(style), args)
             }
             HelpItem::Section(s) => {
                 println!("{}", style.title(s.title));

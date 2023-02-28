@@ -2,7 +2,7 @@
 //! of the parsed result
 
 use crate::help;
-use crate::styles::{self, ColorChoice};
+use crate::styles::{self, ColorChoice, StyleSheet};
 use clap::{Parser, ValueEnum};
 use std::path::PathBuf;
 
@@ -12,7 +12,10 @@ use std::path::PathBuf;
 pub fn parsed() -> Args {
     let parsed = CliArgs::parse();
     if parsed.help {
-        help_and_exit()
+        help_and_exit();
+    }
+    if parsed.version {
+        version_and_exit();
     }
     let Some(op) = parsed.op else { help_and_exit() };
     let op = match op {
@@ -27,8 +30,14 @@ pub fn parsed() -> Args {
 }
 
 fn help_and_exit() -> ! {
+    exit_after(help::print);
+}
+fn version_and_exit() -> ! {
+    exit_after(help::print_version)
+}
+fn exit_after(print_something: impl FnOnce(&StyleSheet)) -> ! {
     styles::init();
-    help::print(styles::colored(ColorChoice::Auto));
+    print_something(styles::colored(ColorChoice::Auto));
     std::process::exit(0);
 }
 
@@ -60,6 +69,9 @@ struct CliArgs {
     /// Like the `help` command, the `-h` or `--help` flags tell us to print the help message
     /// and exit
     help: bool,
+    #[arg(short('V'), long)]
+    /// The `-V` or `--version` flags tell us to print our name and version, then exit
+    version: bool,
     #[arg(value_enum)]
     /// `op` is the set operation requested
     op: Option<CliName>,
