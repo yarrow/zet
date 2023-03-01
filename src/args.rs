@@ -1,5 +1,4 @@
-//! Code to parse the command line using `structop` and `clap`, and definitions
-//! of the parsed result
+//! Code to parse the command line using `clap`, and definitions of the parsed result
 
 use crate::help;
 use crate::styles::{set_color_choice, ColorChoice};
@@ -16,12 +15,25 @@ pub fn parsed() -> Args {
     if parsed.help {
         help_and_exit();
     }
-    if parsed.version {
-        version_and_exit();
+    let Some(op) = parsed.command else { help_and_exit() };
+    if op == CliName::Help {
+        help_and_exit()
     }
-    let Some(op) = parsed.op else { help_and_exit() };
+    if parsed.version {
+        println!("{}", help::version());
+        exit_success();
+    }
+    if parsed.by_file {
+        match op {
+            CliName::Single | CliName::Multiple => (),
+            _ => {
+                eprintln!("{}", help::by_file_usage());
+                exit_usage();
+            }
+        }
+    }
     let op = match op {
-        CliName::Help => help_and_exit(),
+        CliName::Help => help_and_exit(), // This can't happen, but...
         CliName::Intersect => OpName::Intersect,
         CliName::Union => OpName::Union,
         CliName::Diff => OpName::Diff,
@@ -33,11 +45,25 @@ pub fn parsed() -> Args {
 
 fn help_and_exit() -> ! {
     help::print();
-    std::process::exit(0);
+    exit_success();
 }
-fn version_and_exit() -> ! {
-    help::print_version();
-    std::process::exit(0);
+
+const SUCCESS_CODE: i32 = 0;
+const USAGE_CODE: i32 = 2; // Because `clap` uses 2
+fn exit_success() -> ! {
+    safe_exit(SUCCESS_CODE)
+}
+fn exit_usage() -> ! {
+    safe_exit(USAGE_CODE)
+}
+/// From clap
+fn safe_exit(code: i32) -> ! {
+    use std::io::Write;
+
+    let _ = std::io::stdout().lock().flush();
+    let _ = std::io::stderr().lock().flush();
+
+    std::process::exit(code)
 }
 
 pub struct Args {
@@ -75,9 +101,13 @@ struct CliArgs {
     /// The `color` flag tells us whether to print color or not (Auto means Yes, if
     /// stdout is a terminal that supports color)
     color: Option<ColorChoice>,
+    #[arg(long)]
+    /// With `--by-file`, the `single` and `multiple` commands count a line as occuring
+    /// once if it's only contained in one file, even if it occurs many times in that file.
+    by_file: bool,
     #[arg(value_enum)]
     /// `op` is the set operation requested
-    op: Option<CliName>,
+    command: Option<CliName>,
     #[arg(name = "Input files")]
     /// `files` is the list of files from the command line
     files: Vec<PathBuf>,

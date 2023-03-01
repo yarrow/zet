@@ -14,6 +14,8 @@ pub struct StyleSheet {
     app_prefix: Option<&'static str>,
     item_prefix: Option<&'static str>,
     title_prefix: Option<&'static str>,
+    error_prefix: Option<&'static str>,
+    literal_prefix: Option<&'static str>,
 }
 impl StyleSheet {
     #[must_use]
@@ -27,6 +29,14 @@ impl StyleSheet {
     #[must_use]
     pub fn title<'a>(&self, content: &'a str) -> StyledStr<'a> {
         StyledStr { prefix: self.title_prefix, content }
+    }
+    #[must_use]
+    pub fn error<'a>(&self, content: &'a str) -> StyledStr<'a> {
+        StyledStr { prefix: self.error_prefix, content }
+    }
+    #[must_use]
+    pub fn literal<'a>(&self, content: &'a str) -> StyledStr<'a> {
+        StyledStr { prefix: self.literal_prefix, content }
     }
 }
 
@@ -59,16 +69,25 @@ impl<'a> fmt::Display for StyledStr<'a> {
     }
 }
 
+const BOLD_RED: &str = "\x1B[31;1m";
 const GREEN: &str = "\x1B[32m";
 const BOLD_GREEN: &str = "\x1B[32;1m";
 const YELLOW: &str = "\x1B[33m";
 const RESET: &str = "\x1B[m";
 
-const NEVER: StyleSheet = StyleSheet { app_prefix: None, item_prefix: None, title_prefix: None };
+const NEVER: StyleSheet = StyleSheet {
+    app_prefix: None,
+    item_prefix: None,
+    title_prefix: None,
+    error_prefix: None,
+    literal_prefix: None,
+};
 const ALWAYS: StyleSheet = StyleSheet {
     app_prefix: Some(BOLD_GREEN),
     item_prefix: Some(GREEN),
     title_prefix: Some(YELLOW),
+    error_prefix: Some(BOLD_RED),
+    literal_prefix: Some(YELLOW),
 };
 fn auto() -> StyleSheet {
     use supports_color::Stream;

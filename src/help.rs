@@ -22,16 +22,25 @@ fn name(style: &StyleSheet) -> StyledStr {
     style.app_name("zet")
 }
 
-pub(crate) fn print_version() {
+pub(crate) fn version() -> String {
     let version = std::env!("CARGO_PKG_VERSION");
     let name = name(global_style());
-    println!("{name} {version}");
+    format!("{name} {version}")
+}
+
+pub(crate) fn by_file_usage() -> String {
+    let style = global_style();
+    let error = style.error("error:");
+    let by_file = style.literal("--by-file");
+    let single = style.item("single");
+    let multiple = style.item("multiple");
+    format!("{error} The '{by_file}' flag is only meaningful with the commands {single} or {multiple}\n\n  note: to pass a file called '{by_file}', use '-- --by-file'")
 }
 pub(crate) fn print() {
     let input = include_str!("help.txt");
     let style = global_style();
     let help = parse(style, input);
-    print_version();
+    println!("{}", version());
     for help_item in help {
         match help_item {
             HelpItem::Paragraph(text) => {
