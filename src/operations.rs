@@ -22,8 +22,8 @@ pub trait LaterOperand {
 /// * `OpName::Union` prints the lines that occur in any file,
 /// * `OpName::Intersect` prints the lines that occur in all files,
 /// * `OpName::Diff` prints the lines that occur in the first file and no other,
-/// * `OpName::Single` prints the lines that occur in exactly one file, and
-/// * `OpName::Multiple` prints the lines that occur in more than one file.
+/// * `OpName::SingleByFile` prints the lines that occur in exactly one file, and
+/// * `OpName::MultipleByFile` prints the lines that occur in more than one file.
 ///
 pub fn calculate<O: LaterOperand>(
     operation: OpName,
@@ -95,20 +95,20 @@ pub fn calculate<O: LaterOperand>(
             return set.output_to(out);
         }
 
-        // For `Single` and `Multiple`, we keep track of the id number of the
+        // For `SingleByFile` and `MultipleByFile`, we keep track of the id number of the
         // operand in which each line occurs, if there is exactly one such
         // operand. At the end, if a line has occurred in just one operand,
         // with id n, then its bookkeeping value will be Some(n).  If it occurs
         // in multiple operands, then its bookkeeping value will be None.
         // At the end:
-        // *  For `Single`, we keep the operands with Some(n)
-        // *  For `Multiple`, we keep the operands with None (meaning the line was
+        // *  For `SingleByFile`, we keep the operands with Some(n)
+        // *  For `MultipleByFile`, we keep the operands with None (meaning the line was
         //    seen in at least two operands).:
         // As you may have noticed, at the end we don't care *what* the id n is,
         // just that there is only one.  We keep track of n because a line that
         // occurs multiple times, but only in a single operand, is still
         // considered to have occurred once.
-        OpName::Single | OpName::Multiple => {
+        OpName::SingleByFile | OpName::MultipleByFile => {
             let seen_in_first_operand = NonZeroUsize::new(1);
             let mut this_operand_uid = seen_in_first_operand.expect("1 is nonzero");
             let mut set = first_operand.to_zet_set_with(seen_in_first_operand);
@@ -129,7 +129,7 @@ pub fn calculate<O: LaterOperand>(
                 })?;
             }
 
-            if operation == OpName::Single {
+            if operation == OpName::SingleByFile {
                 set.retain(|unique_source| unique_source.is_some());
             } else {
                 set.retain(|unique_source| unique_source.is_none());
@@ -192,9 +192,9 @@ mod test {
         let arg: Vec<&[u8]> = vec![b"xxx\nabc\nxxx\nyyy\nxxx\nabc\n"];
         let uniq = "xxx\nabc\nyyy\n";
         let empty = "";
-        for op in &[Intersect, Union, Diff, Single, Multiple] {
+        for op in &[Intersect, Union, Diff, SingleByFile, MultipleByFile] {
             let result = calc(*op, &arg);
-            let expected = if *op == Multiple { empty } else { uniq };
+            let expected = if *op == MultipleByFile { empty } else { uniq };
             assert_eq!(result, *expected, "for {op:?}");
         }
     }
@@ -208,7 +208,7 @@ mod test {
         assert_eq!(calc(Union, &args), "xyz\nabc\nxy\nxz\nx\nyz\ny\nz\n", "for {Union:?}");
         assert_eq!(calc(Intersect, &args), "xyz\nabc\n", "for {Intersect:?}");
         assert_eq!(calc(Diff, &args), "x\n", "for {Diff:?}");
-        assert_eq!(calc(Single, &args), "x\ny\nz\n", "for {Single:?}");
-        assert_eq!(calc(Multiple, &args), "xyz\nabc\nxy\nxz\nyz\n", "for {Multiple:?}");
+        assert_eq!(calc(SingleByFile, &args), "x\ny\nz\n", "for {SingleByFile:?}");
+        assert_eq!(calc(MultipleByFile, &args), "xyz\nabc\nxy\nxz\nyz\n", "for {MultipleByFile:?}");
     }
 }
