@@ -3,23 +3,55 @@ use std::process::Command;
 use assert_cmd::prelude::*;
 use assert_fs::{prelude::*, TempDir};
 use itertools::Itertools;
+use once_cell::sync::Lazy;
+use zet::args::OpName::{self, *};
 
 fn main_binary() -> Command {
     Command::cargo_bin("zet").unwrap()
 }
-
+fn run<I, S>(args: I) -> Command
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    let mut app = main_binary();
+    for arg_block in args {
+        for arg in arg_block.as_ref().split_ascii_whitespace() {
+            app.arg(arg);
+        }
+    }
+    app
+}
 #[test]
 fn prints_help_if_no_subcommand() {
     let output = main_binary().unwrap();
     assert!(String::from_utf8(output.stdout).unwrap().contains("Usage:"));
 }
 
-const SUBCOMMANDS: [&str; 5] = ["intersect", "union", "diff", "single", "multiple"];
+const UNION: &str = "union";
+const INTERSECT: &str = "intersect";
+const DIFF: &str = "diff";
+const SINGLE_BY_FILE: &str = "single --by-file";
+const MULTIPLE_BY_FILE: &str = "multiple --by-file";
+const SUBCOMMANDS: [&str; 5] = [INTERSECT, UNION, DIFF, SINGLE_BY_FILE, MULTIPLE_BY_FILE];
+const OP_NAMES: [OpName; 7] =
+    [Intersect, Union, Diff, Single, SingleByFile, Multiple, MultipleByFile];
+fn subcommand_for(op: OpName) -> &'static str {
+    match op {
+        Union => UNION,
+        Intersect => INTERSECT,
+        Diff => DIFF,
+        Single => "single",
+        SingleByFile => SINGLE_BY_FILE,
+        Multiple => "multiple",
+        MultipleByFile => MULTIPLE_BY_FILE,
+    }
+}
 
 #[test]
 fn subcommands_allow_empty_arg_list_and_produce_empty_output() {
     for subcommand in SUBCOMMANDS.iter() {
-        let output = main_binary().arg(subcommand).unwrap();
+        let output = run([subcommand]).unwrap();
         assert_eq!(String::from_utf8(output.stdout).unwrap(), "");
     }
 }
@@ -27,169 +59,156 @@ fn subcommands_allow_empty_arg_list_and_produce_empty_output() {
 #[test]
 fn fail_on_missing_file() {
     for subcommand in SUBCOMMANDS.iter() {
-        main_binary().args([subcommand, "x"]).assert().failure();
+        run([subcommand, "x"]).assert().failure();
     }
 }
 
 #[test]
 fn fail_bad_subcommand() {
-    main_binary().args(["OwOwOwOwOw"]).assert().failure();
+    run(["OwOwOwOwOw"]).assert().failure();
 }
 
 #[test]
-fn zet_subcommand_x_y_z_matches_expected_output_for_all_subcommands() {
+fn zet_subcommand_x_y_z_matches_expected_output_for_all_operations() {
     let temp = TempDir::new().unwrap();
 
-    let x_path: &str = &path_with(&temp, "x.txt", X, Encoding::Plain);
-    let y_path: &str = &path_with(&temp, "y.txt", Y, Encoding::Plain);
-    let z_path: &str = &path_with(&temp, "z.txt", Z, Encoding::Plain);
-    for sub in SUBCOMMANDS.iter() {
-        let output = main_binary().args([sub, &x_path, &y_path, &z_path]).unwrap();
+    let x_path: &str = &path_with(&temp, "x.txt", &x().join(""), Encoding::Plain);
+    let y_path: &str = &path_with(&temp, "y.txt", &y().join(""), Encoding::Plain);
+    let z_path: &str = &path_with(&temp, "z.txt", &z().join(""), Encoding::Plain);
+    for &op in OP_NAMES.iter() {
+        if op == Single || op == Multiple {
+            break;
+        }
+        let sub = subcommand_for(op);
+        let output = run([sub, x_path, y_path, z_path]).unwrap();
         assert_eq!(
             String::from_utf8(output.stdout).unwrap(),
-            expected(sub),
-            "Output from {sub} doesn't match expected",
+            xpected(op).join(""),
+            "Output from {sub} ({op:?}) doesn't match expected",
         );
     }
 }
 
-// We're testing with files (say x.txt, y.txt, and z.txt) whose contents are
-// X, Y, and Z. Each line tells us which subset of the three files it appears
-// in, and that determines for which subcommands `sub` it will appear in the
-// output of
-//
-//      zet sub x.txt y.txt z.txt
-
-// The contents of x.txt
-const X: &str = "In x, y, z.  So: union, intersect, multiple
-In x only, though it appears there more than once. So: union, diff, single
-In x, y, z.  So: union, intersect, multiple
-Just in x.  So: union, diff, single.
-In x only, though it appears there more than once. So: union, diff, single
-In x only, though it appears there more than once. So: union, diff, single
-In x and y.  So: union, multiple
-In x and z.  So: union, multiple
-Also in x, y, z.  So: union, intersect, multiple
-";
-
-// The contents of y.txt
-const Y: &str = "In x, y, z.  So: union, intersect, multiple
-In x and y.  So: union, multiple
-Also in x, y, z.  So: union, intersect, multiple
-In y and z. So: union, multiple
-Just in y. So: union, single
-";
-
-// The contents of z.txt
-const Z: &str = "Just in z. So: union, single
-Also in x, y, z.  So: union, intersect, multiple
-Just in z. So: union, single
-In y and z. So: union, multiple
-Just in z. So: union, single
-In x, y, z.  So: union, intersect, multiple
-In x and z.  So: union, multiple
-In x and z.  So: union, multiple
-";
-
-// For the expected output sections below, we want to begin each line at the
-// first column, so we put the opening quote mark on the line above and ignore
-// the newline character that this produces.
-fn expected(subcommand: &str) -> &'static str {
-    match subcommand {
-        "union" => &UNION[1..],
-        "intersect" => &INTERSECT[1..],
-        "diff" => &DIFF[1..],
-        "single" => &SINGLE[1..],
-        "multiple" => &MULTIPLE[1..],
-        _ => panic!("There is no subcommand {subcommand}"),
+use std::fmt;
+#[derive(Clone)]
+struct TestInput {
+    x: usize,
+    y: usize,
+    z: usize,
+    tag: &'static str,
+    expect: Vec<OpName>,
+}
+impl TestInput {
+    fn should_be_in(&self, op: OpName) -> bool {
+        self.expect.contains(&op)
     }
 }
-
-// The expected output of `zet union x.txt y.txt z.txt`
-const UNION: &str = "
-In x, y, z.  So: union, intersect, multiple
-In x only, though it appears there more than once. So: union, diff, single
-Just in x.  So: union, diff, single.
-In x and y.  So: union, multiple
-In x and z.  So: union, multiple
-Also in x, y, z.  So: union, intersect, multiple
-In y and z. So: union, multiple
-Just in y. So: union, single
-Just in z. So: union, single
-";
-
-// The expected output of `zet intersect x.txt y.txt z.txt`
-const INTERSECT: &str = "
-In x, y, z.  So: union, intersect, multiple
-Also in x, y, z.  So: union, intersect, multiple
-";
-
-// The expected output of `zet diff x.txt y.txt z.txt`
-const DIFF: &str = "
-In x only, though it appears there more than once. So: union, diff, single
-Just in x.  So: union, diff, single.
-";
-
-// The expected output of `zet single x.txt y.txt z.txt`
-const SINGLE: &str = "
-In x only, though it appears there more than once. So: union, diff, single
-Just in x.  So: union, diff, single.
-Just in y. So: union, single
-Just in z. So: union, single
-";
-
-// The expected output of `zet single x.txt y.txt z.txt`
-const MULTIPLE: &str = "
-In x, y, z.  So: union, intersect, multiple
-In x and y.  So: union, multiple
-In x and z.  So: union, multiple
-Also in x, y, z.  So: union, intersect, multiple
-In y and z. So: union, multiple
-";
-
-// These tests of the expected results allow us to reduce the amount of
-// hand checking we need to make sure the expected outputs are themselves
-// correct.
-#[test]
-fn union_output_is_the_concatentated_input_lines_in_order_with_no_duplicates() {
-    let xyz = X.to_string() + Y + Z;
-    let unique_input_lines = xyz.lines().unique();
-    let union_lines = expected("union").lines();
-    assert!(union_lines.eq(unique_input_lines));
-}
-
-#[test]
-fn output_is_subsequence_of_union_output_for_all_subcommands() {
-    let union = expected("union");
-    for sub in SUBCOMMANDS.iter() {
-        assert!(
-            is_subsequence(expected(sub), union),
-            "Expected result for {sub} is not a subsequence of the expected result for union",
+impl fmt::Debug for TestInput {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        return writeln!(
+            f,
+            "{} {}{}{}{:?}",
+            self.tag,
+            show('x', self.x),
+            show('y', self.y),
+            show('z', self.z),
+            self.expect
         );
-    }
-}
-
-#[test]
-fn each_line_occurs_at_most_once_in_the_output_of_any_subcommand() {
-    for sub in SUBCOMMANDS.iter() {
-        let all = expected(sub).lines();
-        let uniq = all.clone().unique();
-        assert!(all.eq(uniq), "Output of {sub} has duplicate lines");
-    }
-}
-
-fn is_subsequence(needles: &str, haystack: &str) -> bool {
-    let needles = needles.lines();
-    let mut haystack = haystack.lines();
-    'next_needle: for needle in needles {
-        for hay in haystack.by_ref() {
-            if needle == hay {
-                continue 'next_needle;
+        fn show(x: char, count: usize) -> String {
+            if count == 0 {
+                "".to_string()
+            } else if count == 1 {
+                format!("{x} ")
+            } else {
+                format!("{x}({count}) ")
             }
         }
-        return false;
     }
-    true
+}
+// Each TestInput record gets formatted to a unique string, to be put in files
+// x.txt, y.txt, and/or z.txt.  The x, y, and z fields tell how many times to
+// put the formatted record into each file, and expect field tells whether we
+// expect the formatted record to appear in the output of the command associated
+// with each OpName.
+//
+static INPUT: Lazy<Vec<TestInput>> = Lazy::new(|| {
+    use OpName::{
+        Diff as D, Intersect as I, Multiple as M, MultipleByFile as MBF, Single as S,
+        SingleByFile as SBF, Union as U,
+    };
+    vec![
+        TestInput { x: 1, y: 1, z: 1, tag: "In xyz", expect: vec![U, I, MBF, M] },
+        TestInput { x: 3, y: 0, z: 0, tag: "In x 3 times", expect: vec![U, D, SBF, M] },
+        TestInput { x: 1, y: 0, z: 0, tag: "In x once", expect: vec![U, D, S, SBF] },
+        TestInput { x: 1, y: 1, z: 0, tag: "In xy", expect: vec![U, MBF, M] },
+        TestInput { x: 1, y: 2, z: 0, tag: "In x. In y twice", expect: vec![U, MBF, M] },
+        TestInput { x: 1, y: 0, z: 1, tag: "In xz", expect: vec![U, MBF, M] },
+        TestInput { x: 1, y: 1, z: 1, tag: "In xyz also", expect: vec![U, I, MBF, M] },
+        TestInput { x: 0, y: 1, z: 1, tag: "In yz", expect: vec![U, MBF, M] },
+        TestInput { x: 0, y: 1, z: 0, tag: "In y once", expect: vec![U, S, SBF] },
+        TestInput { x: 0, y: 0, z: 1, tag: "In z once", expect: vec![U, S, SBF] },
+    ]
+});
+fn xpected(op: OpName) -> Vec<String> {
+    INPUT.iter().filter(|inp| inp.should_be_in(op)).map(|inp| format!("{inp:?}")).collect()
+}
+fn text_for(xyz: impl Fn(&TestInput) -> usize) -> Vec<String> {
+    let mut text = Vec::new();
+    for line in INPUT.iter() {
+        for _ in 0..xyz(line) {
+            text.push(format!("{line:?}"));
+        }
+    }
+    text
+}
+fn x() -> Vec<String> {
+    text_for(|r| r.x)
+}
+fn y() -> Vec<String> {
+    text_for(|r| r.y)
+}
+fn z() -> Vec<String> {
+    text_for(|r| r.z)
+}
+// These tests of the expected results are sanity checks that the expected
+// outputs are themselves correct.
+#[test]
+fn expected_union_output_is_the_concatentated_input_lines_in_order_with_no_duplicates() {
+    let xyz = vec![x(), y(), z()].concat();
+    let unique_input_lines: Vec<String> = xyz.into_iter().unique().collect();
+    let union_lines = xpected(Union);
+    assert!(union_lines.eq(&unique_input_lines));
+}
+
+#[test]
+fn each_line_occurs_at_most_once_in_the_expected_output_of_any_subcommand() {
+    for &op in OP_NAMES.iter() {
+        let all = xpected(op);
+        let uniq: Vec<String> = all.iter().unique().cloned().collect();
+        assert!(all.eq(&uniq), "Output of {op:?} has duplicate lines");
+    }
+}
+
+#[test]
+fn expected_output_is_subsequence_of_union_output_for_all_subcommands() {
+    let union = xpected(Union);
+    for &op in OP_NAMES.iter() {
+        assert!(
+            is_subsequence(&xpected(op), &union),
+            "Expected result for {op:?} is not a subsequence of the expected result for Union",
+        );
+    }
+    fn is_subsequence(needles: &Vec<String>, haystack: &Vec<String>) -> bool {
+        'next_needle: for needle in needles {
+            for hay in haystack {
+                if *needle == *hay {
+                    continue 'next_needle;
+                }
+            }
+            return false;
+        }
+        true
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -237,10 +256,10 @@ fn zet_accepts_all_encodings_and_remembers_the_first_file_has_a_byte_order_mark(
     let temp = TempDir::new().unwrap();
 
     for enc in [Plain, UTF8, LE16, BE16].iter() {
-        let x_path: &str = &path_with(&temp, "x.txt", X, *enc);
-        let y_path: &str = &path_with(&temp, "y.txt", Y, LE16);
-        let z_path: &str = &path_with(&temp, "z.txt", Z, BE16);
-        let output = main_binary().args(["union", x_path, y_path, z_path]).unwrap();
+        let x_path: &str = &path_with(&temp, "x.txt", &x().join(""), *enc);
+        let y_path: &str = &path_with(&temp, "y.txt", &y().join(""), LE16);
+        let z_path: &str = &path_with(&temp, "z.txt", &z().join(""), BE16);
+        let output = run([UNION, x_path, y_path, z_path]).unwrap();
         let result_string = String::from_utf8(output.stdout).unwrap();
         let mut result = &result_string[..];
         if *enc == Plain {
@@ -249,7 +268,12 @@ fn zet_accepts_all_encodings_and_remembers_the_first_file_has_a_byte_order_mark(
             assert_eq!(&result[..3], UTF8_BOM, "Expected BOM not found: {:?}", *enc);
             result = &result[3..];
         }
-        assert_eq!(result, expected("union"), "Output from {:?} doesn't match expected", *enc);
+        assert_eq!(
+            result,
+            xpected(Union).join(""),
+            "Output from {:?} doesn't match expected",
+            *enc
+        );
     }
 }
 
@@ -263,9 +287,9 @@ fn single_argument_just_prints_the_unique_lines_for_all_but_multiple() {
     x.write_str(&(XX.to_owned() + XX)).unwrap();
 
     for subcommand in SUBCOMMANDS.iter() {
-        let output = main_binary().args([subcommand, x.path().to_str().unwrap()]).unwrap();
+        let output = run([subcommand, x.path().to_str().unwrap()]).unwrap();
         let result = String::from_utf8(output.stdout).unwrap();
-        assert_eq!(result, if subcommand == &"multiple" { "" } else { EXPECTED });
+        assert_eq!(result, if subcommand == &MULTIPLE_BY_FILE { "" } else { EXPECTED });
     }
 }
 
@@ -281,10 +305,10 @@ fn the_last_line_of_a_file_need_not_end_in_a_newline() {
 
     for subcommand in SUBCOMMANDS.iter() {
         let mut subcommand_with_args = vec![subcommand, &x_path];
-        if subcommand == &"multiple" {
+        if subcommand == &MULTIPLE_BY_FILE {
             subcommand_with_args.push(&x_path)
         }
-        let output = main_binary().args(&subcommand_with_args).unwrap();
+        let output = run(&subcommand_with_args).unwrap();
         let result = String::from_utf8(output.stdout).unwrap();
         assert_eq!(result, EXPECTED);
     }
@@ -311,7 +335,7 @@ fn zet_terminates_every_output_line_with_the_line_terminator_of_the_first_input_
             let a_path: &str = &path_with(&temp, "a.txt", &a, *enc);
             let b_path: &str = &path_with(&temp, "b.txt", b, LE16);
             let c_path: &str = &path_with(&temp, "c.txt", c, BE16);
-            let output = main_binary().args(["union", a_path, b_path, c_path]).unwrap();
+            let output = run([UNION, a_path, b_path, c_path]).unwrap();
             let result_string = String::from_utf8(output.stdout).unwrap();
             assert_eq!(result_string, expected, "for eol '{eol}', encoding {enc:?}");
         }
