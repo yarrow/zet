@@ -37,8 +37,20 @@ pub fn parsed() -> Args {
         CliName::Intersect => OpName::Intersect,
         CliName::Union => OpName::Union,
         CliName::Diff => OpName::Diff,
-        CliName::Single => OpName::SingleByFile,
-        CliName::Multiple => OpName::MultipleByFile,
+        CliName::Single => {
+            if parsed.by_file {
+                OpName::SingleByFile
+            } else {
+                OpName::Single
+            }
+        }
+        CliName::Multiple => {
+            if parsed.by_file {
+                OpName::MultipleByFile
+            } else {
+                OpName::Multiple
+            }
+        }
     };
     Args { op, files: parsed.files }
 }
@@ -80,8 +92,12 @@ pub enum OpName {
     Union,
     /// Print the lines present in the first file but no other
     Diff,
+    /// Print the lines present exactly once in the entire input
+    Single,
     /// Print the lines present in exactly one file
     SingleByFile,
+    /// Print the lines present more than once in the entire input
+    Multiple,
     /// Print the lines present in two or more files
     MultipleByFile,
 }

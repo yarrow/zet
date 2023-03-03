@@ -95,6 +95,9 @@ pub fn calculate<O: LaterOperand>(
             return set.output_to(out);
         }
 
+        // `Single` and `Multiple` are TODO
+        OpName::Single | OpName::Multiple => unimplemented!(),
+
         // For `SingleByFile` and `MultipleByFile`, we keep track of the id number of the
         // operand in which each line occurs, if there is exactly one such
         // operand. At the end, if a line has occurred in just one operand,
