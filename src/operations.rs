@@ -6,7 +6,7 @@ use std::num::NonZeroU32;
 use anyhow::Result;
 
 use crate::args::OpName;
-use crate::set::{ToZetSet, ZetSet};
+use crate::set::{ToUncountedSet, UncountedSet, ZetSet};
 
 /// The `calculate` function's only requirement for its second and succeeding
 /// operands is that they implement `for_byte_line`. The `LaterOperand` trait
@@ -34,20 +34,20 @@ pub fn calculate<O: LaterOperand>(
 ) -> Result<()> {
     match operation {
         OpName::Union => {
-            let mut set = first_operand.to_zet_set_with(());
+            let mut set = first_operand.to_uncounted_set_with(());
             union(&mut set, rest)?;
             set.output_to(out)
         }
 
         OpName::Diff => {
-            let mut set = first_operand.to_zet_set_with(true);
+            let mut set = first_operand.to_uncounted_set_with(true);
             diff(&mut set, rest)?;
             set.output_to(out)
         }
 
         OpName::Intersect => {
             let this_cycle: bool = true;
-            let mut set = first_operand.to_zet_set_with(this_cycle);
+            let mut set = first_operand.to_uncounted_set_with(this_cycle);
             intersect(&mut set, this_cycle, rest)?;
             set.output_to(out)
         }
@@ -57,7 +57,7 @@ pub fn calculate<O: LaterOperand>(
 
         OpName::SingleByFile | OpName::MultipleByFile => {
             let first_operand_uid = NonZeroU32::new(1).expect("1 is nonzero");
-            let mut set = first_operand.to_zet_set_with(Some(first_operand_uid));
+            let mut set = first_operand.to_uncounted_set_with(Some(first_operand_uid));
 
             count_by_file(&mut set, first_operand_uid, rest)?;
 
@@ -75,7 +75,7 @@ pub fn calculate<O: LaterOperand>(
 /// `Union` doesn't need bookkeeping, so we use the unit type as its bookkeeping
 /// value.
 fn union<O: LaterOperand>(
-    set: &mut ZetSet<()>,
+    set: &mut UncountedSet<()>,
     rest: impl Iterator<Item = Result<O>>,
 ) -> Result<()> {
     for operand in rest {
@@ -107,7 +107,7 @@ fn union<O: LaterOperand>(
 const _BLUE: bool = true; //  We're using Booleans, but we could
 const _RED: bool = false; // be using two different colors
 fn intersect<O: LaterOperand>(
-    set: &mut ZetSet<bool>,
+    set: &mut UncountedSet<bool>,
     mut this_cycle: bool,
     rest: impl Iterator<Item = Result<O>>,
 ) -> Result<()> {
@@ -127,7 +127,7 @@ fn intersect<O: LaterOperand>(
 /// in the first operand, and `false` that the line is present in some other
 /// operand.
 fn diff<O: LaterOperand>(
-    set: &mut ZetSet<bool>,
+    set: &mut UncountedSet<bool>,
     rest: impl Iterator<Item = Result<O>>,
 ) -> Result<()> {
     for operand in rest {
@@ -155,7 +155,7 @@ fn diff<O: LaterOperand>(
 /// multiple times, but only in a single operand, is still considered to have
 /// occurred once.
 fn count_by_file<O: LaterOperand>(
-    set: &mut ZetSet<Option<NonZeroU32>>,
+    set: &mut UncountedSet<Option<NonZeroU32>>,
     mut last_operand_uid: NonZeroU32,
     rest: impl Iterator<Item = Result<O>>,
 ) -> Result<()> {
@@ -180,14 +180,14 @@ fn count_by_file<O: LaterOperand>(
 
 /*
 fn single<O: LaterOperand>(
-    set: &mut ZetSet<()>,
+    set: &mut UncountedSet<()>,
     rest: impl Iterator<Item = Result<O>>,
 ) -> Result<()> {
     unimplemented!();
 }
 
 fn multiple<O: LaterOperand>(
-    set: &mut ZetSet<()>,
+    set: &mut UncountedSet<()>,
     rest: impl Iterator<Item = Result<O>>,
 ) -> Result<()> {
     unimplemented!();
