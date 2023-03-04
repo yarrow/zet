@@ -1,11 +1,12 @@
 //! Houses the `calculate` function
 //!
-use std::num::NonZeroUsize;
+
+use std::num::NonZeroU32;
 
 use anyhow::Result;
 
 use crate::args::OpName;
-use crate::set::ToZetSet;
+use crate::set::{ToZetSet, ZetSet};
 
 /// The `calculate` function's only requirement for its second and succeeding
 /// operands is that they implement `for_byte_line`. The `LaterOperand` trait
@@ -32,105 +33,33 @@ pub fn calculate<O: LaterOperand>(
     out: impl std::io::Write,
 ) -> Result<()> {
     match operation {
-        // `Union` doesn't need bookkeeping, so we use the unit type as its
-        // bookkeeping value.
         OpName::Union => {
             let mut set = first_operand.to_zet_set_with(());
-            for operand in rest {
-                operand?.for_byte_line(|line| {
-                    set.insert(line, ());
-                })?;
-            }
-            return set.output_to(out);
+            union(&mut set, rest)?;
+            set.output_to(out)
         }
 
-        // For `Diff`, the bookkeeping value of `true` means we've seen the line
-        // only in the first operand, and `false` that the line is present in
-        // some other operand.
         OpName::Diff => {
             let mut set = first_operand.to_zet_set_with(true);
-            for operand in rest {
-                operand?.for_byte_line(|line| {
-                    if let Some(keepme) = set.get_mut(line) {
-                        *keepme = false;
-                    }
-                })?;
-            }
-            set.retain(|keepme| *keepme);
-            return set.output_to(out);
+            diff(&mut set, rest)?;
+            set.output_to(out)
         }
 
-        // `Intersect` is more complicated — we start with each line in the
-        // first operand colored with `this_cycle`. So
-        // (1)  All lines in `set` colored with `this_cycle` have been seen in
-        //      every operand so far, and
-        // (2)  All lines in `set` are colored with `this_cycle`, so
-        // (3)  All lines in `set` have been seen in every operand so far.
-        //
-        // When we look at the next operand, (1) becomes unknown. We restore its
-        // truth by
-        // * Flipping `this_cycle` to the opposite color.
-        // * Setting every line that occurs in the the next operand to the new
-        //   value of `this_cycle`.
-        // Then we restore the truth of (2) by removing every line whose
-        // bookkeeping value is not `this_cycle`
-        //
-        // Once we've done this for each operand, the remaining lines are those
-        // occurring in each operand, so we've calculated the intersection of
-        // the operands.
         OpName::Intersect => {
-            const BLUE: bool = true; //  We're using Booleans, but we could
-            const _RED: bool = false; // be using two different colors
-            let mut set = first_operand.to_zet_set_with(BLUE);
-            let mut this_cycle = BLUE;
-            for operand in rest {
-                this_cycle = !this_cycle; // flip BLUE -> RED and RED -> BLUE
-                operand?.for_byte_line(|line| {
-                    if let Some(when_seen) = set.get_mut(line) {
-                        *when_seen = this_cycle;
-                    }
-                })?;
-                set.retain(|when_seen| *when_seen == this_cycle);
-            }
-            return set.output_to(out);
+            let this_cycle: bool = true;
+            let mut set = first_operand.to_zet_set_with(this_cycle);
+            intersect(&mut set, this_cycle, rest)?;
+            set.output_to(out)
         }
 
         // `Single` and `Multiple` are TODO
         OpName::Single | OpName::Multiple => unimplemented!(),
 
-        // For `SingleByFile` and `MultipleByFile`, we keep track of the id number of the
-        // operand in which each line occurs, if there is exactly one such
-        // operand. At the end, if a line has occurred in just one operand,
-        // with id n, then its bookkeeping value will be Some(n).  If it occurs
-        // in multiple operands, then its bookkeeping value will be None.
-        // At the end:
-        // *  For `SingleByFile`, we keep the operands with Some(n)
-        // *  For `MultipleByFile`, we keep the operands with None (meaning the line was
-        //    seen in at least two operands).:
-        // As you may have noticed, at the end we don't care *what* the id n is,
-        // just that there is only one.  We keep track of n because a line that
-        // occurs multiple times, but only in a single operand, is still
-        // considered to have occurred once.
         OpName::SingleByFile | OpName::MultipleByFile => {
-            let seen_in_first_operand = NonZeroUsize::new(1);
-            let mut this_operand_uid = seen_in_first_operand.expect("1 is nonzero");
-            let mut set = first_operand.to_zet_set_with(seen_in_first_operand);
+            let first_operand_uid = NonZeroU32::new(1).expect("1 is nonzero");
+            let mut set = first_operand.to_zet_set_with(Some(first_operand_uid));
 
-            for operand in rest {
-                let seen_in_this_operand = this_operand_uid.checked_add(1);
-                match seen_in_this_operand {
-                    Some(n) => this_operand_uid = n,
-                    None => anyhow::bail!("Can't handle {} arguments", std::usize::MAX),
-                }
-                operand?.for_byte_line(|line| match set.get_mut(line) {
-                    None => set.insert(line, seen_in_this_operand),
-                    Some(unique_source) => {
-                        if *unique_source != seen_in_this_operand {
-                            *unique_source = None;
-                        }
-                    }
-                })?;
-            }
+            count_by_file(&mut set, first_operand_uid, rest)?;
 
             if operation == OpName::SingleByFile {
                 set.retain(|unique_source| unique_source.is_some());
@@ -143,6 +72,127 @@ pub fn calculate<O: LaterOperand>(
     }
 }
 
+/// `Union` doesn't need bookkeeping, so we use the unit type as its bookkeeping
+/// value.
+fn union<O: LaterOperand>(
+    set: &mut ZetSet<()>,
+    rest: impl Iterator<Item = Result<O>>,
+) -> Result<()> {
+    for operand in rest {
+        operand?.for_byte_line(|line| {
+            set.insert(line, ());
+        })?;
+    }
+    Ok(())
+}
+
+/// `Intersect` is more complicated — we start with each line in the first
+/// operand colored with `this_cycle`. So
+/// (1)  All lines in `set` colored with `this_cycle` have been seen in
+///      every operand so far, and
+/// (2)  All lines in `set` are colored with `this_cycle`, so
+/// (3)  All lines in `set` have been seen in every operand so far.
+///
+/// When we look at the next operand, (1) becomes unknown. We restore its truth
+/// by
+/// * Flipping `this_cycle` to the opposite color.
+/// * Setting every line that occurs in the the next operand to the new
+///   value of `this_cycle`.
+/// Then we restore the truth of (2) by removing every line whose bookkeeping
+/// value is not `this_cycle`
+///
+/// Once we've done this for each operand, the remaining lines are those
+/// occurring in each operand, so we've calculated the intersection of the
+/// operands.
+const _BLUE: bool = true; //  We're using Booleans, but we could
+const _RED: bool = false; // be using two different colors
+fn intersect<O: LaterOperand>(
+    set: &mut ZetSet<bool>,
+    mut this_cycle: bool,
+    rest: impl Iterator<Item = Result<O>>,
+) -> Result<()> {
+    for operand in rest {
+        this_cycle = !this_cycle; // flip BLUE -> RED and RED -> BLUE
+        operand?.for_byte_line(|line| {
+            if let Some(when_seen) = set.get_mut(line) {
+                *when_seen = this_cycle;
+            }
+        })?;
+        set.retain(|when_seen| *when_seen == this_cycle);
+    }
+    Ok(())
+}
+
+/// For `Diff`, the bookkeeping value of `true` means we've seen the line only
+/// in the first operand, and `false` that the line is present in some other
+/// operand.
+fn diff<O: LaterOperand>(
+    set: &mut ZetSet<bool>,
+    rest: impl Iterator<Item = Result<O>>,
+) -> Result<()> {
+    for operand in rest {
+        operand?.for_byte_line(|line| {
+            if let Some(keepme) = set.get_mut(line) {
+                *keepme = false;
+            }
+        })?;
+    }
+    set.retain(|keepme| *keepme);
+    Ok(())
+}
+
+/// The `count_by_file` function, used by `SingleByFile` and `MultipleByFile`,
+/// keeps track of the id number of the operand in which each line occurs, if
+/// there is exactly one such operand. At the end, if a line has occurred in
+/// just one operand, with id n, then its bookkeeping value will be Some(n).  If
+/// it occurs in multiple operands, then its bookkeeping value will be None.
+/// At the end:
+/// *  For `SingleByFile`, we keep the operands with Some(n)
+/// *  For `MultipleByFile`, we keep the operands with None (meaning the line
+///    was seen in at least two operands).:
+/// As you may have noticed, at the end we don't care *what* the id n is, just
+/// that there is only one.  We keep track of n because a line that occurs
+/// multiple times, but only in a single operand, is still considered to have
+/// occurred once.
+fn count_by_file<O: LaterOperand>(
+    set: &mut ZetSet<Option<NonZeroU32>>,
+    mut last_operand_uid: NonZeroU32,
+    rest: impl Iterator<Item = Result<O>>,
+) -> Result<()> {
+    for operand in rest {
+        let seen_in_this_operand = last_operand_uid.checked_add(1);
+        match seen_in_this_operand {
+            None => anyhow::bail!("Can't handle {} arguments", std::usize::MAX),
+            Some(n) => last_operand_uid = n,
+        }
+        operand?.for_byte_line(|line| match set.get_mut(line) {
+            None => set.insert(line, seen_in_this_operand),
+            Some(unique_source) => {
+                if *unique_source != seen_in_this_operand {
+                    *unique_source = None;
+                }
+            }
+        })?;
+    }
+
+    Ok(())
+}
+
+/*
+fn single<O: LaterOperand>(
+    set: &mut ZetSet<()>,
+    rest: impl Iterator<Item = Result<O>>,
+) -> Result<()> {
+    unimplemented!();
+}
+
+fn multiple<O: LaterOperand>(
+    set: &mut ZetSet<()>,
+    rest: impl Iterator<Item = Result<O>>,
+) -> Result<()> {
+    unimplemented!();
+}
+*/
 #[allow(clippy::pedantic)]
 #[cfg(test)]
 mod test {
