@@ -79,9 +79,7 @@ fn union<O: LaterOperand>(
     rest: impl Iterator<Item = Result<O>>,
 ) -> Result<()> {
     for operand in rest {
-        operand?.for_byte_line(|line| {
-            set.insert(line, ());
-        })?;
+        operand?.for_byte_line(|line| set.insert(line, ()))?;
     }
     Ok(())
 }
@@ -113,11 +111,7 @@ fn intersect<O: LaterOperand>(
 ) -> Result<()> {
     for operand in rest {
         this_cycle = !this_cycle; // flip BLUE -> RED and RED -> BLUE
-        operand?.for_byte_line(|line| {
-            if let Some(when_seen) = set.get_mut(line) {
-                *when_seen = this_cycle;
-            }
-        })?;
+        operand?.for_byte_line(|line| set.change_if_present(line, this_cycle))?;
         set.retain(|when_seen| *when_seen == this_cycle);
     }
     Ok(())
@@ -131,11 +125,7 @@ fn diff<O: LaterOperand>(
     rest: impl Iterator<Item = Result<O>>,
 ) -> Result<()> {
     for operand in rest {
-        operand?.for_byte_line(|line| {
-            if let Some(keepme) = set.get_mut(line) {
-                *keepme = false;
-            }
-        })?;
+        operand?.for_byte_line(|line| set.change_if_present(line, false))?;
     }
     set.retain(|keepme| *keepme);
     Ok(())
@@ -165,14 +155,8 @@ fn count_by_file<O: LaterOperand>(
             None => anyhow::bail!("Can't handle {} arguments", std::usize::MAX),
             Some(n) => last_operand_uid = n,
         }
-        operand?.for_byte_line(|line| match set.get_mut(line) {
-            None => set.insert(line, seen_in_this_operand),
-            Some(unique_source) => {
-                if *unique_source != seen_in_this_operand {
-                    *unique_source = None;
-                }
-            }
-        })?;
+        operand?
+            .for_byte_line(|line| set.ensure_unique_source(line, seen_in_this_operand, None))?;
     }
 
     Ok(())

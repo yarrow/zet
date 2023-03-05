@@ -7,6 +7,9 @@ use memchr::memchr;
 use std::borrow::Cow;
 use std::{io, ops::FnMut};
 
+pub(crate) trait Bookkeeping: Copy + PartialEq {}
+impl<T: Copy + PartialEq> Bookkeeping for T {}
+
 /// A `UncountedSet` is a set of lines, each line represented as a key of an `IndexMap`.
 /// * Keys are `Cow<'data, [u8]>`
 /// * Lines inserted from the first file operand are represented as `Cow::Borrowed` keys
@@ -18,21 +21,21 @@ use std::{io, ops::FnMut};
 ///   the first file. On output, the `UncountedSet` will print a Byte Order Mark if the first
 ///   file operand had one, and will use the same line terminator as that file's first
 ///   line.
-pub(crate) struct UncountedSet<'data, Bookkeeping: Copy> {
-    set: CowSet<'data, Bookkeeping>,
+pub(crate) struct UncountedSet<'data, B: Bookkeeping> {
+    set: CowSet<'data, B>,
     bom: &'static [u8],             // Byte Order Mark or empty
     line_terminator: &'static [u8], // \n or \r\n
 }
 type CowSet<'data, Bookkeeping> = IndexMap<Cow<'data, [u8]>, Bookkeeping, FxBuildHasher>;
 
-pub(crate) trait ZetSet<'data, Bookkeeping: Copy> {
+pub(crate) trait ZetSet<'data, B: Bookkeeping> {
     /// Insert `line` as a `Cow::Owned` key in the underlying `IndexMap`, with `b` as value.
-    fn insert(&mut self, line: &[u8], b: Bookkeeping);
+    fn insert(&mut self, line: &[u8], b: B);
 
     /// Insert `line` as a `Cow::Owned` key in the underlying `IndexMap`, with `b` as value.
-    fn insert_borrowed(&mut self, line: &'data [u8], b: Bookkeeping);
+    fn insert_borrowed(&mut self, line: &'data [u8], b: B);
 
-    fn insert_borrowed_lines(&mut self, mut slice: &'data [u8], b: Bookkeeping) {
+    fn insert_borrowed_lines(&mut self, mut slice: &'data [u8], b: B) {
         while let Some(end) = memchr(b'\n', slice) {
             let (mut line, rest) = slice.split_at(end);
             slice = &rest[1..];
@@ -48,45 +51,56 @@ pub(crate) trait ZetSet<'data, Bookkeeping: Copy> {
         }
     }
 
-    /// Sometimes we need to update the bookkeeping information
-    fn get_mut(&mut self, line: &[u8]) -> Option<&mut Bookkeeping>;
+    /// Set the bookkeeping information, only if the key is already present
+    fn change_if_present(&mut self, line: &[u8], b: B);
+
+    /// If `line` isn't present, insert it with `new` as bookkeeping; otherwise
+    /// change bookkeeping to `change`. (This is way too tightly coupled to the
+    /// `SingleByFile` / `MultipleByFile` code!)
+    fn ensure_unique_source(&mut self, line: &[u8], new: B, change: B);
 
     /// `IndexMap`'s `.retain` method is `O(n)` and preserves the order of the
     /// keys, so it's safe to expose it. We don't expose `.remove`, because it
     /// doesn't preserve key order, and we don't expose `.shift_remove`, which
     /// does preserve order, because `.shift_remove` is *also* `O(n)`, and using
     /// it to remove elements one by one means `O(n^2)` performance.
-    fn retain(&mut self, keep: impl FnMut(&mut Bookkeeping) -> bool);
+    fn retain(&mut self, keep: impl FnMut(&mut B) -> bool);
 
     /// Output the `UncountedSet`'s lines with the appropriate Byte Order Mark and line
     /// terminator.
     fn output_to(&self, out: impl io::Write) -> Result<()>;
 }
-impl<'data, Bookkeeping: Copy> ZetSet<'data, Bookkeeping> for UncountedSet<'data, Bookkeeping> {
-    fn insert(&mut self, line: &[u8], b: Bookkeeping) {
+
+impl<'data, B: Bookkeeping> ZetSet<'data, B> for UncountedSet<'data, B> {
+    fn insert(&mut self, line: &[u8], b: B) {
         self.set.insert(Cow::from(line.to_vec()), b);
     }
 
-    fn insert_borrowed(&mut self, line: &'data [u8], b: Bookkeeping) {
+    fn insert_borrowed(&mut self, line: &'data [u8], b: B) {
         self.set.insert(Cow::Borrowed(line), b);
     }
 
-    /// Sometimes we need to update the bookkeeping information
-    fn get_mut(&mut self, line: &[u8]) -> Option<&mut Bookkeeping> {
-        self.set.get_mut(line)
+    fn change_if_present(&mut self, line: &[u8], b: B) {
+        if let Some(v) = self.set.get_mut(line) {
+            *v = b;
+        }
     }
 
-    /// `IndexMap`'s `.retain` method is `O(n)` and preserves the order of the
-    /// keys, so it's safe to expose it. We don't expose `.remove`, because it
-    /// doesn't preserve key order, and we don't expose `.shift_remove`, which
-    /// does preserve order, because `.shift_remove` is *also* `O(n)`, and using
-    /// it to remove elements one by one means `O(n^2)` performance.
-    fn retain(&mut self, mut keep: impl FnMut(&mut Bookkeeping) -> bool) {
+    fn ensure_unique_source(&mut self, line: &[u8], pristine: B, erase: B) {
+        match self.set.get_mut(line) {
+            None => self.insert(line, pristine),
+            Some(old) => {
+                if *old != pristine {
+                    *old = erase
+                }
+            }
+        }
+    }
+
+    fn retain(&mut self, mut keep: impl FnMut(&mut B) -> bool) {
         self.set.retain(|_k, v| keep(v));
     }
 
-    /// Output the `UncountedSet`'s lines with the appropriate Byte Order Mark and line
-    /// terminator.
     fn output_to(&self, mut out: impl io::Write) -> Result<()> {
         out.write_all(self.bom)?;
         for line in self.set.keys() {
@@ -99,10 +113,7 @@ impl<'data, Bookkeeping: Copy> ZetSet<'data, Bookkeeping> for UncountedSet<'data
 }
 
 pub(crate) trait ToUncountedSet<'data> {
-    fn to_uncounted_set_with<Bookkeeping: Copy>(
-        &'data self,
-        b: Bookkeeping,
-    ) -> UncountedSet<'data, Bookkeeping>;
+    fn to_uncounted_set_with<B: Bookkeeping>(&'data self, b: B) -> UncountedSet<'data, B>;
 }
 
 impl<'data> ToUncountedSet<'data> for &[u8] {
@@ -111,7 +122,7 @@ impl<'data> ToUncountedSet<'data> for &[u8] {
     /// (or empty string) taken from the slice, and with each line of the slice
     /// represented in the set by a `Cow::Borrowed` key with the bookkeeping
     /// value `b`.
-    fn to_uncounted_set_with<Bookkeeping: Copy>(&self, b: Bookkeeping) -> UncountedSet<Bookkeeping> {
+    fn to_uncounted_set_with<B: Bookkeeping>(&self, b: B) -> UncountedSet<B> {
         let (bom, line_terminator) = output_info(self);
         let all_lines = &self[bom.len()..];
 
