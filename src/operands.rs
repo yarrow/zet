@@ -48,7 +48,7 @@ fn decode_if_utf16(candidate: Vec<u8>) -> Vec<u8> {
             return translated.into_owned().into_bytes();
         }
     }
-    return candidate;
+    candidate
 }
 
 /// The first operand is read into memory in its entirety, but that's not

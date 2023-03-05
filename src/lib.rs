@@ -66,10 +66,9 @@
 )]
 #![allow(clippy::cargo)] // FIXME
 #![allow(
+    clippy::struct_excessive_bools,
     clippy::items_after_statements,
     clippy::missing_errors_doc,
-    clippy::needless_pass_by_value,
-    clippy::needless_return,
     clippy::semicolon_if_nothing_returned
 )]
 #![cfg_attr(debug_assertions, allow(dead_code, unused_imports, unused_variables))]
