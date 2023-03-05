@@ -76,9 +76,6 @@ fn zet_subcommand_x_y_z_matches_expected_output_for_all_operations() {
     let y_path: &str = &path_with(&temp, "y.txt", &y().join(""), Encoding::Plain);
     let z_path: &str = &path_with(&temp, "z.txt", &z().join(""), Encoding::Plain);
     for &op in OP_NAMES.iter() {
-        if op == Single || op == Multiple {
-            break;
-        }
         let sub = subcommand_for(op);
         let output = run([sub, x_path, y_path, z_path]).unwrap();
         assert_eq!(

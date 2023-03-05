@@ -6,7 +6,7 @@ use std::num::NonZeroU32;
 use anyhow::Result;
 
 use crate::args::OpName;
-use crate::set::{ToUncountedSet, UncountedSet, ZetSet};
+use crate::set::{ToCountedSet, ToUncountedSet, UncountedSet, ZetSet};
 
 /// The `calculate` function's only requirement for its second and succeeding
 /// operands is that they implement `for_byte_line`. The `LaterOperand` trait
@@ -52,8 +52,16 @@ pub fn calculate<O: LaterOperand>(
             set.output_to(out)
         }
 
-        // `Single` and `Multiple` are TODO
-        OpName::Single | OpName::Multiple => unimplemented!(),
+        OpName::Single | OpName::Multiple => {
+            let mut set = first_operand.to_counted_set_with(());
+            union(&mut set, rest)?;
+            if operation == OpName::Single {
+                set.retain_single();
+            } else {
+                set.retain_multiple();
+            }
+            set.output_to(out)
+        }
 
         OpName::SingleByFile | OpName::MultipleByFile => {
             let first_operand_uid = NonZeroU32::new(1).expect("1 is nonzero");
@@ -74,8 +82,8 @@ pub fn calculate<O: LaterOperand>(
 
 /// `Union` doesn't need bookkeeping, so we use the unit type as its bookkeeping
 /// value.
-fn union<O: LaterOperand>(
-    set: &mut UncountedSet<()>,
+fn union<'a, O: LaterOperand>(
+    set: &mut impl ZetSet<'a, ()>,
     rest: impl Iterator<Item = Result<O>>,
 ) -> Result<()> {
     for operand in rest {
@@ -112,7 +120,7 @@ fn intersect<O: LaterOperand>(
     for operand in rest {
         this_cycle = !this_cycle; // flip BLUE -> RED and RED -> BLUE
         operand?.for_byte_line(|line| set.change_if_present(line, this_cycle))?;
-        set.retain(|when_seen| *when_seen == this_cycle);
+        set.retain(|when_seen| when_seen == this_cycle);
     }
     Ok(())
 }
@@ -127,7 +135,7 @@ fn diff<O: LaterOperand>(
     for operand in rest {
         operand?.for_byte_line(|line| set.change_if_present(line, false))?;
     }
-    set.retain(|keepme| *keepme);
+    set.retain(|keepme| keepme);
     Ok(())
 }
 
