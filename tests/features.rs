@@ -28,29 +28,26 @@ fn prints_help_if_no_subcommand() {
     assert!(String::from_utf8(output.stdout).unwrap().contains("Usage:"));
 }
 
-const UNION: &str = "union";
-const INTERSECT: &str = "intersect";
-const DIFF: &str = "diff";
-const SINGLE_BY_FILE: &str = "single --by-file";
-const MULTIPLE_BY_FILE: &str = "multiple --by-file";
-const SUBCOMMANDS: [&str; 5] = [INTERSECT, UNION, DIFF, SINGLE_BY_FILE, MULTIPLE_BY_FILE];
 const OP_NAMES: [OpName; 7] =
     [Intersect, Union, Diff, Single, SingleByFile, Multiple, MultipleByFile];
 fn subcommand_for(op: OpName) -> &'static str {
     match op {
-        Union => UNION,
-        Intersect => INTERSECT,
-        Diff => DIFF,
+        Union => "union",
+        Intersect => "intersect",
+        Diff => "diff",
         Single => "single",
-        SingleByFile => SINGLE_BY_FILE,
+        SingleByFile => "single --by-file",
         Multiple => "multiple",
-        MultipleByFile => MULTIPLE_BY_FILE,
+        MultipleByFile => "multiple --by-file",
     }
+}
+fn subcommands() -> [&'static str; 7] {
+    OP_NAMES.map(subcommand_for)
 }
 
 #[test]
 fn subcommands_allow_empty_arg_list_and_produce_empty_output() {
-    for subcommand in SUBCOMMANDS.iter() {
+    for subcommand in subcommands() {
         let output = run([subcommand]).unwrap();
         assert_eq!(String::from_utf8(output.stdout).unwrap(), "");
     }
@@ -58,7 +55,7 @@ fn subcommands_allow_empty_arg_list_and_produce_empty_output() {
 
 #[test]
 fn fail_on_missing_file() {
-    for subcommand in SUBCOMMANDS.iter() {
+    for subcommand in subcommands() {
         run([subcommand, "x"]).assert().failure();
     }
 }
@@ -72,16 +69,34 @@ fn fail_bad_subcommand() {
 fn zet_subcommand_x_y_z_matches_expected_output_for_all_operations() {
     let temp = TempDir::new().unwrap();
 
-    let x_path: &str = &path_with(&temp, "x.txt", &x().join(""), Encoding::Plain);
-    let y_path: &str = &path_with(&temp, "y.txt", &y().join(""), Encoding::Plain);
-    let z_path: &str = &path_with(&temp, "z.txt", &z().join(""), Encoding::Plain);
-    for &op in OP_NAMES.iter() {
+    let x_path = &path_with(&temp, "x.txt", &x().join(""), Encoding::Plain);
+    let y_path = &path_with(&temp, "y.txt", &y().join(""), Encoding::Plain);
+    let z_path = &path_with(&temp, "z.txt", &z().join(""), Encoding::Plain);
+    for op in OP_NAMES {
         let sub = subcommand_for(op);
         let output = run([sub, x_path, y_path, z_path]).unwrap();
         assert_eq!(
             String::from_utf8(output.stdout).unwrap(),
             xpected(op).join(""),
             "Output from {sub} ({op:?}) doesn't match expected",
+        );
+    }
+}
+
+#[test]
+fn the_last_line_of_a_file_need_not_end_in_a_newline() {
+    let temp = TempDir::new().unwrap();
+
+    let x_path = &path_with(&temp, "x.txt", &x().join(""), Encoding::Plain);
+    let y_path = &path_with(&temp, "y.txt", y().join("").trim_end_matches('\n'), Encoding::Plain);
+    let z_path = &path_with(&temp, "z.txt", &z().join(""), Encoding::Plain);
+    for op in OP_NAMES {
+        let sub = subcommand_for(op);
+        let output = run([sub, x_path, y_path, z_path]).unwrap();
+        assert_eq!(
+            String::from_utf8(output.stdout).unwrap(),
+            xpected(op).join(""),
+            "Output from {sub} ({op:?}) doesn't match expected with y.txt trimmed",
         );
     }
 }
@@ -113,7 +128,7 @@ impl fmt::Debug for TestInput {
         );
         fn show(x: char, count: usize) -> String {
             if count == 0 {
-                "".to_string()
+                String::new()
             } else if count == 1 {
                 format!("{x} ")
             } else {
@@ -179,7 +194,7 @@ fn expected_union_output_is_the_concatentated_input_lines_in_order_with_no_dupli
 
 #[test]
 fn each_line_occurs_at_most_once_in_the_expected_output_of_any_subcommand() {
-    for &op in OP_NAMES.iter() {
+    for op in OP_NAMES {
         let all = xpected(op);
         let uniq: Vec<String> = all.iter().unique().cloned().collect();
         assert!(all.eq(&uniq), "Output of {op:?} has duplicate lines");
@@ -189,7 +204,7 @@ fn each_line_occurs_at_most_once_in_the_expected_output_of_any_subcommand() {
 #[test]
 fn expected_output_is_subsequence_of_union_output_for_all_subcommands() {
     let union = xpected(Union);
-    for &op in OP_NAMES.iter() {
+    for op in OP_NAMES {
         assert!(
             is_subsequence(&xpected(op), &union),
             "Expected result for {op:?} is not a subsequence of the expected result for Union",
@@ -215,9 +230,9 @@ enum Encoding {
     LE16,
     BE16,
 }
-use Encoding::*;
 
 fn path_with(temp: &TempDir, name: &str, contents: &str, enc: Encoding) -> String {
+    use Encoding::*;
     let f = temp.child(name);
     match enc {
         Plain => f.write_str(contents).unwrap(),
@@ -233,7 +248,7 @@ const UTF8_BOM: &str = "\u{FEFF}";
 
 fn utf_16le(source: &str) -> Vec<u8> {
     let mut result = b"\xff\xfe".to_vec();
-    for b in source.as_bytes().iter() {
+    for b in source.as_bytes() {
         result.push(*b);
         result.push(0);
     }
@@ -242,7 +257,7 @@ fn utf_16le(source: &str) -> Vec<u8> {
 
 fn utf_16be(source: &str) -> Vec<u8> {
     let mut result = b"\xfe\xff".to_vec();
-    for b in source.as_bytes().iter() {
+    for b in source.as_bytes() {
         result.push(0);
         result.push(*b);
     }
@@ -250,27 +265,23 @@ fn utf_16be(source: &str) -> Vec<u8> {
 }
 #[test]
 fn zet_accepts_all_encodings_and_remembers_the_first_file_has_a_byte_order_mark() {
+    use Encoding::*;
     let temp = TempDir::new().unwrap();
 
-    for enc in [Plain, UTF8, LE16, BE16].iter() {
-        let x_path: &str = &path_with(&temp, "x.txt", &x().join(""), *enc);
-        let y_path: &str = &path_with(&temp, "y.txt", &y().join(""), LE16);
-        let z_path: &str = &path_with(&temp, "z.txt", &z().join(""), BE16);
-        let output = run([UNION, x_path, y_path, z_path]).unwrap();
+    for enc in [Plain, UTF8, LE16, BE16] {
+        let x_path = &path_with(&temp, "x.txt", &x().join(""), enc);
+        let y_path = &path_with(&temp, "y.txt", &y().join(""), LE16);
+        let z_path = &path_with(&temp, "z.txt", &z().join(""), BE16);
+        let output = run([subcommand_for(Union), x_path, y_path, z_path]).unwrap();
         let result_string = String::from_utf8(output.stdout).unwrap();
         let mut result = &result_string[..];
-        if *enc == Plain {
+        if enc == Plain {
             assert_ne!(&result[..3], UTF8_BOM, "Unexpected BOM");
         } else {
-            assert_eq!(&result[..3], UTF8_BOM, "Expected BOM not found: {:?}", *enc);
+            assert_eq!(&result[..3], UTF8_BOM, "Expected BOM not found: {enc:?}");
             result = &result[3..];
         }
-        assert_eq!(
-            result,
-            xpected(Union).join(""),
-            "Output from {:?} doesn't match expected",
-            *enc
-        );
+        assert_eq!(result, xpected(Union).join(""), "Output from {enc:?} doesn't match expected");
     }
 }
 
@@ -282,7 +293,7 @@ fn the_optimize_to_union_code_in_main_only_does_so_when_its_ok() {
     let x = temp.child("x.txt");
     x.write_str(INPUT).unwrap();
 
-    for &op in OP_NAMES.iter() {
+    for op in OP_NAMES {
         let output = run([subcommand_for(op), x.path().to_str().unwrap()]).unwrap();
         let result = String::from_utf8(output.stdout).unwrap();
         let expected = match op {
@@ -296,48 +307,28 @@ fn the_optimize_to_union_code_in_main_only_does_so_when_its_ok() {
 }
 
 #[test]
-fn the_last_line_of_a_file_need_not_end_in_a_newline() {
-    const EXPECTED: &str = "x\nX\nEx\nEks\na\n";
-    const XX: &str = "x\nX\nEx\nEks\nx\nx\nX\n";
-
-    let temp = TempDir::new().unwrap();
-    let x = temp.child("x.txt");
-    x.write_str(&(XX.to_owned() + XX + "a")).unwrap();
-    let x_path = x.path().to_str().unwrap();
-
-    for subcommand in SUBCOMMANDS.iter() {
-        let mut subcommand_with_args = vec![subcommand, &x_path];
-        if subcommand == &MULTIPLE_BY_FILE {
-            subcommand_with_args.push(&x_path)
-        }
-        let output = run(&subcommand_with_args).unwrap();
-        let result = String::from_utf8(output.stdout).unwrap();
-        assert_eq!(result, EXPECTED);
-    }
-}
-
-#[test]
 fn zet_terminates_every_output_line_with_the_line_terminator_of_the_first_input_line() {
+    use Encoding::*;
     fn terminate_with(eol: &str, bare: &[&str]) -> String {
-        bare.iter().map(|b| b.to_string() + eol).join("")
+        bare.iter().map(|&b| b.to_string() + eol).join("")
     }
     let (a, b, c) = ("a".to_string(), "b\r\nB\nbB", "c\nC\r\ncC\r\n");
     let bare = vec!["a", "b", "B", "bB", "c", "C", "cC"];
     let temp = TempDir::new().unwrap();
-    for eol in ["", "\n", "\r\n"].iter() {
+    for eol in ["", "\n", "\r\n"] {
         let expected_eol = if eol.is_empty() { "\n" } else { eol };
         let expected = terminate_with(expected_eol, &bare);
-        let a = a.clone() + *eol;
-        for enc in [Plain, UTF8, LE16, BE16].iter() {
-            let expected = if *enc == Plain {
+        let a = a.clone() + eol;
+        for enc in [Plain, UTF8, LE16, BE16] {
+            let expected = if enc == Plain {
                 expected.clone()
             } else {
                 UTF8_BOM.to_owned() + &expected.clone()
             };
-            let a_path: &str = &path_with(&temp, "a.txt", &a, *enc);
-            let b_path: &str = &path_with(&temp, "b.txt", b, LE16);
-            let c_path: &str = &path_with(&temp, "c.txt", c, BE16);
-            let output = run([UNION, a_path, b_path, c_path]).unwrap();
+            let a_path = &path_with(&temp, "a.txt", &a, enc);
+            let b_path = &path_with(&temp, "b.txt", b, LE16);
+            let c_path = &path_with(&temp, "c.txt", c, BE16);
+            let output = run([subcommand_for(Union), a_path, b_path, c_path]).unwrap();
             let result_string = String::from_utf8(output.stdout).unwrap();
             assert_eq!(result_string, expected, "for eol '{eol}', encoding {enc:?}");
         }
