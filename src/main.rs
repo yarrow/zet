@@ -13,17 +13,20 @@ fn main() -> Result<()> {
         Some((first, others, others_len)) => (first?, others, others_len + 1),
     };
 
-    let op = if number_of_operands == 1 && args.op == OpName::MultipleByFile {
-        // Since there is only one operand, no line can occur in multiple
-        // operands, so we return at once with an empty result.
-        return Ok(());
-    } else if number_of_operands == 1 {
-        // For a single operand, all operations except MultipleByFile are equivalent
-        // to Union, and Union is slightly more efficient than the others.
-        OpName::Union
-    } else {
-        args.op
-    };
+    let mut op = args.op;
+    if number_of_operands == 1 {
+        use OpName::*;
+        match op {
+            // For a single operand, Union is slightly more efficient, and its
+            // result is identical to Intersect, Diff, and SingleByFile
+            Union | Intersect | Diff | SingleByFile => op = Union, // Union is slightly more efficient
+            // No line can occur in multiple files if there is only one file
+            MultipleByFile => return Ok(()),
+            // Even for a single operand, the results of Single and Multiple
+            // differ from that of Union
+            Single | Multiple => {}
+        }
+    }
 
     let first = first_operand.as_slice();
     if io::stdout().is_terminal() {

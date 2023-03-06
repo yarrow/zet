@@ -275,18 +275,23 @@ fn zet_accepts_all_encodings_and_remembers_the_first_file_has_a_byte_order_mark(
 }
 
 #[test]
-fn single_argument_just_prints_the_unique_lines_for_all_but_multiple() {
-    const EXPECTED: &str = "x\nX\nEx\nEks\n";
-    const XX: &str = "x\nX\nEx\nEks\nx\nx\nX\n";
+fn the_optimize_to_union_code_in_main_only_does_so_when_its_ok() {
+    const INPUT: &str = "a3\nb2\nc1\na3\na3\nb2\nd1\n";
 
     let temp = TempDir::new().unwrap();
     let x = temp.child("x.txt");
-    x.write_str(&(XX.to_owned() + XX)).unwrap();
+    x.write_str(INPUT).unwrap();
 
-    for subcommand in SUBCOMMANDS.iter() {
-        let output = run([subcommand, x.path().to_str().unwrap()]).unwrap();
+    for &op in OP_NAMES.iter() {
+        let output = run([subcommand_for(op), x.path().to_str().unwrap()]).unwrap();
         let result = String::from_utf8(output.stdout).unwrap();
-        assert_eq!(result, if subcommand == &MULTIPLE_BY_FILE { "" } else { EXPECTED });
+        let expected = match op {
+            Intersect | Union | Diff | SingleByFile => "a3\nb2\nc1\nd1\n",
+            Single => "c1\nd1\n",
+            Multiple => "a3\nb2\n",
+            MultipleByFile => "",
+        };
+        assert_eq!(result, expected, "Expected {op:?} result to be '{expected}'");
     }
 }
 
