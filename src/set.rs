@@ -30,6 +30,8 @@ type CowSet<'data, Bookkeeping> = IndexMap<Cow<'data, [u8]>, Bookkeeping, FxBuil
 pub(crate) trait Bookkeeping<Item: Copy>: Copy {
     fn item(&self) -> Item;
     fn get_mut_item(&mut self) -> &mut Item;
+
+    fn with_unit_line_count(item: Item) -> Self;
     fn line_count(&self) -> u32;
     fn increment_line_count(&mut self);
 }
@@ -39,6 +41,9 @@ impl<Item: Copy> Bookkeeping<Item> for Item {
     }
     fn get_mut_item(&mut self) -> &mut Item {
         &mut *self
+    }
+    fn with_unit_line_count(item: Item) -> Self {
+        item
     }
     fn line_count(&self) -> u32 {
         0
@@ -57,6 +62,9 @@ impl<Item: Copy> Bookkeeping<Item> for Counted<Item> {
     fn get_mut_item(&mut self) -> &mut Item {
         &mut self.item
     }
+    fn with_unit_line_count(item: Item) -> Self {
+        Self { line_count: 1, item }
+    }
     fn line_count(&self) -> u32 {
         self.line_count
     }
@@ -65,7 +73,39 @@ impl<Item: Copy> Bookkeeping<Item> for Counted<Item> {
     }
 }
 
+#[allow(dead_code)]
+pub(crate) fn zet_set_from<Item: Copy, B: Bookkeeping<Item>>(
+    mut slice: &[u8],
+    item: Item,
+) -> ZetSet<Item, B> {
+    let (bom, line_terminator) = output_info(slice);
+    slice = &slice[bom.len()..];
+    let mut zet = ZetSet { set: CowSet::default(), bom, line_terminator, phantom: PhantomData };
+    zet.insert_borrowed_lines(slice, item);
+    zet
+}
 impl<'data, Item: Copy, B: Bookkeeping<Item>> ZetSet<'data, Item, B> {
+    fn insert_borrowed(&mut self, line: &'data [u8], item: Item) {
+        self.set
+            .entry(Cow::Borrowed(line))
+            .and_modify(Bookkeeping::increment_line_count)
+            .or_insert_with(|| B::with_unit_line_count(item));
+    }
+    fn insert_borrowed_lines(&mut self, mut slice: &'data [u8], item: Item) {
+        while let Some(end) = memchr(b'\n', slice) {
+            let (mut line, rest) = slice.split_at(end);
+            slice = &rest[1..];
+            if let Some(&maybe_cr) = line.last() {
+                if maybe_cr == b'\r' {
+                    line = &line[..line.len() - 1];
+                }
+            }
+            self.insert_borrowed(line, item);
+        }
+        if !slice.is_empty() {
+            self.insert_borrowed(slice, item);
+        }
+    }
     /// Insert `line` as `Cow::Owned` to the underlying `IndexMap`
     pub(crate) fn insert(&mut self, line: &[u8], b: B) {
         self.set.insert(Cow::from(line.to_vec()), b);
