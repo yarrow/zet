@@ -5,6 +5,7 @@ use fxhash::FxBuildHasher;
 use indexmap::IndexMap;
 use memchr::memchr;
 use std::borrow::Cow;
+use std::marker::PhantomData;
 use std::{io, ops::FnMut};
 
 /// A `ZetSet` is a set of lines, each line represented as a key of an `IndexMap`.
@@ -18,30 +19,68 @@ use std::{io, ops::FnMut};
 ///   the first file. On output, the `ZetSet` will print a Byte Order Mark if the first
 ///   file operand had one, and will use the same line terminator as that file's first
 ///   line.
-pub(crate) struct ZetSet<'data, Bookkeeping: Copy> {
-    set: CowSet<'data, Bookkeeping>,
+pub(crate) struct ZetSet<'data, Item: Copy, B: Bookkeeping<Item>> {
+    set: CowSet<'data, B>,
     bom: &'static [u8],             // Byte Order Mark or empty
     line_terminator: &'static [u8], // \n or \r\n
+    phantom: PhantomData<Item>,     // Use `Item` explicitly or the compiler will complain
 }
 type CowSet<'data, Bookkeeping> = IndexMap<Cow<'data, [u8]>, Bookkeeping, FxBuildHasher>;
 
-impl<'data, Bookkeeping: Copy> ZetSet<'data, Bookkeeping> {
+pub(crate) trait Bookkeeping<Item: Copy>: Copy {
+    fn item(&self) -> Item;
+    fn get_mut_item(&mut self) -> &mut Item;
+    fn line_count(&self) -> u32;
+    fn increment_line_count(&mut self);
+}
+impl<Item: Copy> Bookkeeping<Item> for Item {
+    fn item(&self) -> Item {
+        *self
+    }
+    fn get_mut_item(&mut self) -> &mut Item {
+        &mut *self
+    }
+    fn line_count(&self) -> u32 {
+        0
+    }
+    fn increment_line_count(&mut self) {}
+}
+#[derive(Clone, Copy, Debug)]
+struct Counted<Item: Copy> {
+    line_count: u32,
+    item: Item,
+}
+impl<Item: Copy> Bookkeeping<Item> for Counted<Item> {
+    fn item(&self) -> Item {
+        self.item
+    }
+    fn get_mut_item(&mut self) -> &mut Item {
+        &mut self.item
+    }
+    fn line_count(&self) -> u32 {
+        self.line_count
+    }
+    fn increment_line_count(&mut self) {
+        self.line_count = self.line_count.saturating_add(1);
+    }
+}
+
+impl<'data, Item: Copy, B: Bookkeeping<Item>> ZetSet<'data, Item, B> {
     /// Insert `line` as `Cow::Owned` to the underlying `IndexMap`
-    pub(crate) fn insert(&mut self, line: &[u8], b: Bookkeeping) {
+    pub(crate) fn insert(&mut self, line: &[u8], b: B) {
         self.set.insert(Cow::from(line.to_vec()), b);
     }
 
     /// Sometimes we need to update the bookkeeping information
-    pub(crate) fn get_mut(&mut self, line: &[u8]) -> Option<&mut Bookkeeping> {
-        self.set.get_mut(line)
+    pub(crate) fn get_mut(&mut self, line: &[u8]) -> Option<&mut Item> {
+        self.set.get_mut(line).map(Bookkeeping::get_mut_item)
     }
-
     /// `IndexMap`'s `.retain` method is `O(n)` and preserves the order of the
     /// keys, so it's safe to expose it. We don't expose `.remove`, because it
     /// doesn't preserve key order, and we don't expose `.shift_remove`, which
     /// does preserve order, because `.shift_remove` is *also* `O(n)`, and using
     /// it to remove elements one by one means `O(n^2)` performance.
-    pub(crate) fn retain(&mut self, mut keep: impl FnMut(&mut Bookkeeping) -> bool) {
+    pub(crate) fn retain(&mut self, mut keep: impl FnMut(&mut B) -> bool) {
         self.set.retain(|_k, v| keep(v));
     }
 
@@ -58,26 +97,23 @@ impl<'data, Bookkeeping: Copy> ZetSet<'data, Bookkeeping> {
     }
 }
 
-pub(crate) trait ToZetSet<'data> {
-    fn to_zet_set_with<Bookkeeping: Copy>(
-        &'data self,
-        b: Bookkeeping,
-    ) -> ZetSet<'data, Bookkeeping>;
+pub(crate) trait ToZetSet<'data, Item: Copy, B: Bookkeeping<Item>> {
+    fn to_zet_set_with(&'data self, b: B) -> ZetSet<'data, Item, B>;
 }
 
-impl<'data> ToZetSet<'data> for &[u8] {
+impl<'data, Item: Copy, B: Bookkeeping<Item>> ToZetSet<'data, Item, B> for &[u8] {
     /// `slice.to_zet_set_with(b)` takes a byte slice (`&[u8]`) with multiple
     /// lines and returns a `ZetSet` with line terminator and Byte Order Mark
     /// (or empty string) taken from the slice, and with each line of the slice
     /// represented in the set by a `Cow::Borrowed` key with the bookkeeping
     /// value `b`.
-    fn to_zet_set_with<Bookkeeping: Copy>(&self, b: Bookkeeping) -> ZetSet<Bookkeeping> {
+    fn to_zet_set_with(&'data self, b: B) -> ZetSet<'data, Item, B> {
         let (bom, line_terminator) = output_info(self);
         let all_lines = &self[bom.len()..];
 
         let set = borrowed_map_of(all_lines, b);
 
-        ZetSet { set, bom, line_terminator }
+        ZetSet { set, bom, line_terminator, phantom: PhantomData }
     }
 }
 
@@ -102,7 +138,7 @@ fn output_info(slice: &[u8]) -> (&'static [u8], &'static [u8]) {
 
 /// Returns a `CowSet` with every line of `slice` inserted as a `Cow::Borrowed`
 /// key with bookkeeping value `b`
-fn borrowed_map_of<Bookkeeping: Copy>(mut slice: &[u8], b: Bookkeeping) -> CowSet<Bookkeeping> {
+fn borrowed_map_of<Item: Copy, B: Bookkeeping<Item>>(mut slice: &[u8], b: B) -> CowSet<B> {
     let mut set = CowSet::default();
     while let Some(end) = memchr(b'\n', slice) {
         let (mut line, rest) = slice.split_at(end);
