@@ -3,9 +3,7 @@
 //!   in the set is represented by an `IndexMap` key. The `IndexMap` value
 //!   associated with each key is not part of the abstract set value but is
 //!   used for operational bookkeeping. The type of these bookkeeping values
-//!   depend on the operation being calculated. We may also add a `count` value
-//!   to the bookkeeping, to keep track of the number of times a particular line
-//!   has been seen.
+//!   depend on the operation being calculated.
 //! * Read the lines of each subsequent operand, updating the bookkeeping value
 //!   as needed in order to decide whether to insert lines into or delete lines
 //!   from the set.
@@ -19,10 +17,9 @@
 //! * We do *not* read the entire contents of subsequent files. This can cost us
 //!   time in key allocation, but often saves both time and memory: `Intersect`
 //!   and `Diff` never allocate, since they only remove lines from the set,
-//!   while `Union`, `Single`, `SingleByFile`, `Multiple`, and `MultipleByFile`
-//!   don't do extensive allocation in the fairly common case where the second
-//!   and subsequent input files have few lines not already present in the first
-//!   file.
+//!   while `Union`, `Single` and `Multiple` don't do extensive allocation
+//!   in the fairly common case where the second and subsequent input files
+//!   have few lines not already present in the first file.
 //! * We start output with a Unicode byte order mark if and only the first input
 //!   file begins with a byte order mark.
 //! * We strip the line terminator (either `\r\n` or `\n`) from the end of each
@@ -33,21 +30,18 @@
 //!   [huniq](https://crates.io/crates/huniq) command. But it is for all other
 //!   Zet operations.)
 //!
-//! The `set` module provides a `UncountedSet` and `CountedSet` structures, each
-//! of which implement `ZetSet`, and extends `&[u8]` with the
-//! `.to_uncounted_set_with(b)` and `to_counted_set_with(b)` methods, which
-//! returns an initialized `ZetSet` with a representation of the set of (unique)
-//! lines in the `u8` slice and some guidance for eventual output. The value of
-//! `slice.to_uncounted_set_with(b)` consists of:
+//! The `set` module provides a `ZetSet` structure and extends `&[u8]` with the
+//! `.to_zet_set_with(b)` method, which returns an initialized `ZetSet` with a
+//! representation of the set of (unique) lines in the `u8` slice and some
+//! guidance for eventual output. The value of `slice.to_zet_set_with(b)`
+//! consists of:
 //! * An `IndexMap` with keys (lines) borrowed from `slice` and initial
 //!   bookkeeping values equal to `b`.
 //! * A field that indicates whether `slice` started with a byte order mark.
 //! * A field that holds the line terminator to be used, taken from the first
 //!   line of `slice`.
-//! The value of `slice.to_counted_set_with(b)` also has a field with the number
-//! of time each key (line) has been seen.
 //!
-//! A `ZetSet` exposes the `.insert` and `retain` methods of its internal
+//! `ZetSet` exposes the `.insert` and `retain` methods of its internal
 //! `IndexMap` operations to mutate the set of lines, and `.get_mut` to update
 //! the bookkeeping value of a line. It provides an `.output_to` method to write
 //! the lines of the set to an `io::Write` sink.
@@ -66,9 +60,10 @@
 )]
 #![allow(clippy::cargo)] // FIXME
 #![allow(
-    clippy::struct_excessive_bools,
     clippy::items_after_statements,
     clippy::missing_errors_doc,
+    clippy::needless_pass_by_value,
+    clippy::needless_return,
     clippy::semicolon_if_nothing_returned
 )]
 #![cfg_attr(debug_assertions, allow(dead_code, unused_imports, unused_variables))]

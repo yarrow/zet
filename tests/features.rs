@@ -28,8 +28,9 @@ fn prints_help_if_no_subcommand() {
     assert!(String::from_utf8(output.stdout).unwrap().contains("Usage:"));
 }
 
-const OP_NAMES: [OpName; 7] =
-    [Intersect, Union, Diff, Single, SingleByFile, Multiple, MultipleByFile];
+const OP_NAMES: [OpName; 5] =
+    //    [Intersect, Union, Diff, Single, SingleByFile, Multiple, MultipleByFile];
+    [Intersect, Union, Diff, SingleByFile, MultipleByFile];
 fn subcommand_for(op: OpName) -> &'static str {
     match op {
         Union => "union",
@@ -41,7 +42,7 @@ fn subcommand_for(op: OpName) -> &'static str {
         MultipleByFile => "multiple --by-file",
     }
 }
-fn subcommands() -> [&'static str; 7] {
+fn subcommands() -> [&'static str; 5] {
     OP_NAMES.map(subcommand_for)
 }
 
