@@ -31,11 +31,36 @@ pub fn calculate<O: LaterOperand>(
     rest: impl Iterator<Item = Result<O>>,
     out: impl std::io::Write,
 ) -> Result<()> {
+    fn union<O: LaterOperand, Counter: Tally>(
+        first_operand: &[u8],
+        rest: impl Iterator<Item = Result<O>>,
+        count: Counter,
+    ) -> Result<ZetSet<(), Counter>> {
+        let mut set = zet_set_from(first_operand, (), count);
+        for operand in rest {
+            operand?.for_byte_line(|line| set.insert(line, ()))?;
+        }
+        Ok(set)
+    }
     match operation {
         // `Union` doesn't need bookkeeping, so we use the unit type as its
         // bookkeeping value.
         OpName::Union => {
             let set = union(first_operand, rest, Uncounted::new())?;
+            set.output_to(out)
+        }
+
+        // `Single` and `Multiple` print those lines that occur once and more than once,
+        // respectively, in the entire input.
+        OpName::Single | OpName::Multiple => {
+            let mut set = union(first_operand, rest, Counted::new())?;
+
+            if operation == OpName::Single {
+                set.retain_single();
+            } else {
+                set.retain_multiple();
+            }
+
             set.output_to(out)
         }
 
@@ -76,6 +101,7 @@ pub fn calculate<O: LaterOperand>(
         OpName::Intersect => {
             const BLUE: bool = true; //  We're using Booleans, but we could
             const _RED: bool = false; // be using two different colors
+
             let mut set = zet_set_from(first_operand, BLUE, Uncounted::new());
             let mut this_cycle = BLUE;
             for operand in rest {
@@ -88,20 +114,6 @@ pub fn calculate<O: LaterOperand>(
                 set.retain(|when_seen| when_seen == this_cycle);
             }
             return set.output_to(out);
-        }
-
-        // `Single` and `Multiple` print those lines that occur once and more than once,
-        // respectively, in the entire input.
-        OpName::Single | OpName::Multiple => {
-            let mut set = union(first_operand, rest, Counted::new())?;
-
-            if operation == OpName::Single {
-                set.retain_single();
-            } else {
-                set.retain_multiple();
-            }
-
-            set.output_to(out)
         }
 
         // For `SingleByFile` and `MultipleByFile`, we keep track of the id number of the
@@ -149,17 +161,6 @@ pub fn calculate<O: LaterOperand>(
     }
 }
 
-fn union<O: LaterOperand, Counter: Tally>(
-    first_operand: &[u8],
-    rest: impl Iterator<Item = Result<O>>,
-    count: Counter,
-) -> Result<ZetSet<(), Counter>> {
-    let mut set = zet_set_from(first_operand, (), count);
-    for operand in rest {
-        operand?.for_byte_line(|line| set.insert(line, ()))?;
-    }
-    Ok(set)
-}
 #[allow(clippy::pedantic)]
 #[cfg(test)]
 mod test {

@@ -18,25 +18,33 @@ use std::io;
 ///   the first file. On output, the `ZetSet` will print a Byte Order Mark if the first
 ///   file operand had one, and will use the same line terminator as that file's first
 ///   line.
+/// * Optionally, the `ZetSet` can also track the number of times each line occurs
 pub(crate) struct ZetSet<'data, Item: Copy, Counter: Tally> {
-    set: CowSet<'data, Audit<Item, Counter>>,
+    set: CowSet<'data, Bookkeeping<Item, Counter>>,
     bom: &'static [u8],             // Byte Order Mark or empty
     line_terminator: &'static [u8], // \n or \r\n
 }
 type CowSet<'data, Bookkeeping> = IndexMap<Cow<'data, [u8]>, Bookkeeping, FxBuildHasher>;
 
+/// The `Bookkeeping` struct combines the `Item` used for a set operation with
+/// the `Counter` used to count (or ignore) the number of times a line has
+/// occurred.
 #[derive(Clone, Copy)]
-pub(crate) struct Audit<Item: Copy, Counter: Tally> {
+pub(crate) struct Bookkeeping<Item: Copy, Counter: Tally> {
     item: Item,
     count: Counter,
 }
 
+/// The `Tally` trait is used for counting the number of times a line is
+/// inserted in a `ZetSet`.  (Or, optionally, not to count that.)
 pub(crate) trait Tally: Copy {
     fn new() -> Self;
     fn value(self) -> u32;
     fn increment(&mut self);
 }
 
+/// The `Counted` flavor of `Tally` actually counts things. Its value is never
+/// zero.
 pub(crate) type Counted = u32;
 impl Tally for Counted {
     fn new() -> Self {
@@ -50,6 +58,8 @@ impl Tally for Counted {
     }
 }
 
+/// The `Uncounted` flavor of `Tally` has a `value()` of zero no matter how many
+/// times you `increment()` it.
 #[derive(Clone, Copy)]
 pub(crate) struct Uncounted();
 impl Tally for Uncounted {
@@ -62,6 +72,8 @@ impl Tally for Uncounted {
     fn increment(&mut self) {}
 }
 
+/// Creates a new `ZetSet`, with each key a line borrowed from `slice`, and value
+/// `Bookkeeping{item, count}` for every line.
 pub(crate) fn zet_set_from<Item: Copy, Counter: Tally>(
     mut slice: &[u8],
     item: Item,
@@ -70,22 +82,26 @@ pub(crate) fn zet_set_from<Item: Copy, Counter: Tally>(
     let (bom, line_terminator) = output_info(slice);
     slice = &slice[bom.len()..];
     let mut zet = ZetSet { set: CowSet::default(), bom, line_terminator };
-    zet.insert_borrowed_lines(slice, Audit { item, count });
+    zet.insert_borrowed_lines(slice, Bookkeeping { item, count });
     zet
 }
+
 impl<'data, Counter: Tally, Item: Copy> ZetSet<'data, Item, Counter> {
     /// Insert `line` as `Cow::Owned` to the underlying `IndexMap`
     pub(crate) fn insert(&mut self, line: &[u8], item: Item) {
         self.set
             .entry(Cow::from(line.to_vec()))
             .and_modify(|v| v.count.increment())
-            .or_insert(Audit { item, count: Counter::new() });
+            .or_insert(Bookkeeping { item, count: Counter::new() });
     }
+
     /// Insert `line` as `Cow::Borrowed` to the underlying `IndexMap`
-    fn insert_borrowed(&mut self, line: &'data [u8], item: Audit<Item, Counter>) {
+    fn insert_borrowed(&mut self, line: &'data [u8], item: Bookkeeping<Item, Counter>) {
         self.set.entry(Cow::Borrowed(line)).and_modify(|v| v.count.increment()).or_insert(item);
     }
-    fn insert_borrowed_lines(&mut self, mut slice: &'data [u8], item: Audit<Item, Counter>) {
+
+    /// Insert every line in `slice`
+    fn insert_borrowed_lines(&mut self, mut slice: &'data [u8], item: Bookkeeping<Item, Counter>) {
         while let Some(end) = memchr(b'\n', slice) {
             let (mut line, rest) = slice.split_at(end);
             slice = &rest[1..];
@@ -102,6 +118,7 @@ impl<'data, Counter: Tally, Item: Copy> ZetSet<'data, Item, Counter> {
     }
 
     /// Sometimes we need to update the bookkeeping information
+    /// We expose only the `item` field, not the `count` field
     pub(crate) fn get_mut(&mut self, line: &[u8]) -> Option<&mut Item> {
         self.set.get_mut(line).map(|v| &mut v.item)
     }

@@ -3,11 +3,12 @@
 //!   in the set is represented by an `IndexMap` key. The `IndexMap` value
 //!   associated with each key is not part of the abstract set value but is
 //!   used for operational bookkeeping. The type of these bookkeeping values
-//!   depend on the operation being calculated.
+//!   depends on the operation being calculated and whether we're keeping track
+//!   of the number of times each line occurs.
 //! * Read the lines of each subsequent operand, updating the bookkeeping value
 //!   as needed in order to decide whether to insert lines into or delete lines
 //!   from the set.
-//! * Output the lines of the resulting set.
+//! * Output the lines of the resulting set, possibly annotated with a line count.
 //!
 //! Zet's structure is due to the following design decisions:
 //! * We read the entire contents of the first input file into memory, so we can
