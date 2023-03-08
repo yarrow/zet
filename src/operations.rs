@@ -5,7 +5,7 @@ use std::num::NonZeroUsize;
 use anyhow::Result;
 
 use crate::args::OpName;
-use crate::set::{zet_set_from, Bookkeeping, ZetSet};
+use crate::set::{zet_set_from, Counted, Tally, Uncounted, ZetSet};
 
 /// The `calculate` function's only requirement for its second and succeeding
 /// operands is that they implement `for_byte_line`. The `LaterOperand` trait
@@ -14,53 +14,6 @@ pub trait LaterOperand {
     /// The call `o.for_byte_line(|line| ...)` method calls a the given closure
     /// for each &[u8] in `o`.
     fn for_byte_line(self, for_each_line: impl FnMut(&[u8])) -> Result<()>;
-}
-
-trait Austere: Copy {}
-impl Austere for bool {}
-impl Austere for () {}
-impl Austere for Option<NonZeroUsize> {}
-
-#[derive(Clone, Copy, Debug)]
-struct Plain<I: Austere>(I);
-impl<I: Copy + Austere> Bookkeeping for Plain<I> {
-    type Item = I;
-    fn item(&self) -> Self::Item {
-        self.0
-    }
-    fn get_mut_item(&mut self) -> &mut Self::Item {
-        &mut self.0
-    }
-    fn with_unit_line_count(item: Self::Item) -> Self {
-        Self(item)
-    }
-    fn line_count(&self) -> u32 {
-        0
-    }
-    fn increment_line_count(&mut self) {}
-}
-#[derive(Clone, Copy, Debug)]
-struct Counted<Item: Copy> {
-    line_count: u32,
-    item: Item,
-}
-impl<I: Copy> Bookkeeping for Counted<I> {
-    type Item = I;
-    fn item(&self) -> Self::Item {
-        self.item
-    }
-    fn get_mut_item(&mut self) -> &mut Self::Item {
-        &mut self.item
-    }
-    fn with_unit_line_count(item: Self::Item) -> Self {
-        Self { line_count: 1, item }
-    }
-    fn line_count(&self) -> u32 {
-        self.line_count
-    }
-    fn increment_line_count(&mut self) {
-        self.line_count = self.line_count.saturating_add(1);
-    }
 }
 
 /// Calculates and prints the set operation named by `op`. Each file in `files`
@@ -82,7 +35,7 @@ pub fn calculate<O: LaterOperand>(
         // `Union` doesn't need bookkeeping, so we use the unit type as its
         // bookkeeping value.
         OpName::Union => {
-            let set = union(first_operand, rest, Plain(()))?;
+            let set = union(first_operand, rest, Uncounted::new())?;
             set.output_to(out)
         }
 
@@ -90,7 +43,7 @@ pub fn calculate<O: LaterOperand>(
         // only in the first operand, and `false` that the line is present in
         // some other operand.
         OpName::Diff => {
-            let mut set = zet_set_from(first_operand, Plain(true));
+            let mut set = zet_set_from(first_operand, true, Uncounted::new());
             for operand in rest {
                 operand?.for_byte_line(|line| {
                     if let Some(keepme) = set.get_mut(line) {
@@ -123,7 +76,7 @@ pub fn calculate<O: LaterOperand>(
         OpName::Intersect => {
             const BLUE: bool = true; //  We're using Booleans, but we could
             const _RED: bool = false; // be using two different colors
-            let mut set = zet_set_from(first_operand, Plain(BLUE));
+            let mut set = zet_set_from(first_operand, BLUE, Uncounted::new());
             let mut this_cycle = BLUE;
             for operand in rest {
                 this_cycle = !this_cycle; // flip BLUE -> RED and RED -> BLUE
@@ -140,7 +93,7 @@ pub fn calculate<O: LaterOperand>(
         // `Single` and `Multiple` print those lines that occur once and more than once,
         // respectively, in the entire input.
         OpName::Single | OpName::Multiple => {
-            let mut set = union(first_operand, rest, Counted::with_unit_line_count(()))?;
+            let mut set = union(first_operand, rest, Counted::new())?;
 
             if operation == OpName::Single {
                 set.retain_single();
@@ -167,7 +120,7 @@ pub fn calculate<O: LaterOperand>(
         OpName::SingleByFile | OpName::MultipleByFile => {
             let seen_in_first_operand = NonZeroUsize::new(1);
             let mut this_operand_uid = seen_in_first_operand.expect("1 is nonzero");
-            let mut set = zet_set_from(first_operand, Plain(seen_in_first_operand));
+            let mut set = zet_set_from(first_operand, seen_in_first_operand, Uncounted::new());
 
             for operand in rest {
                 let seen_in_this_operand = this_operand_uid.checked_add(1);
@@ -196,14 +149,14 @@ pub fn calculate<O: LaterOperand>(
     }
 }
 
-fn union<O: LaterOperand, B: Bookkeeping>(
+fn union<O: LaterOperand, Counter: Tally>(
     first_operand: &[u8],
     rest: impl Iterator<Item = Result<O>>,
-    b: B,
-) -> Result<ZetSet<B>> {
-    let mut set = zet_set_from(first_operand, b);
+    count: Counter,
+) -> Result<ZetSet<(), Counter>> {
+    let mut set = zet_set_from(first_operand, (), count);
     for operand in rest {
-        operand?.for_byte_line(|line| set.insert(line, b.item()))?;
+        operand?.for_byte_line(|line| set.insert(line, ()))?;
     }
     Ok(set)
 }

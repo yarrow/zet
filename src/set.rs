@@ -18,37 +18,74 @@ use std::io;
 ///   the first file. On output, the `ZetSet` will print a Byte Order Mark if the first
 ///   file operand had one, and will use the same line terminator as that file's first
 ///   line.
-pub(crate) struct ZetSet<'data, B: Bookkeeping> {
-    set: CowSet<'data, B>,
+pub(crate) struct ZetSet<'data, Item: Copy, Counter: Tally> {
+    set: CowSet<'data, Audit<Item, Counter>>,
     bom: &'static [u8],             // Byte Order Mark or empty
     line_terminator: &'static [u8], // \n or \r\n
 }
 type CowSet<'data, Bookkeeping> = IndexMap<Cow<'data, [u8]>, Bookkeeping, FxBuildHasher>;
 
-pub(crate) trait Bookkeeping: Copy {
-    type Item: Copy;
-    fn item(&self) -> Self::Item;
-    fn get_mut_item(&mut self) -> &mut Self::Item;
-
-    fn with_unit_line_count(item: Self::Item) -> Self;
-    fn line_count(&self) -> u32;
-    fn increment_line_count(&mut self);
+#[derive(Clone, Copy)]
+pub(crate) struct Audit<Item: Copy, Counter: Tally> {
+    item: Item,
+    count: Counter,
 }
-pub(crate) fn zet_set_from<B: Bookkeeping>(mut slice: &[u8], info: B) -> ZetSet<B> {
+
+pub(crate) trait Tally: Copy {
+    fn new() -> Self;
+    fn value(self) -> u32;
+    fn increment(&mut self);
+}
+
+pub(crate) type Counted = u32;
+impl Tally for Counted {
+    fn new() -> Self {
+        1
+    }
+    fn value(self) -> u32 {
+        self
+    }
+    fn increment(&mut self) {
+        *self += 1
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct Uncounted();
+impl Tally for Uncounted {
+    fn new() -> Self {
+        Uncounted()
+    }
+    fn value(self) -> u32 {
+        0
+    }
+    fn increment(&mut self) {}
+}
+
+pub(crate) fn zet_set_from<Item: Copy, Counter: Tally>(
+    mut slice: &[u8],
+    item: Item,
+    count: Counter,
+) -> ZetSet<Item, Counter> {
     let (bom, line_terminator) = output_info(slice);
     slice = &slice[bom.len()..];
     let mut zet = ZetSet { set: CowSet::default(), bom, line_terminator };
-    zet.insert_borrowed_lines(slice, info.item());
+    zet.insert_borrowed_lines(slice, Audit { item, count });
     zet
 }
-impl<'data, B: Bookkeeping> ZetSet<'data, B> {
-    fn insert_borrowed(&mut self, line: &'data [u8], item: B::Item) {
+impl<'data, Counter: Tally, Item: Copy> ZetSet<'data, Item, Counter> {
+    /// Insert `line` as `Cow::Owned` to the underlying `IndexMap`
+    pub(crate) fn insert(&mut self, line: &[u8], item: Item) {
         self.set
-            .entry(Cow::Borrowed(line))
-            .and_modify(B::increment_line_count)
-            .or_insert_with(|| B::with_unit_line_count(item));
+            .entry(Cow::from(line.to_vec()))
+            .and_modify(|v| v.count.increment())
+            .or_insert(Audit { item, count: Counter::new() });
     }
-    fn insert_borrowed_lines(&mut self, mut slice: &'data [u8], item: B::Item) {
+    /// Insert `line` as `Cow::Borrowed` to the underlying `IndexMap`
+    fn insert_borrowed(&mut self, line: &'data [u8], item: Audit<Item, Counter>) {
+        self.set.entry(Cow::Borrowed(line)).and_modify(|v| v.count.increment()).or_insert(item);
+    }
+    fn insert_borrowed_lines(&mut self, mut slice: &'data [u8], item: Audit<Item, Counter>) {
         while let Some(end) = memchr(b'\n', slice) {
             let (mut line, rest) = slice.split_at(end);
             slice = &rest[1..];
@@ -63,32 +100,25 @@ impl<'data, B: Bookkeeping> ZetSet<'data, B> {
             self.insert_borrowed(slice, item);
         }
     }
-    /// Insert `line` as `Cow::Owned` to the underlying `IndexMap`
-    pub(crate) fn insert(&mut self, line: &[u8], item: B::Item) {
-        self.set
-            .entry(Cow::from(line.to_vec()))
-            .and_modify(B::increment_line_count)
-            .or_insert_with(|| B::with_unit_line_count(item));
-    }
 
     /// Sometimes we need to update the bookkeeping information
-    pub(crate) fn get_mut(&mut self, line: &[u8]) -> Option<&mut B::Item> {
-        self.set.get_mut(line).map(Bookkeeping::get_mut_item)
+    pub(crate) fn get_mut(&mut self, line: &[u8]) -> Option<&mut Item> {
+        self.set.get_mut(line).map(|v| &mut v.item)
     }
 
     /// Like `IndexMap`'s `.retain` method, but exposes just the item, and by value.
-    pub(crate) fn retain(&mut self, keep: impl Fn(B::Item) -> bool) {
-        self.set.retain(|_k, v| keep(v.item()));
+    pub(crate) fn retain(&mut self, keep: impl Fn(Item) -> bool) {
+        self.set.retain(|_k, v| keep(v.item));
     }
 
     /// Retain lines seen just once
     pub(crate) fn retain_single(&mut self) {
-        self.set.retain(|_k, v| v.line_count() == 1);
+        self.set.retain(|_k, v| v.count.value() == 1);
     }
 
     /// Retain lines seen more than once
     pub(crate) fn retain_multiple(&mut self) {
-        self.set.retain(|_k, v| v.line_count() > 1);
+        self.set.retain(|_k, v| v.count.value() > 1);
     }
 
     /// Output the `ZetSet`'s lines with the appropriate Byte Order Mark and line
