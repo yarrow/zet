@@ -81,6 +81,16 @@ impl<'data, B: Bookkeeping> ZetSet<'data, B> {
         self.set.retain(|_k, v| keep(v.item()));
     }
 
+    /// Retain lines seen just once
+    pub(crate) fn retain_single(&mut self) {
+        self.set.retain(|_k, v| v.line_count() == 1);
+    }
+
+    /// Retain lines seen more than once
+    pub(crate) fn retain_multiple(&mut self) {
+        self.set.retain(|_k, v| v.line_count() > 1);
+    }
+
     /// Output the `ZetSet`'s lines with the appropriate Byte Order Mark and line
     /// terminator.
     pub(crate) fn output_to(&self, mut out: impl io::Write) -> Result<()> {

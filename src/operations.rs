@@ -5,7 +5,7 @@ use std::num::NonZeroUsize;
 use anyhow::Result;
 
 use crate::args::OpName;
-use crate::set::{zet_set_from, Bookkeeping};
+use crate::set::{zet_set_from, Bookkeeping, ZetSet};
 
 /// The `calculate` function's only requirement for its second and succeeding
 /// operands is that they implement `for_byte_line`. The `LaterOperand` trait
@@ -82,11 +82,8 @@ pub fn calculate<O: LaterOperand>(
         // `Union` doesn't need bookkeeping, so we use the unit type as its
         // bookkeeping value.
         OpName::Union => {
-            let mut set = zet_set_from(first_operand, Plain(()));
-            for operand in rest {
-                operand?.for_byte_line(|line| set.insert(line, ()))?;
-            }
-            return set.output_to(out);
+            let set = union(first_operand, rest, Plain(()))?;
+            set.output_to(out)
         }
 
         // For `Diff`, the bookkeeping value of `true` means we've seen the line
@@ -140,8 +137,19 @@ pub fn calculate<O: LaterOperand>(
             return set.output_to(out);
         }
 
-        // `Single` and `Multiple` are TODO
-        OpName::Single | OpName::Multiple => unimplemented!(),
+        // `Single` and `Multiple` print those lines that occur once and more than once,
+        // respectively, in the entire input.
+        OpName::Single | OpName::Multiple => {
+            let mut set = union(first_operand, rest, Counted::with_unit_line_count(()))?;
+
+            if operation == OpName::Single {
+                set.retain_single();
+            } else {
+                set.retain_multiple();
+            }
+
+            set.output_to(out)
+        }
 
         // For `SingleByFile` and `MultipleByFile`, we keep track of the id number of the
         // operand in which each line occurs, if there is exactly one such
@@ -188,6 +196,17 @@ pub fn calculate<O: LaterOperand>(
     }
 }
 
+fn union<O: LaterOperand, B: Bookkeeping>(
+    first_operand: &[u8],
+    rest: impl Iterator<Item = Result<O>>,
+    b: B,
+) -> Result<ZetSet<B>> {
+    let mut set = zet_set_from(first_operand, b);
+    for operand in rest {
+        operand?.for_byte_line(|line| set.insert(line, b.item()))?;
+    }
+    Ok(set)
+}
 #[allow(clippy::pedantic)]
 #[cfg(test)]
 mod test {
