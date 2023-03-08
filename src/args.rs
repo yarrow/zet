@@ -52,7 +52,7 @@ pub fn parsed() -> Args {
             }
         }
     };
-    Args { op, files: parsed.files }
+    Args { op, count_lines: parsed.count, files: parsed.files }
 }
 
 fn help_and_exit() -> ! {
@@ -81,9 +81,13 @@ fn safe_exit(code: i32) -> ! {
 pub struct Args {
     /// `op` is the set operation requested
     pub op: OpName,
+    /// Should we count the number of times each line occurs?
+    pub count_lines: bool,
     /// `files` is the list of files from the command line
     pub files: Vec<PathBuf>,
 }
+
+/// Set operation to perform
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub enum OpName {
     /// Print the lines present in every file
@@ -107,23 +111,32 @@ pub enum OpName {
 /// `Args` contains the parsed command line.
 struct CliArgs {
     #[arg(short, long)]
-    /// Like the `help` command, the `-h` or `--help` flags tell us to print the help message
-    /// and exit
-    help: bool,
-    #[arg(short('V'), long)]
-    /// The `-V` or `--version` flags tell us to print our name and version, then exit
-    version: bool,
-    #[arg(long)]
-    /// The `color` flag tells us whether to print color or not (Auto means Yes, if
-    /// stdout is a terminal that supports color)
-    color: Option<ColorChoice>,
+    /// The --count flag tells `zet` to count the number of times a line occurs in the input
+    count: bool,
+
     #[arg(long)]
     /// With `--by-file`, the `single` and `multiple` commands count a line as occuring
     /// once if it's only contained in one file, even if it occurs many times in that file.
     by_file: bool,
+
+    #[arg(short, long)]
+    /// Like the `help` command, the `-h` or `--help` flags tell us to print the help message
+    /// and exit
+    help: bool,
+
+    #[arg(short('V'), long)]
+    /// The `-V` or `--version` flags tell us to print our name and version, then exit
+    version: bool,
+
+    #[arg(long)]
+    /// The `color` flag tells us whether to print color or not (Auto means Yes, if
+    /// stdout is a terminal that supports color)
+    color: Option<ColorChoice>,
+
     #[arg(value_enum)]
     /// `op` is the set operation requested
     command: Option<CliName>,
+
     #[arg(name = "Input files")]
     /// `files` is the list of files from the command line
     files: Vec<PathBuf>,

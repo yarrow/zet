@@ -30,9 +30,9 @@ fn main() -> Result<()> {
 
     let first = first_operand.as_slice();
     if io::stdout().is_terminal() {
-        calculate(op, first, rest, io::stdout().lock())?;
+        calculate(op, args.count_lines, first, rest, io::stdout().lock())?;
     } else {
-        calculate(op, first, rest, io::BufWriter::new(io::stdout().lock()))?;
+        calculate(op, args.count_lines, first, rest, io::BufWriter::new(io::stdout().lock()))?;
     };
     Ok(())
 }

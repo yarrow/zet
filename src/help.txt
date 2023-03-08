@@ -11,8 +11,9 @@ Commands:
   help       Print this message
 
 Options:
-      --color <WHEN>  [possible values: auto, always, never]
+  -c  --count         Show the number of times each line occurs in the input
       --by-file       Lines occuring multiple times, but in only one file, count as single (not multiple)
+      --color <WHEN>  [possible values: auto, always, never]
   -h, --help          Print this message
   -V, --version       Print version
 

@@ -27,6 +27,20 @@ pub trait LaterOperand {
 ///
 pub fn calculate<O: LaterOperand>(
     operation: OpName,
+    count_lines: bool,
+    first_operand: &[u8],
+    rest: impl Iterator<Item = Result<O>>,
+    out: impl std::io::Write,
+) -> Result<()> {
+    if count_lines {
+        inner(operation, Counted::new(), first_operand, rest, out)
+    } else {
+        inner(operation, Uncounted::new(), first_operand, rest, out)
+    }
+}
+fn inner<O: LaterOperand, Counter: Tally>(
+    operation: OpName,
+    count: Counter,
     first_operand: &[u8],
     rest: impl Iterator<Item = Result<O>>,
     out: impl std::io::Write,
@@ -46,7 +60,7 @@ pub fn calculate<O: LaterOperand>(
         // `Union` doesn't need bookkeeping, so we use the unit type as its
         // bookkeeping value.
         OpName::Union => {
-            let set = union(first_operand, rest, Uncounted::new())?;
+            let set = union(first_operand, rest, count)?;
             set.output_to(out)
         }
 
@@ -68,7 +82,7 @@ pub fn calculate<O: LaterOperand>(
         // only in the first operand, and `false` that the line is present in
         // some other operand.
         OpName::Diff => {
-            let mut set = zet_set_from(first_operand, true, Uncounted::new());
+            let mut set = zet_set_from(first_operand, true, count);
             for operand in rest {
                 operand?.for_byte_line(|line| {
                     if let Some(keepme) = set.get_mut(line) {
@@ -102,7 +116,7 @@ pub fn calculate<O: LaterOperand>(
             const BLUE: bool = true; //  We're using Booleans, but we could
             const _RED: bool = false; // be using two different colors
 
-            let mut set = zet_set_from(first_operand, BLUE, Uncounted::new());
+            let mut set = zet_set_from(first_operand, BLUE, count);
             let mut this_cycle = BLUE;
             for operand in rest {
                 this_cycle = !this_cycle; // flip BLUE -> RED and RED -> BLUE
@@ -132,7 +146,7 @@ pub fn calculate<O: LaterOperand>(
         OpName::SingleByFile | OpName::MultipleByFile => {
             let seen_in_first_operand = NonZeroUsize::new(1);
             let mut this_operand_uid = seen_in_first_operand.expect("1 is nonzero");
-            let mut set = zet_set_from(first_operand, seen_in_first_operand, Uncounted::new());
+            let mut set = zet_set_from(first_operand, seen_in_first_operand, count);
 
             for operand in rest {
                 let seen_in_this_operand = this_operand_uid.checked_add(1);
@@ -184,7 +198,7 @@ mod test {
         }
 
         let mut answer = Vec::new();
-        calculate(operation, first, operands::Remaining::from(paths), &mut answer).unwrap();
+        calculate(operation, false, first, operands::Remaining::from(paths), &mut answer).unwrap();
         let slow = String::from_utf8(answer).unwrap();
         let fast = fast_calc(operation, operands);
         assert_eq!(slow, fast);
@@ -196,7 +210,7 @@ mod test {
         let first = operands[0];
         let mut answer = Vec::new();
         let rest = operands[1..].iter().map(|o| Ok(*o));
-        calculate(operation, first, rest, &mut answer).unwrap();
+        calculate(operation, false, first, rest, &mut answer).unwrap();
         String::from_utf8(answer).unwrap()
     }
     impl LaterOperand for &[u8] {
