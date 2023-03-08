@@ -77,7 +77,7 @@ pub fn calculate<O: LaterOperand>(
                 })?;
             }
             set.retain(|keepme| keepme);
-            return set.output_to(out);
+            set.output_to(out)
         }
 
         // `Intersect` is more complicated — we start with each line in the
@@ -113,7 +113,7 @@ pub fn calculate<O: LaterOperand>(
                 })?;
                 set.retain(|when_seen| when_seen == this_cycle);
             }
-            return set.output_to(out);
+            set.output_to(out)
         }
 
         // For `SingleByFile` and `MultipleByFile`, we keep track of the id number of the
@@ -156,7 +156,7 @@ pub fn calculate<O: LaterOperand>(
                 set.retain(|unique_source| unique_source.is_none());
             }
 
-            return set.output_to(out);
+            set.output_to(out)
         }
     }
 }
