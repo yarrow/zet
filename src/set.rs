@@ -125,7 +125,10 @@ impl<'data, Counter: Tally, Item: Copy> ZetSet<'data, Item, Counter> {
     /// Sometimes we need to update the bookkeeping information
     /// We expose only the `item` field, not the `count` field
     pub(crate) fn get_mut(&mut self, line: &[u8]) -> Option<&mut Item> {
-        self.set.get_mut(line).map(|v| &mut v.item)
+        self.set.get_mut(line).map(|v| {
+            v.count.increment();
+            &mut v.item
+        })
     }
 
     /// Like `IndexMap`'s `.retain` method, but exposes just the item, and by value.
