@@ -108,7 +108,7 @@ pub enum OpName {
 
 #[derive(Debug, Parser)]
 #[command(name = "zet")]
-/// `Args` contains the parsed command line.
+/// `CliArgs` contains the parsed command line.
 struct CliArgs {
     #[arg(short, long)]
     /// The --count flag tells `zet` to count the number of times a line occurs in the input

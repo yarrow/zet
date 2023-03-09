@@ -38,6 +38,18 @@ pub fn calculate<O: LaterOperand>(
         inner(operation, Uncounted::new(), first_operand, rest, out)
     }
 }
+fn output<SetTally: Tally, PrintTally: Tally, Item: Copy>(
+    set: &ZetSet<Item, SetTally>,
+    maybe_count: PrintTally,
+    out: impl std::io::Write,
+) -> Result<()> {
+    if maybe_count.actually_counts() {
+        set.output_with_count_to(out)
+    } else {
+        set.output_to(out)
+    }
+}
+
 fn inner<O: LaterOperand, Counter: Tally>(
     operation: OpName,
     count: Counter,
@@ -61,7 +73,7 @@ fn inner<O: LaterOperand, Counter: Tally>(
         // bookkeeping value.
         OpName::Union => {
             let set = union(first_operand, rest, count)?;
-            set.output_to(out)
+            output(&set, count, out)
         }
 
         // `Single` and `Multiple` print those lines that occur once and more than once,
@@ -75,7 +87,7 @@ fn inner<O: LaterOperand, Counter: Tally>(
                 set.retain_multiple();
             }
 
-            set.output_to(out)
+            output(&set, count, out)
         }
 
         // For `Diff`, the bookkeeping value of `true` means we've seen the line
@@ -91,7 +103,7 @@ fn inner<O: LaterOperand, Counter: Tally>(
                 })?;
             }
             set.retain(|keepme| keepme);
-            set.output_to(out)
+            output(&set, count, out)
         }
 
         // `Intersect` is more complicated — we start with each line in the
@@ -127,7 +139,7 @@ fn inner<O: LaterOperand, Counter: Tally>(
                 })?;
                 set.retain(|when_seen| when_seen == this_cycle);
             }
-            set.output_to(out)
+            output(&set, count, out)
         }
 
         // For `SingleByFile` and `MultipleByFile`, we keep track of the id number of the
@@ -170,7 +182,7 @@ fn inner<O: LaterOperand, Counter: Tally>(
                 set.retain(|unique_source| unique_source.is_none());
             }
 
-            set.output_to(out)
+            output(&set, count, out)
         }
     }
 }

@@ -41,6 +41,11 @@ pub(crate) trait Tally: Copy {
     fn new() -> Self;
     fn value(self) -> u32;
     fn increment(&mut self);
+    fn actually_counts(self) -> bool {
+        let mut c = Self::new();
+        c.increment();
+        c.value() != Self::new().value()
+    }
 }
 
 /// The `Counted` flavor of `Tally` actually counts things. Its value is never
