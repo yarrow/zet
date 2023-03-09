@@ -31,21 +31,32 @@
 //!   [huniq](https://crates.io/crates/huniq) command. But it is for all other
 //!   Zet operations.)
 //!
-//! The `set` module provides a `ZetSet` structure and extends `&[u8]` with the
-//! `.to_zet_set_with(b)` method, which returns an initialized `ZetSet` with a
-//! representation of the set of (unique) lines in the `u8` slice and some
-//! guidance for eventual output. The value of `slice.to_zet_set_with(b)`
-//! consists of:
+//! The `set` module provides a `ZetSet` structure the `zet_set_from` function,
+//! which takes a `&[u8]` slice, a bookkeeping item used by the calling
+//! operation, and a (possibly no-op) line counter. The call
+//! ```ignore
+//!     zet_set_from(slice, item, count)
+//! ```
+//! returns an initialized `ZetSet` with a representation of the set of (unique)
+//! lines in the `u8` slice and some bookkeeping values:
 //! * An `IndexMap` with keys (lines) borrowed from `slice` and initial
-//!   bookkeeping values equal to `b`.
+//!   bookkeeping values equal to `Bookkeeping{item, count}`.
 //! * A field that indicates whether `slice` started with a byte order mark.
 //! * A field that holds the line terminator to be used, taken from the first
 //!   line of `slice`.
 //!
-//! `ZetSet` exposes the `.insert` and `retain` methods of its internal
-//! `IndexMap` operations to mutate the set of lines, and `.get_mut` to update
-//! the bookkeeping value of a line. It provides an `.output_to` method to write
-//! the lines of the set to an `io::Write` sink.
+//! The `count` field of a `Bookkeeping` struct is either an actual counter,
+//! with an `increment()` method that increases it's `value()` by 1, or a
+//! zero-sized fake counter whose `increment` method does nothing and whose
+//! `value()` is always 0.
+//!
+//! `ZetSet` has `insert`, `retain`, and `get_mut` methods that act like
+//! those methods on `HashMap` or `IndexMap`, except they expose only the `item`
+//! field of their `Bookkeeping` values: `retain` takes a function that uses
+//! items to decide whether to keep a line entry, `insert` takes an item, and
+//! `get_mut` returns an item reference. The latter two process the `count`
+//! field internally, initializing it for new entries and incrementing it for
+//! already-seen entries.
 //!
 #![deny(
     warnings,

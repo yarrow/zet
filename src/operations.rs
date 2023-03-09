@@ -11,7 +11,7 @@ use crate::set::{zet_set_from, Counted, Tally, Uncounted, ZetSet};
 /// operands is that they implement `for_byte_line`. The `LaterOperand` trait
 /// codifies that.
 pub trait LaterOperand {
-    /// The call `o.for_byte_line(|line| ...)` method calls a the given closure
+    /// The call `o.for_byte_line(|line| ...)` method calls the given closure
     /// for each &[u8] in `o`.
     fn for_byte_line(self, for_each_line: impl FnMut(&[u8])) -> Result<()>;
 }

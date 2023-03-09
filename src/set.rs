@@ -77,22 +77,39 @@ impl Tally for Uncounted {
     fn increment(&mut self) {}
 }
 
-/// Creates a new `ZetSet`, with each key a line borrowed from `slice`, and value
-/// `Bookkeeping{item, count}` for every line.
+/// Creates a new `ZetSet`, with each key a line borrowed from `slice`, and
+/// value `Bookkeeping{item, Counter::new()}` for every line. (The `_count`
+/// parameter only affects the type of the returned `ZetSet` -- I don't know how
+/// to pass in a type as such.)
 pub(crate) fn zet_set_from<Item: Copy, Counter: Tally>(
     mut slice: &[u8],
     item: Item,
-    count: Counter,
+    _count: Counter,
 ) -> ZetSet<Item, Counter> {
     let (bom, line_terminator) = output_info(slice);
     slice = &slice[bom.len()..];
     let mut zet = ZetSet { set: CowSet::default(), bom, line_terminator };
-    zet.insert_borrowed_lines(slice, Bookkeeping { item, count });
+    zet.insert_borrowed_lines(slice, item);
     zet
 }
 
+/// **Warning:** To keep a `ZetSet`'s `Bookkeeping.count` values accurate, each
+/// time a line `line` appears in the input we must call exactly one of
+/// `insert_borrowed`, `insert`, or `get_mut`, and call it exactly once:
+/// * `s.insert(line, item)` and `s.insert_borrowed(line, item)` either:
+///     * insert `Bookkeeping{item, Counter::new()}` as the value of `line` in
+///     the underlying `IndexMap`,
+///     * or if the value is already present, increment its `count` field.
+/// * `s.get_mut(line)`, when `line` is present in `s` with value `v`,
+/// increments `v.count` and returns `Some(&mut v.item)`.
 impl<'data, Counter: Tally, Item: Copy> ZetSet<'data, Item, Counter> {
-    /// Insert `line` as `Cow::Owned` to the underlying `IndexMap`
+    /// Insert `line` as `Cow::Borrowed` to the underlying `IndexMap`
+    fn insert_borrowed(&mut self, line: &'data [u8], item: Bookkeeping<Item, Counter>) {
+        self.set.entry(Cow::Borrowed(line)).and_modify(|v| v.count.increment()).or_insert(item);
+    }
+
+    /// Insert `line` as `Cow::Owned` to the underlying `IndexMap`. Initialize
+    /// `count` for new entries, increment it for previously-seen entries.
     pub(crate) fn insert(&mut self, line: &[u8], item: Item) {
         self.set
             .entry(Cow::from(line.to_vec()))
@@ -100,13 +117,17 @@ impl<'data, Counter: Tally, Item: Copy> ZetSet<'data, Item, Counter> {
             .or_insert(Bookkeeping { item, count: Counter::new() });
     }
 
-    /// Insert `line` as `Cow::Borrowed` to the underlying `IndexMap`
-    fn insert_borrowed(&mut self, line: &'data [u8], item: Bookkeeping<Item, Counter>) {
-        self.set.entry(Cow::Borrowed(line)).and_modify(|v| v.count.increment()).or_insert(item);
+    /// We expose only the `item` field to the caller.
+    pub(crate) fn get_mut(&mut self, line: &[u8]) -> Option<&mut Item> {
+        self.set.get_mut(line).map(|v| {
+            v.count.increment();
+            &mut v.item
+        })
     }
 
     /// Insert every line in `slice`
-    fn insert_borrowed_lines(&mut self, mut slice: &'data [u8], item: Bookkeeping<Item, Counter>) {
+    fn insert_borrowed_lines(&mut self, mut slice: &'data [u8], item: Item) {
+        let bookkeeping = Bookkeeping { item, count: Counter::new() };
         while let Some(end) = memchr(b'\n', slice) {
             let (mut line, rest) = slice.split_at(end);
             slice = &rest[1..];
@@ -115,20 +136,11 @@ impl<'data, Counter: Tally, Item: Copy> ZetSet<'data, Item, Counter> {
                     line = &line[..line.len() - 1];
                 }
             }
-            self.insert_borrowed(line, item);
+            self.insert_borrowed(line, bookkeeping);
         }
         if !slice.is_empty() {
-            self.insert_borrowed(slice, item);
+            self.insert_borrowed(slice, bookkeeping);
         }
-    }
-
-    /// Sometimes we need to update the bookkeeping information
-    /// We expose only the `item` field, not the `count` field
-    pub(crate) fn get_mut(&mut self, line: &[u8]) -> Option<&mut Item> {
-        self.set.get_mut(line).map(|v| {
-            v.count.increment();
-            &mut v.item
-        })
     }
 
     /// Like `IndexMap`'s `.retain` method, but exposes just the item, and by value.

@@ -2,11 +2,21 @@
 
 ## [Unreleased]
 
-- Self-indulgent recreation of (part of) clap's `help` feature, because I like the `clap 4`'s help format, but really miss the colored (rather than gray-scale) help.
+## Added
+- Add the `--count` flag to show the number of times each line occurs in the input.
+
+## Changed
+- **Breaking:** When `-` is used as a file argument, `zet` reads from standard input, not the file `-` in the current directory.  (That file can be passed to `zet` as `./-`)
+- When no file arguments are given, `zet` reads from standard input.
+- **Breaking:** Add the `--by-file` flag for the `zet single` and `zet multiple` commands. The `zet single` command now outputs lines that occur exactly once in the entire input. The `zet single --by-file` command reproduces the old behavior (output lines that occur in just one file, though possibly many times in that one file). Similarly, `zet multiple --by-file` reproduces the old behavior of requiring output lines to occur in more than one file, while `zet multiple` without the `--by-file` flag will output lines that occur more than once, but in just one file.
+- Use `clap 4`'s help format, but `clap 3`'s colors. This is self-indulgent recreation of (part of) clap's `help` feature, because I like the `clap 4`'s help format, but really miss the colored (rather than gray-scale) help.
 
 ## [0.2.6] - 2023-02-02
 
+## Removed
 - Abandon trying to have a Minimum Supported Rust Version (maybe once we're 1.0?)
+
+## Changed
 - Use cargo-dist to create the release
 - Move `for_byte_lines` from `NextOperand` to a trait (thanks to [ysthakur] for the suggestion)
 

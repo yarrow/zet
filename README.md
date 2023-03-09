@@ -13,10 +13,29 @@ Here are the subcommands of `zet` and what they do:
 * `zet union x y z` outputs the lines that occur in any of `x`, `y`, or `z`.
 * `zet intersect x y z` outputs the lines that occur in all of `x`, `y`, and `z`.
 * `zet diff x y z` outputs the lines that occur in `x` but not in `y` or `z`.
-* `zet single x y z` outputs the lines that occur in exactly one of `x`, `y`,
-  or `z`.
-* `zet multiple x y z` outputs the lines that occur in two or more of `x`, `y`,
-  and `z`.
+* `zet single x y z` outputs the lines that occur exactly once in the entire input.
+* `zet single --by-file x y z` outputs the lines that occur in exactly one of `x`, `y`,
+  or `z`. (Including a line that occurs, say, twice in `y` but not in `x` or `z`) 
+* `zet multiple x y z` outputs the lines that occur more than once in the entire input.
+* `zet multiple --by-file x y z` outputs the lines that occur in two or more of `x`, `y`,
+  and `z` (but not a line that occurs twice in `y` but not in `x` or `z`).
+
+The `-c` or `--count` flags make `zet` show the number of times each line occurs in the input.
+
+## Comparisons to other commands
+Some `zet` subcommands are similar to traditional Unix commands:
+
+  Zet           | Traditional
+  ---           | -----------
+  zet union     | uniq
+  zet intersect | comm -12
+  zet diff      | comm -23
+  zet single    | uniq -u
+  zet multiple  | uniq -d
+
+Differences: `zet`'s input need not be sorted, and it can take more than one (`uniq`) or two (`comm`) input files.  For large files, `zet` is 3 to 4 times faster than `uniq` and 7 to 8 times faster than `comm`, but takes much more memory: `zet` reads its first file argument into memory, and (for `union`, `single`, and `multiple`) allocates additional space for each line encountered that wasn't in the first file. In contrast `uniq` and `comm` take an essentially fixed amount of space, no matter how large the input, since they depend on the input(s) being sorted. So `zet` is faster until it runs into a memory limit, at which point it stops working. (And `zet` has no `-i` or `-ignore-case` option, unlike `uniq` and `comm`.)
+
+The [`huniq`](https://crates.io/crates/huniq) command is 7 to 9 times faster than `zet union` and takes less memory, because it keeps only a hash of each line in memory rather than the whole line. (In theory, `huniq` might fail to output a line whose hash is the same as another, different, line).
 
 ## Notes
 
