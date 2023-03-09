@@ -149,6 +149,21 @@ impl<'data, Counter: Tally, Item: Copy> ZetSet<'data, Item, Counter> {
         out.flush()?;
         Ok(())
     }
+
+    /// Output the `ZetSet`'s lines with the appropriate Byte Order Mark and line
+    /// terminator.
+    pub(crate) fn output_with_count_to(&self, mut out: impl io::Write) -> Result<()> {
+        let Some(max_count) = self.set.values().map(|v| v.count.value()).max() else { return Ok(()) };
+        let width = (max_count.ilog10() + 1) as usize;
+        out.write_all(self.bom)?;
+        for (line, info) in self.set.iter() {
+            write!(out, "{:width$} ", info.count.value())?;
+            out.write_all(line)?;
+            out.write_all(self.line_terminator)?;
+        }
+        out.flush()?;
+        Ok(())
+    }
 }
 
 /// Returns `(bom, line_terminator)`, where `bom` is the (UTF-8) Byte Order
