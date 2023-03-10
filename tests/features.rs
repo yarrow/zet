@@ -1,3 +1,4 @@
+use std::fs::File;
 use std::process::Command;
 
 use assert_cmd::prelude::*;
@@ -120,6 +121,38 @@ fn zet_subcommand_with_count_flag_x_y_z_matches_expected_output_for_all_operatio
     }
 }
 
+#[test]
+fn zet_reads_stdin_when_given_a_dash() {
+    let temp = TempDir::new().unwrap();
+
+    let x_path = &path_with(&temp, "x.txt", &x().join(""), Encoding::Plain);
+    let y_path = &path_with(&temp, "y.txt", &y().join(""), Encoding::Plain);
+    let z_path = &path_with(&temp, "z.txt", &z().join(""), Encoding::Plain);
+
+    let y = File::open(y_path).unwrap();
+    let output = run([subcommand_for(Union), x_path, "-", z_path]).stdin(y).unwrap();
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        xpected(Union).join(""),
+        "Output from dash-as-stdin doesn't match expected",
+    );
+}
+
+#[test]
+fn zet_reads_stdin_when_there_are_no_file_arguments() {
+    let temp = TempDir::new().unwrap();
+
+    let path = &path_with(&temp, "stdin.txt", &[x(), y(), z()].concat().join(""), Encoding::Plain);
+
+    let std_in = File::open(path).unwrap();
+    let output = run([subcommand_for(Multiple)]).stdin(std_in).unwrap();
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        xpected(Multiple).join(""),
+        "Output from dash-as-stdin doesn't match expected",
+    );
+}
+
 use std::fmt;
 #[derive(Clone)]
 struct TestInput {
@@ -220,44 +253,48 @@ fn xpected_with_count(op: OpName) -> Vec<String> {
         })
         .collect()
 }
+
 // These tests of the expected results are sanity checks that the expected
 // outputs are themselves correct.
-#[test]
-fn expected_union_output_is_the_concatentated_input_lines_in_order_with_no_duplicates() {
-    let xyz = vec![x(), y(), z()].concat();
-    let unique_input_lines: Vec<String> = xyz.into_iter().unique().collect();
-    let union_lines = xpected(Union);
-    assert!(union_lines.eq(&unique_input_lines));
-}
-
-#[test]
-fn each_line_occurs_at_most_once_in_the_expected_output_of_any_subcommand() {
-    for op in OP_NAMES {
-        let all = xpected(op);
-        let uniq: Vec<String> = all.iter().unique().cloned().collect();
-        assert!(all.eq(&uniq), "Output of {op:?} has duplicate lines");
+mod test_the_tests {
+    use super::*;
+    #[test]
+    fn expected_union_output_is_the_concatentated_input_lines_in_order_with_no_duplicates() {
+        let xyz = vec![x(), y(), z()].concat();
+        let unique_input_lines: Vec<String> = xyz.into_iter().unique().collect();
+        let union_lines = xpected(Union);
+        assert!(union_lines.eq(&unique_input_lines));
     }
-}
 
-#[test]
-fn expected_output_is_subsequence_of_union_output_for_all_subcommands() {
-    let union = xpected(Union);
-    for op in OP_NAMES {
-        assert!(
-            is_subsequence(&xpected(op), &union),
-            "Expected result for {op:?} is not a subsequence of the expected result for Union",
-        );
-    }
-    fn is_subsequence(needles: &Vec<String>, haystack: &Vec<String>) -> bool {
-        'next_needle: for needle in needles {
-            for hay in haystack {
-                if *needle == *hay {
-                    continue 'next_needle;
-                }
-            }
-            return false;
+    #[test]
+    fn each_line_occurs_at_most_once_in_the_expected_output_of_any_subcommand() {
+        for op in OP_NAMES {
+            let all = xpected(op);
+            let uniq: Vec<String> = all.iter().unique().cloned().collect();
+            assert!(all.eq(&uniq), "Output of {op:?} has duplicate lines");
         }
-        true
+    }
+
+    #[test]
+    fn expected_output_is_subsequence_of_union_output_for_all_subcommands() {
+        let union = xpected(Union);
+        for op in OP_NAMES {
+            assert!(
+                is_subsequence(&xpected(op), &union),
+                "Expected result for {op:?} is not a subsequence of the expected result for Union",
+            );
+        }
+        fn is_subsequence(needles: &Vec<String>, haystack: &Vec<String>) -> bool {
+            'next_needle: for needle in needles {
+                for hay in haystack {
+                    if *needle == *hay {
+                        continue 'next_needle;
+                    }
+                }
+                return false;
+            }
+            true
+        }
     }
 }
 

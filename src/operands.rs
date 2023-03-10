@@ -10,21 +10,35 @@ use encoding_rs_io::{DecodeReaderBytes, DecodeReaderBytesBuilder};
 use std::{
     fs,
     fs::File,
-    io::BufReader,
+    io::{self, Read},
     ops::FnMut,
     path::{Path, PathBuf},
 };
 
+/// The Unix convention for using `stdin` as a file arguments
+fn use_stdin(path: &Path) -> bool {
+    path.to_string_lossy() == "-"
+}
 /// Return the contents of the first file named in `files` as a `Vec<u8>`, and
 /// an iterator over the subsequent arguments.
 #[must_use]
 pub fn first_and_rest(files: &[PathBuf]) -> Option<(Result<Vec<u8>>, Remaining, usize)> {
+    fn all_of_stdin() -> Result<Vec<u8>> {
+        let mut buffer = Vec::new();
+        io::stdin().read_to_end(&mut buffer).context("Can't read file: <stdin>")?;
+        Ok(decode_if_utf16(buffer))
+    }
+
     match files {
         [] => None,
         [first, rest @ ..] => {
-            let first_operand = fs::read(first)
-                .with_context(|| format!("Can't read file: {}", first.display()))
-                .map(decode_if_utf16);
+            let first_operand = if use_stdin(first) {
+                all_of_stdin()
+            } else {
+                fs::read(first)
+                    .with_context(|| format!("Can't read file: {}", first.display()))
+                    .map(decode_if_utf16)
+            };
             let rest = rest.to_vec();
             let rest_len = rest.len();
             Some((first_operand, Remaining::from(rest), rest_len))
@@ -76,23 +90,32 @@ impl Iterator for Remaining {
 /// `path_display` is the path formatted for use in error messages.
 pub struct NextOperand {
     path_display: String,
-    reader: BufReader<DecodeReaderBytes<File, Vec<u8>>>,
+    reader: Box<dyn io::BufRead>,
 }
 
 /// The reader for a second or subsequent operand is a buffered reader with the
 /// ability to decode UTF-16 files. I think this results in double-buffering,
 /// with one buffer within the `DecodeReaderBytes` value, and another in the
 /// `BufReader` that wraps it. I don't know how to work around that.
+#[allow(trivial_casts)]
 fn reader_for(path: &Path) -> Result<NextOperand> {
-    let path_display = format!("{}", path.display());
-    let f = File::open(path).with_context(|| format!("Can't open file: {path_display}"))?;
-    let reader = BufReader::new(
+    fn decoder<R: Read>(f: R) -> DecodeReaderBytes<R, Vec<u8>> {
         DecodeReaderBytesBuilder::new()
-            .bom_sniffing(true) // Look at the BOM to detect UTF-16 files and convert to UTF-8
-            .strip_bom(true) // Remove the BOM before sending data to us
-            .utf8_passthru(true) // Don't enforce UTF-8 (BOM or no BOM)
-            .build(f),
-    );
+            .bom_sniffing(true)
+            .strip_bom(true)
+            .utf8_passthru(true)
+            .build(f)
+    }
+    let (path_display, reader) = if use_stdin(path) {
+        let path_display = "<stdin>".to_string();
+        let reader = decoder(io::stdin().lock());
+        (path_display, Box::new(io::BufReader::new(reader)) as Box<dyn io::BufRead>)
+    } else {
+        let path_display = format!("{}", path.display());
+        let reader =
+            decoder(File::open(path).with_context(|| format!("Can't open file: {path_display}"))?);
+        (path_display, Box::new(io::BufReader::new(reader)) as Box<dyn io::BufRead>)
+    };
     Ok(NextOperand { path_display, reader })
 }
 impl LaterOperand for NextOperand {
