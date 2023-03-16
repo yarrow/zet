@@ -5,7 +5,7 @@ use std::num::NonZeroUsize;
 use anyhow::Result;
 
 use crate::args::OpName;
-use crate::set::{zet_set_from, Counted, LaterOperand, Tally, Uncounted, ZetSet};
+use crate::set::{Counted, LaterOperand, Tally, Uncounted, ZetSet};
 
 /// Calculates and prints the set operation named by `op`. Each file in `files`
 /// is treated as a set of lines:
@@ -53,7 +53,7 @@ fn inner<O: LaterOperand, Counter: Tally>(
         rest: impl Iterator<Item = Result<O>>,
         count: Counter,
     ) -> Result<ZetSet<(), Counter>> {
-        let mut set = zet_set_from(first_operand, (), count);
+        let mut set = ZetSet::new(first_operand, (), count);
         for operand in rest {
             set.update(operand?, (), |_| {})?;
         }
@@ -85,7 +85,7 @@ fn inner<O: LaterOperand, Counter: Tally>(
         // only in the first operand, and `false` that the line is present in
         // some other operand.
         OpName::Diff => {
-            let mut set = zet_set_from(first_operand, true, count);
+            let mut set = ZetSet::new(first_operand, true, count);
             for operand in rest {
                 set.modify_if_present(operand?, |keepme| *keepme = false)?;
             }
@@ -115,7 +115,7 @@ fn inner<O: LaterOperand, Counter: Tally>(
             const BLUE: bool = true; //  We're using Booleans, but we could
             const _RED: bool = false; // be using two different colors
 
-            let mut set = zet_set_from(first_operand, BLUE, count);
+            let mut set = ZetSet::new(first_operand, BLUE, count);
             let mut this_cycle = BLUE;
             for operand in rest {
                 this_cycle = !this_cycle; // flip BLUE -> RED and RED -> BLUE
@@ -141,7 +141,7 @@ fn inner<O: LaterOperand, Counter: Tally>(
         OpName::SingleByFile | OpName::MultipleByFile => {
             let seen_in_first_operand = NonZeroUsize::new(1);
             let mut this_operand_uid = seen_in_first_operand.expect("1 is nonzero");
-            let mut set = zet_set_from(first_operand, seen_in_first_operand, count);
+            let mut set = ZetSet::new(first_operand, seen_in_first_operand, count);
 
             for operand in rest {
                 let seen_in_this_operand = this_operand_uid.checked_add(1);

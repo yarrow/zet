@@ -86,40 +86,6 @@ impl Tally for Uncounted {
     fn increment(&mut self) {}
 }
 
-/// Creates a new `ZetSet`, with each key a line borrowed from `slice`, and
-/// value `Bookkeeping{item, count}` for every line. The value of `item` is the caller's choice, but
-/// `count` must be `Counter::new()`
-///
-/// Why make the caller pass a fixed value?  We need `count` not for its value,
-/// but its type — monomorphism needs to know the type of counter we're using.
-/// So the choices are to make the caller pass in a value that we'll ignore, or
-/// to make the caller pass in the right value. The latter seems least bad.
-pub(crate) fn zet_set_from<Item: Copy, Counter: Tally>(
-    mut slice: &[u8],
-    item: Item,
-    count: Counter,
-) -> ZetSet<Item, Counter> {
-    assert!(count == Counter::new());
-    let (bom, line_terminator) = output_info(slice);
-    slice = &slice[bom.len()..];
-    let mut set = CowSet::<Bookkeeping<Item, Counter>>::default();
-    let bookkeeping = Bookkeeping { item, count };
-    while let Some(end) = memchr(b'\n', slice) {
-        let (mut line, rest) = slice.split_at(end);
-        slice = &rest[1..];
-        if let Some(&maybe_cr) = line.last() {
-            if maybe_cr == b'\r' {
-                line = &line[..line.len() - 1];
-            }
-        }
-        set.entry(Cow::Borrowed(line)).and_modify(|v| v.count.increment()).or_insert(bookkeeping);
-    }
-    if !slice.is_empty() {
-        set.entry(Cow::Borrowed(slice)).and_modify(|v| v.count.increment()).or_insert(bookkeeping);
-    }
-    ZetSet { set, bom, line_terminator }
-}
-
 /// **Warning:** To keep a `ZetSet`'s `Bookkeeping.count` values accurate, each
 /// time a line `line` appears in the input we must call exactly one of
 /// `insert_borrowed`, `insert`, or `get_mut`, and call it exactly once:
@@ -130,6 +96,41 @@ pub(crate) fn zet_set_from<Item: Copy, Counter: Tally>(
 /// * `s.get_mut(line)`, when `line` is present in `s` with value `v`,
 /// increments `v.count` and returns `Some(&mut v.item)`.
 impl<'data, Counter: Tally, Item: Copy> ZetSet<'data, Item, Counter> {
+    /// Create a new `ZetSet`, with each key a line borrowed from `slice`, and
+    /// value `Bookkeeping{item, count}` for every line. The value of `item` is
+    /// the caller's choice, but `count` must be `Counter::new()`
+    ///
+    /// Why make the caller pass a fixed value?  We need `count` not for its
+    /// value, but its type — monomorphism needs to know the type of counter
+    /// we're using. So the choices are to make the caller pass in a value that
+    /// we'll ignore, or to make the caller pass in the right value. The latter
+    /// seems least bad.
+    pub(crate) fn new(mut slice: &'data [u8], item: Item, count: Counter) -> Self {
+        assert!(count == Counter::new());
+        let (bom, line_terminator) = output_info(slice);
+        slice = &slice[bom.len()..];
+        let mut set = CowSet::<Bookkeeping<Item, Counter>>::default();
+        let bookkeeping = Bookkeeping { item, count };
+        while let Some(end) = memchr(b'\n', slice) {
+            let (mut line, rest) = slice.split_at(end);
+            slice = &rest[1..];
+            if let Some(&maybe_cr) = line.last() {
+                if maybe_cr == b'\r' {
+                    line = &line[..line.len() - 1];
+                }
+            }
+            set.entry(Cow::Borrowed(line))
+                .and_modify(|v| v.count.increment())
+                .or_insert(bookkeeping);
+        }
+        if !slice.is_empty() {
+            set.entry(Cow::Borrowed(slice))
+                .and_modify(|v| v.count.increment())
+                .or_insert(bookkeeping);
+        }
+        ZetSet { set, bom, line_terminator }
+    }
+
     /// Insert `line` as `Cow::Owned` to the underlying `IndexMap`. Initialize
     /// `count` for new entries, increment it for previously-seen entries.
     pub(crate) fn update(
