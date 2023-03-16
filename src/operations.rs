@@ -55,7 +55,7 @@ fn inner<O: LaterOperand, Counter: Tally>(
     ) -> Result<ZetSet<(), Counter>> {
         let mut set = zet_set_from(first_operand, (), count);
         for operand in rest {
-            operand?.for_byte_line(|line| set.insert(line, ()))?;
+            set.update(operand?, (), |_| {})?;
         }
         Ok(set)
     }
@@ -157,12 +157,9 @@ fn inner<O: LaterOperand, Counter: Tally>(
                     Some(n) => this_operand_uid = n,
                     None => anyhow::bail!("Can't handle {} arguments", std::usize::MAX),
                 }
-                operand?.for_byte_line(|line| match set.get_mut(line) {
-                    None => set.insert(line, seen_in_this_operand),
-                    Some(unique_source) => {
-                        if *unique_source != seen_in_this_operand {
-                            *unique_source = None;
-                        }
+                set.update(operand?, seen_in_this_operand, |unique_source| {
+                    if *unique_source != seen_in_this_operand {
+                        *unique_source = None
                     }
                 })?;
             }

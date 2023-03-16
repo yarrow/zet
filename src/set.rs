@@ -132,11 +132,22 @@ pub(crate) fn zet_set_from<Item: Copy, Counter: Tally>(
 impl<'data, Counter: Tally, Item: Copy> ZetSet<'data, Item, Counter> {
     /// Insert `line` as `Cow::Owned` to the underlying `IndexMap`. Initialize
     /// `count` for new entries, increment it for previously-seen entries.
-    pub(crate) fn insert(&mut self, line: &[u8], item: Item) {
-        self.set
-            .entry(Cow::from(line.to_vec()))
-            .and_modify(|v| v.count.increment())
-            .or_insert(Bookkeeping { item, count: Counter::new() });
+    pub(crate) fn update(
+        &mut self,
+        operand: impl LaterOperand,
+        item: Item,
+        modify: impl Fn(&mut Item),
+    ) -> Result<()> {
+        let bookkeeping = Bookkeeping { item, count: Counter::new() };
+        operand.for_byte_line(|line| {
+            self.set
+                .entry(Cow::from(line.to_vec()))
+                .and_modify(|v| {
+                    v.count.increment();
+                    modify(&mut v.item)
+                })
+                .or_insert(bookkeeping);
+        })
     }
 
     /// We expose only the `item` field to the caller.
