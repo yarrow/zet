@@ -150,11 +150,16 @@ impl<'data, Counter: Tally, Item: Copy> ZetSet<'data, Item, Counter> {
         })
     }
 
-    /// We expose only the `item` field to the caller.
-    pub(crate) fn get_mut(&mut self, line: &[u8]) -> Option<&mut Item> {
-        self.set.get_mut(line).map(|v| {
-            v.count.increment();
-            &mut v.item
+    pub(crate) fn modify_if_present(
+        &mut self,
+        operand: impl LaterOperand,
+        modify: impl Fn(&mut Item),
+    ) -> Result<()> {
+        operand.for_byte_line(|line| {
+            if let Some(bookkeeping) = self.set.get_mut(line) {
+                bookkeeping.count.increment();
+                modify(&mut bookkeeping.item)
+            }
         })
     }
 

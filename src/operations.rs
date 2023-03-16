@@ -87,11 +87,7 @@ fn inner<O: LaterOperand, Counter: Tally>(
         OpName::Diff => {
             let mut set = zet_set_from(first_operand, true, count);
             for operand in rest {
-                operand?.for_byte_line(|line| {
-                    if let Some(keepme) = set.get_mut(line) {
-                        *keepme = false;
-                    }
-                })?;
+                set.modify_if_present(operand?, |keepme| *keepme = false)?;
             }
             set.retain(|keepme| keepme);
             output(&set, count, out)
@@ -123,11 +119,7 @@ fn inner<O: LaterOperand, Counter: Tally>(
             let mut this_cycle = BLUE;
             for operand in rest {
                 this_cycle = !this_cycle; // flip BLUE -> RED and RED -> BLUE
-                operand?.for_byte_line(|line| {
-                    if let Some(when_seen) = set.get_mut(line) {
-                        *when_seen = this_cycle;
-                    }
-                })?;
+                set.modify_if_present(operand?, |when_seen| *when_seen = this_cycle)?;
                 set.retain(|when_seen| when_seen == this_cycle);
             }
             output(&set, count, out)
