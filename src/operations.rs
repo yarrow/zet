@@ -5,16 +5,7 @@ use std::num::NonZeroUsize;
 use anyhow::Result;
 
 use crate::args::OpName;
-use crate::set::{zet_set_from, Counted, Tally, Uncounted, ZetSet};
-
-/// The `calculate` function's only requirement for its second and succeeding
-/// operands is that they implement `for_byte_line`. The `LaterOperand` trait
-/// codifies that.
-pub trait LaterOperand {
-    /// The call `o.for_byte_line(|line| ...)` method calls the given closure
-    /// for each &[u8] in `o`.
-    fn for_byte_line(self, for_each_line: impl FnMut(&[u8])) -> Result<()>;
-}
+use crate::set::{zet_set_from, Counted, LaterOperand, Tally, Uncounted, ZetSet};
 
 /// Calculates and prints the set operation named by `op`. Each file in `files`
 /// is treated as a set of lines:

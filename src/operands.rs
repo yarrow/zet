@@ -3,7 +3,7 @@
 //! operands. *Note:* this different treatment of the first and remaining
 //! operands has the unfortunate result of requiring different code paths for
 //! translating UTF16 files into UTF8. That currently seems worth the cost.
-use crate::operations::LaterOperand;
+use crate::set::LaterOperand;
 use anyhow::{Context, Result};
 use bstr::io::BufReadExt;
 use encoding_rs_io::{DecodeReaderBytes, DecodeReaderBytesBuilder};

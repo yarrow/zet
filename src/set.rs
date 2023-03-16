@@ -26,6 +26,15 @@ pub(crate) struct ZetSet<'data, Item: Copy, Counter: Tally> {
 }
 type CowSet<'data, Bookkeeping> = IndexMap<Cow<'data, [u8]>, Bookkeeping, FxBuildHasher>;
 
+/// We don't, in fact, require the second and following "files" to be files! Our
+/// only requirement is that they implement `for_byte_line`. The `LaterOperand`
+/// trait codifies that.
+pub trait LaterOperand {
+    /// The call `o.for_byte_line(|line| ...)` method calls the given closure
+    /// for each &[u8] in `o`.
+    fn for_byte_line(self, for_each_line: impl FnMut(&[u8])) -> Result<()>;
+}
+
 /// The `Bookkeeping` struct combines the `Item` used for a set operation with
 /// the `Counter` used to count (or ignore) the number of times a line has
 /// occurred.
