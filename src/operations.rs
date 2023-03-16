@@ -13,6 +13,8 @@ use crate::set::{Counted, LaterOperand, Tally, Uncounted, ZetSet};
 /// * `OpName::Union` prints the lines that occur in any file,
 /// * `OpName::Intersect` prints the lines that occur in all files,
 /// * `OpName::Diff` prints the lines that occur in the first file and no other,
+/// * `OpName::Single` prints the lines that occur once in exactly in the input,
+/// * `OpName::Multiple` prints the lines that occur more than once in the input,
 /// * `OpName::SingleByFile` prints the lines that occur in exactly one file, and
 /// * `OpName::MultipleByFile` prints the lines that occur in more than one file.
 ///
@@ -55,7 +57,7 @@ fn inner<O: LaterOperand, Counter: Tally>(
     ) -> Result<ZetSet<(), Counter>> {
         let mut set = ZetSet::new(first_operand, (), count);
         for operand in rest {
-            set.update(operand?, (), |_| {})?;
+            set.insert_or_modify(operand?, (), |_| {})?;
         }
         Ok(set)
     }
@@ -149,7 +151,7 @@ fn inner<O: LaterOperand, Counter: Tally>(
                     Some(n) => this_operand_uid = n,
                     None => anyhow::bail!("Can't handle {} arguments", std::usize::MAX),
                 }
-                set.update(operand?, seen_in_this_operand, |unique_source| {
+                set.insert_or_modify(operand?, seen_in_this_operand, |unique_source| {
                     if *unique_source != seen_in_this_operand {
                         *unique_source = None
                     }

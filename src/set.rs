@@ -47,9 +47,17 @@ pub(crate) struct Bookkeeping<Item: Copy, Counter: Tally> {
 /// The `Tally` trait is used for counting the number of times a line is
 /// inserted in a `ZetSet`.  (Or, optionally, not to count that.)
 pub(crate) trait Tally: Copy + PartialEq {
+    /// Create a new tally
     fn new() -> Self;
+
+    /// Give the tally's value
     fn value(self) -> u32;
+
+    /// Either increment (for `Counted`) or pretend to increment (for
+    /// `Uncounted`) the tally.
     fn increment(&mut self);
+
+    /// `true` if we're tracking line counts, `false` if we're ignoring them.
     fn actually_counts(self) -> bool {
         let mut c = Self::new();
         c.increment();
@@ -86,15 +94,29 @@ impl Tally for Uncounted {
     fn increment(&mut self) {}
 }
 
-/// **Warning:** To keep a `ZetSet`'s `Bookkeeping.count` values accurate, each
-/// time a line `line` appears in the input we must call exactly one of
-/// `insert_borrowed`, `insert`, or `get_mut`, and call it exactly once:
-/// * `s.insert(line, item)` and `s.insert_borrowed(line, item)` either:
-///     * insert `Bookkeeping{item, Counter::new()}` as the value of `line` in
-///     the underlying `IndexMap`,
-///     * or if the value is already present, increment its `count` field.
-/// * `s.get_mut(line)`, when `line` is present in `s` with value `v`,
-/// increments `v.count` and returns `Some(&mut v.item)`.
+/// When a `ZetSet` processes a line from an operand, it does one of two things:
+/// * If the line is not present in the set, it is inserted, with a bookkeeping
+/// value consisting of an `item` passed by the caller and a `count` field of
+/// `Counter::new()`.
+/// * If the line is already present in the set, its bookkeeping value is
+/// modified by incrementing the values's `count` field, and by applying a
+/// function passed by the caller to the `item` field.
+///
+/// The `new` function only performs the insert operation (except that it does
+/// increment `count` for lines that have already been seen in the initial
+/// operand). The `insert_or_modify` method either inserts or modifies, as
+/// appropriate. The `modify_if_present` method only modifies — it's used by the
+/// `Insert` and `Diff` operations, which only decrease the set returned by `new`
+/// and never add to it.
+///
+/// The `retain`, `retain_single`, and `retain_multiple` methods filter the set,
+/// `retain` using a function passed by the caller that considers the `item`
+/// field, while `retain_single` and `retain_multiple` look at the `count`
+/// field.
+///
+/// The `output_to` method prints the lines (keys) of the set, without a line
+/// count, and the `output_with_count_to` method prints the lines preceeded by
+/// their line count.
 impl<'data, Counter: Tally, Item: Copy> ZetSet<'data, Item, Counter> {
     /// Create a new `ZetSet`, with each key a line borrowed from `slice`, and
     /// value `Bookkeeping{item, count}` for every line. The value of `item` is
@@ -131,9 +153,13 @@ impl<'data, Counter: Tally, Item: Copy> ZetSet<'data, Item, Counter> {
         ZetSet { set, bom, line_terminator }
     }
 
-    /// Insert `line` as `Cow::Owned` to the underlying `IndexMap`. Initialize
-    /// `count` for new entries, increment it for previously-seen entries.
-    pub(crate) fn update(
+    /// For each line in `operand`, insert `line` as `Cow::Owned` to the
+    /// underlying `IndexMap` if it is not already present, with bookkeeping
+    /// value composed of `item` and `Counter::new()`. If the line is present,
+    /// call `modify` on the `item` field of entry's bookkeeping value.
+    /// Initialize `count` for new entries, increment it for previously-seen
+    /// entries.
+    pub(crate) fn insert_or_modify(
         &mut self,
         operand: impl LaterOperand,
         item: Item,
@@ -151,6 +177,9 @@ impl<'data, Counter: Tally, Item: Copy> ZetSet<'data, Item, Counter> {
         })
     }
 
+    /// For each line in `operand` that is already present in the underlying
+    /// `IndexMap`, call `modify` on the `item` field of entry's bookkeeping
+    /// value, and increment the `count` field.
     pub(crate) fn modify_if_present(
         &mut self,
         operand: impl LaterOperand,
@@ -192,7 +221,7 @@ impl<'data, Counter: Tally, Item: Copy> ZetSet<'data, Item, Counter> {
     }
 
     /// Output the `ZetSet`'s lines with the appropriate Byte Order Mark and line
-    /// terminator.
+    /// terminator, preceeded by a line count.
     pub(crate) fn output_with_count_to(&self, mut out: impl io::Write) -> Result<()> {
         let Some(max_count) = self.set.values().map(|v| v.count.value()).max() else { return Ok(()) };
         let width = (max_count.ilog10() + 1) as usize;
