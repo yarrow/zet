@@ -32,15 +32,18 @@ pub fn calculate<O: LaterOperand>(
     }
 }
 fn output<SetTally: Tally, PrintTally: Tally, Item: Copy>(
-    set: &ZetSet<Item, SetTally>,
+    set: ZetSet<Item, SetTally>,
     maybe_count: PrintTally,
     out: impl std::io::Write,
 ) -> Result<()> {
     if maybe_count.actually_counts() {
-        set.output_with_count_to(out)
+        set.output_with_count_to(out)?;
     } else {
-        set.output_to(out)
+        set.output_to(out)?;
     }
+    std::mem::forget(set); // Slightly faster to just abandon this, since we're about to exit.
+                           // Thanks to [Karolin Varner](https://github.com/koraa)'s huniq
+    Ok(())
 }
 
 fn inner<O: LaterOperand, Counter: Tally>(
@@ -66,7 +69,7 @@ fn inner<O: LaterOperand, Counter: Tally>(
         // bookkeeping value.
         OpName::Union => {
             let set = union(first_operand, rest, count)?;
-            output(&set, count, out)
+            output(set, count, out)
         }
 
         // `Single` and `Multiple` print those lines that occur once and more than once,
@@ -80,7 +83,7 @@ fn inner<O: LaterOperand, Counter: Tally>(
                 set.retain_multiple();
             }
 
-            output(&set, count, out)
+            output(set, count, out)
         }
 
         // For `Diff`, the bookkeeping value of `true` means we've seen the line
@@ -92,7 +95,7 @@ fn inner<O: LaterOperand, Counter: Tally>(
                 set.modify_if_present(operand?, |keepme| *keepme = false)?;
             }
             set.retain(|keepme| keepme);
-            output(&set, count, out)
+            output(set, count, out)
         }
 
         // `Intersect` is more complicated — we start with each line in the
@@ -124,7 +127,7 @@ fn inner<O: LaterOperand, Counter: Tally>(
                 set.modify_if_present(operand?, |when_seen| *when_seen = this_cycle)?;
                 set.retain(|when_seen| when_seen == this_cycle);
             }
-            output(&set, count, out)
+            output(set, count, out)
         }
 
         // For `SingleByFile` and `MultipleByFile`, we keep track of the id number of the
@@ -164,7 +167,7 @@ fn inner<O: LaterOperand, Counter: Tally>(
                 set.retain(|unique_source| unique_source.is_none());
             }
 
-            output(&set, count, out)
+            output(set, count, out)
         }
     }
 }
