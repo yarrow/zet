@@ -30,6 +30,17 @@ fn prints_help_if_no_subcommand() {
     assert!(String::from_utf8(output.stdout).unwrap().contains("Usage:"));
 }
 
+#[test]
+#[allow(non_snake_case)]
+fn prints_version_with_V_or_version_flag() {
+    for version in ["-V", "--version"] {
+        let output = run([version]).unwrap();
+        let output = String::from_utf8(output.stdout).unwrap();
+        assert!(output.contains("zet"));
+        assert!(output.contains(std::env!("CARGO_PKG_VERSION")));
+        assert!(output.lines().collect::<Vec<_>>().len() == 1);
+    }
+}
 const OP_NAMES: [OpName; 7] =
     [Intersect, Union, Diff, Single, SingleByFile, Multiple, MultipleByFile];
 fn subcommand_for(op: OpName) -> &'static str {

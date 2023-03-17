@@ -15,13 +15,13 @@ pub fn parsed() -> Args {
     if parsed.help {
         help_and_exit();
     }
-    let Some(op) = parsed.command else { help_and_exit() };
-    if op == CliName::Help {
-        help_and_exit()
-    }
     if parsed.version {
         println!("{}", help::version());
         exit_success();
+    }
+    let Some(op) = parsed.command else { help_and_exit() };
+    if op == CliName::Help {
+        help_and_exit()
     }
     if parsed.by_file {
         match op {
