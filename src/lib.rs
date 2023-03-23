@@ -4,11 +4,14 @@
 //!   associated with each key is not part of the abstract set value but is
 //!   used for operational bookkeeping. The type of these bookkeeping values
 //!   depends on the operation being calculated and whether we're keeping track
-//!   of the number of times each line occurs.
+//!   of the number of times each line occurs or the number of files it occurs
+//!   in.
 //! * Read the lines of each subsequent operand, updating the bookkeeping value
 //!   as needed in order to decide whether to insert lines into or delete lines
 //!   from the set.
-//! * Output the lines of the resulting set, possibly annotated with a line count.
+//! * Output the lines of the resulting set, possibly annotated with count of
+//!   the number of times the line appears in the input or the number of files
+//!   the line appears in.
 //!
 //! Zet's structure is due to the following design decisions:
 //! * We read the entire contents of the first input file into memory, so we can
@@ -31,32 +34,26 @@
 //!   [huniq](https://crates.io/crates/huniq) command. But it is for all other
 //!   Zet operations.)
 //!
-//! The `set` module provides a `ZetSet` structure the `zet_set_from` function,
-//! which takes a `&[u8]` slice, a bookkeeping item used by the calling
-//! operation, and a (possibly no-op) line counter. The call
-//! ```ignore
-//!     zet_set_from(slice, item, count)
-//! ```
-//! returns an initialized `ZetSet` with a representation of the set of (unique)
-//! lines in the `u8` slice and some bookkeeping values:
-//! * An `IndexMap` with keys (lines) borrowed from `slice` and initial
-//!   bookkeeping values equal to `Bookkeeping{item, count}`.
+//! The `set` module provides the `ZetSet` structure. The `ZetSet::new` function
+//! takes a `&[u8]` slice and a bookkeeping item used by the calling operation.
+//! The call `ZetSet::new(slice, item)` returns an initialized `ZetSet` with:
+//! * An `IndexMap` whose keys (lines) are borrowed from `slice` and initial
+//!   bookkeeping values equal to `item`.
 //! * A field that indicates whether `slice` started with a byte order mark.
 //! * A field that holds the line terminator to be used, taken from the first
 //!   line of `slice`.
 //!
-//! The `count` field of a `Bookkeeping` struct is either an actual counter,
-//! with an `increment()` method that increases it's `value()` by 1, or a
-//! zero-sized fake counter whose `increment` method does nothing and whose
-//! `value()` is always 0.
-//!
-//! `ZetSet` has `insert`, `retain`, and `get_mut` methods that act like
-//! those methods on `HashMap` or `IndexMap`, except they expose only the `item`
-//! field of their `Bookkeeping` values: `retain` takes a function that uses
-//! items to decide whether to keep a line entry, `insert` takes an item, and
-//! `get_mut` returns an item reference. The latter two process the `count`
-//! field internally, initializing it for new entries and incrementing it for
-//! already-seen entries.
+//! For a `ZetSet` `z`,
+//! * `z.insert_or_modify(operand, file_number, item)` uses `IndexMap`'s `entry`
+//!    method to insert `item` as the value for lines in `operand` that were not
+//!    already present in `z`, or to call `item.modify(file_number)` on the
+//!    bookkeeping item of lines that were present. Inserted lines are allocated,
+//!    not borrowed, so `operand` need not outlive `z`.
+//! * `z.modify_if_present(operand, file_number)` calls `item.modify(file_number)`
+//!   on the bookkeeping item of lines in operand that are present in `z`,
+//!   ignoring lines that are not already present.
+//! * Finally, `z.retain(keep)` retains lines for which `keep(item.value())` is
+//!   true of the line's bookkeeping item.
 //!
 #![deny(
     warnings,
