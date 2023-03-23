@@ -85,3 +85,4 @@ pub mod operands;
 pub mod operations;
 pub mod set;
 pub mod styles;
+pub mod tally;

@@ -1,5 +1,6 @@
 //! Provides the `ZetSet` structure, intended to be initialized from the
 //! contents of the first input file.
+use crate::tally::Log;
 use anyhow::Result;
 use fxhash::FxBuildHasher;
 use indexmap::IndexMap;
@@ -12,15 +13,17 @@ use std::io;
 /// * Lines inserted from the first file operand are represented as `Cow::Borrowed` keys
 /// * Lines inserted from the second and following files are represented as `Cow::Owned` keys
 /// * Each set operation (`Union`, `Diff`, etc) associates a small bookkeeping value
-///   with each key. The value type differs from operation to operation.
+///   with each key. The value type differs from operation to operation, and by whether we're
+///   counting the number of times each line appears, or the number of files in which each
+///   lines appears (or if we're not counting either).
 /// * A `ZetSet` also keeps information about whether the first file operand began with
 ///   a Unicode Byte Order Mark, and what line terminator was used on the first line of
 ///   the first file. On output, the `ZetSet` will print a Byte Order Mark if the first
 ///   file operand had one, and will use the same line terminator as that file's first
 ///   line.
-/// * Optionally, the `ZetSet` can also track the number of times each line occurs
-pub(crate) struct ZetSet<'data, Item: Copy, Counter: Tally> {
-    set: CowSet<'data, Bookkeeping<Item, Counter>>,
+#[derive(Clone, Debug)]
+pub(crate) struct ZetSet<'data, Bookkeeping: Log> {
+    set: CowSet<'data, Bookkeeping>,
     bom: &'static [u8],             // Byte Order Mark or empty
     line_terminator: &'static [u8], // \n or \r\n
 }
@@ -35,104 +38,41 @@ pub trait LaterOperand {
     fn for_byte_line(self, for_each_line: impl FnMut(&[u8])) -> Result<()>;
 }
 
-/// The `Bookkeeping` struct combines the `Item` used for a set operation with
-/// the `Counter` used to count (or ignore) the number of times a line has
-/// occurred.
-#[derive(Clone, Copy)]
-pub(crate) struct Bookkeeping<Item: Copy, Counter: Tally> {
-    item: Item,
-    count: Counter,
-}
-
-/// The `Tally` trait is used for counting the number of times a line is
-/// inserted in a `ZetSet`.  (Or, optionally, not to count that.)
-pub(crate) trait Tally: Copy + PartialEq {
-    /// Create a new tally
-    fn new() -> Self;
-
-    /// Give the tally's value
-    fn value(self) -> u32;
-
-    /// Either increment (for `Counted`) or pretend to increment (for
-    /// `Uncounted`) the tally.
-    fn increment(&mut self);
-
-    /// `true` if we're tracking line counts, `false` if we're ignoring them.
-    fn actually_counts(self) -> bool {
-        let mut c = Self::new();
-        c.increment();
-        c.value() != Self::new().value()
-    }
-}
-
-/// The `Counted` flavor of `Tally` actually counts things. Its value is never
-/// zero.
-pub(crate) type Counted = u32;
-impl Tally for Counted {
-    fn new() -> Self {
-        1
-    }
-    fn value(self) -> u32 {
-        self
-    }
-    fn increment(&mut self) {
-        *self += 1
-    }
-}
-
-/// The `Uncounted` flavor of `Tally` has a `value()` of zero no matter how many
-/// times you `increment()` it.
-#[derive(Clone, Copy, PartialEq)]
-pub(crate) struct Uncounted();
-impl Tally for Uncounted {
-    fn new() -> Self {
-        Uncounted()
-    }
-    fn value(self) -> u32 {
-        0
-    }
-    fn increment(&mut self) {}
-}
-
 /// When a `ZetSet` processes a line from an operand, it does one of two things:
 /// * If the line is not present in the set, it is inserted, with a bookkeeping
-/// value consisting of an `item` passed by the caller and a `count` field of
-/// `Counter::new()`.
-/// * If the line is already present in the set, its bookkeeping value is
-/// modified by incrementing the values's `count` field, and by applying a
-/// function passed by the caller to the `item` field.
+/// value passed by the caller.
+/// * If the line is already present in the set, `.modify(file_number)` is
+/// called on its bookkeeping value.
 ///
-/// The `new` function only performs the insert operation (except that it does
-/// increment `count` for lines that have already been seen in the initial
-/// operand). The `insert_or_modify` method either inserts or modifies, as
-/// appropriate. The `modify_if_present` method only modifies — it's used by the
-/// `Insert` and `Diff` operations, which only decrease the set returned by `new`
-/// and never add to it.
+/// The `new` function inserts lines borrowed from its `slice` argument. The
+/// `insert_or_modify` inserts `Cow::Owned` lines, so its `operand` argument
+/// need not outlive the `ZetSet` The `modify_if_present` method only modifies —
+/// it's used by the `Insert` and `Diff` operations, which only decrease the set
+/// returned by `new` and never add to it.
 ///
-/// The `retain`, `retain_single`, and `retain_multiple` methods filter the set,
-/// `retain` using a function passed by the caller that considers the `item`
-/// field, while `retain_single` and `retain_multiple` look at the `count`
-/// field.
+/// The `retain` method filters the set, using a function passed by the caller that
+/// looks at the `.value()` of the bookkeeping item.
 ///
-/// The `output_to` method prints the lines (keys) of the set, without a line
-/// count, and the `output_with_count_to` method prints the lines preceeded by
-/// their line count.
-impl<'data, Counter: Tally, Item: Copy> ZetSet<'data, Item, Counter> {
+/// The `output_to` method prints the lines of the set, calling the bookkeeping
+/// item's `write_count` method (when appropriate) to prefix each line with the
+/// number of times it appears in the input, or the number of files it appears
+/// in.
+impl<'data, Bookkeeping: Log> ZetSet<'data, Bookkeeping> {
     /// Create a new `ZetSet`, with each key a line borrowed from `slice`, and
-    /// value `Bookkeeping{item, count}` for every line. The value of `item` is
-    /// the caller's choice, but `count` must be `Counter::new()`
+    /// value `Bookkeeping::new(1)` for every line — the correct `Bookkeeping`
+    /// value for a line in the first file.
     ///
-    /// Why make the caller pass a fixed value?  We need `count` not for its
-    /// value, but its type — monomorphism needs to know the type of counter
-    /// we're using. So the choices are to make the caller pass in a value that
-    /// we'll ignore, or to make the caller pass in the right value. The latter
-    /// seems least bad.
-    pub(crate) fn new(mut slice: &'data [u8], item: Item, count: Counter) -> Self {
-        assert!(count == Counter::new());
+    /// Even though we know that we'll be inserting `Bookkeeping::new(1)`, we
+    /// make the caller pass it in. Why make the caller pass a fixed value?  We
+    /// need `item` not for its value, but its type — monomorphism needs to know
+    /// the type of bookkeeping value we're using. So the choices are to make
+    /// the caller pass in a value that we'll ignore, or to make the caller pass
+    /// in the right value. The latter seems least bad.
+    pub(crate) fn new(mut slice: &'data [u8], item: Bookkeeping) -> Self {
+        assert!(item == Bookkeeping::new(1));
         let (bom, line_terminator) = output_info(slice);
         slice = &slice[bom.len()..];
-        let mut set = CowSet::<Bookkeeping<Item, Counter>>::default();
-        let bookkeeping = Bookkeeping { item, count };
+        let mut set = CowSet::<Bookkeeping>::default();
         while let Some(end) = memchr(b'\n', slice) {
             let (mut line, rest) = slice.split_at(end);
             slice = &rest[1..];
@@ -141,97 +81,78 @@ impl<'data, Counter: Tally, Item: Copy> ZetSet<'data, Item, Counter> {
                     line = &line[..line.len() - 1];
                 }
             }
-            set.entry(Cow::Borrowed(line))
-                .and_modify(|v| v.count.increment())
-                .or_insert(bookkeeping);
+            set.entry(Cow::Borrowed(line)).and_modify(|v| v.modify(1)).or_insert(item);
         }
         if !slice.is_empty() {
-            set.entry(Cow::Borrowed(slice))
-                .and_modify(|v| v.count.increment())
-                .or_insert(bookkeeping);
+            set.entry(Cow::Borrowed(slice)).and_modify(|v| v.modify(1)).or_insert(item);
         }
         ZetSet { set, bom, line_terminator }
     }
 
     /// For each line in `operand`, insert `line` as `Cow::Owned` to the
     /// underlying `IndexMap` if it is not already present, with bookkeeping
-    /// value composed of `item` and `Counter::new()`. If the line is present,
-    /// call `modify` on the `item` field of entry's bookkeeping value.
-    /// Initialize `count` for new entries, increment it for previously-seen
-    /// entries.
+    /// value `item`. If the line is present, call `modify` on the bookkeeping
+    /// value.
     pub(crate) fn insert_or_modify(
         &mut self,
         operand: impl LaterOperand,
-        item: Item,
-        modify: impl Fn(&mut Item),
+        file_number: u32,
+        item: Bookkeeping,
     ) -> Result<()> {
-        let bookkeeping = Bookkeeping { item, count: Counter::new() };
         operand.for_byte_line(|line| {
             self.set
                 .entry(Cow::from(line.to_vec()))
-                .and_modify(|v| {
-                    v.count.increment();
-                    modify(&mut v.item)
-                })
-                .or_insert(bookkeeping);
+                .and_modify(|v| v.modify(file_number))
+                .or_insert(item);
         })
     }
 
     /// For each line in `operand` that is already present in the underlying
-    /// `IndexMap`, call `modify` on the `item` field of entry's bookkeeping
-    /// value, and increment the `count` field.
+    /// `IndexMap`, call `modify` on the bookkeeping value.
     pub(crate) fn modify_if_present(
         &mut self,
         operand: impl LaterOperand,
-        modify: impl Fn(&mut Item),
+        file_number: u32,
     ) -> Result<()> {
         operand.for_byte_line(|line| {
             if let Some(bookkeeping) = self.set.get_mut(line) {
-                bookkeeping.count.increment();
-                modify(&mut bookkeeping.item)
+                bookkeeping.modify(file_number)
             }
         })
     }
 
-    /// Like `IndexMap`'s `.retain` method, but exposes just the item, and by value.
-    pub(crate) fn retain(&mut self, keep: impl Fn(Item) -> bool) {
-        self.set.retain(|_k, v| keep(v.item));
-    }
-
-    /// Retain lines seen just once
-    pub(crate) fn retain_single(&mut self) {
-        self.set.retain(|_k, v| v.count.value() == 1);
-    }
-
-    /// Retain lines seen more than once
-    pub(crate) fn retain_multiple(&mut self) {
-        self.set.retain(|_k, v| v.count.value() > 1);
+    /// Like `IndexMap`'s `.retain` method, but exposes just the bookkeeping
+    /// item's `.value()`
+    pub(crate) fn retain(&mut self, keep: impl Fn(u32) -> bool) {
+        self.set.retain(|_k, v| keep(v.value()));
     }
 
     /// Output the `ZetSet`'s lines with the appropriate Byte Order Mark and line
     /// terminator.
     pub(crate) fn output_to(&self, mut out: impl io::Write) -> Result<()> {
-        out.write_all(self.bom)?;
-        for line in self.set.keys() {
-            out.write_all(line)?;
-            out.write_all(self.line_terminator)?;
-        }
-        out.flush()?;
-        Ok(())
-    }
+        let Some((_key, first)) = self.set.first() else { return Ok(()) };
 
-    /// Output the `ZetSet`'s lines with the appropriate Byte Order Mark and line
-    /// terminator, preceeded by a line count.
-    pub(crate) fn output_with_count_to(&self, mut out: impl io::Write) -> Result<()> {
-        let Some(max_count) = self.set.values().map(|v| v.count.value()).max() else { return Ok(()) };
-        let width = (max_count.ilog10() + 1) as usize;
-        out.write_all(self.bom)?;
-        for (line, info) in self.set.iter() {
-            write!(out, "{:width$} ", info.count.value())?;
-            out.write_all(line)?;
-            out.write_all(self.line_terminator)?;
-        }
-        out.flush()?;
+        if first.count() == 0 {
+            // We're counting neither lines nor files
+            out.write_all(self.bom)?;
+            for line in self.set.keys() {
+                out.write_all(line)?;
+                out.write_all(self.line_terminator)?;
+            }
+            out.flush()?;
+        } else {
+            // We're counting something
+            let Some(max_count) = self.set.values().map(|v| v.count()).max() else { return Ok(()) };
+            let width = (max_count.ilog10() + 1) as usize;
+            out.write_all(self.bom)?;
+            for (line, item) in self.set.iter() {
+                item.write_count(width, &mut out)?;
+                out.write_all(line)?;
+                out.write_all(self.line_terminator)?;
+            }
+            out.flush()?;
+        };
+
         Ok(())
     }
 }

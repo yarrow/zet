@@ -1,13 +1,20 @@
 //! Houses the `calculate` function
 //!
-use std::num::NonZeroUsize;
-
 use anyhow::Result;
 
-use crate::args::OpName;
-use crate::set::{Counted, LaterOperand, Tally, Uncounted, ZetSet};
+use crate::args::OpName::{
+    self, Diff, Intersect, Multiple, MultipleByFile, Single, SingleByFile, Union,
+};
+use crate::set::{LaterOperand, ZetSet};
+use crate::tally::{Dual, FileCount, LastFileSeen, LineCount, Log, Noop, Select};
 
-/// Calculates and prints the set operation named by `op`. Each file in `files`
+#[derive(Clone, Copy)]
+pub enum Count {
+    Lines,
+    Files,
+    Nothing,
+}
+/// Calculates and prints the set operation named by `operation`. Each file in `files`
 /// is treated as a set of lines:
 ///
 /// * `OpName::Union` prints the lines that occur in any file,
@@ -20,154 +27,185 @@ use crate::set::{Counted, LaterOperand, Tally, Uncounted, ZetSet};
 ///
 pub fn calculate<O: LaterOperand>(
     operation: OpName,
-    count_lines: bool,
+    count: bool,
     first_operand: &[u8],
     rest: impl Iterator<Item = Result<O>>,
     out: impl std::io::Write,
 ) -> Result<()> {
-    if count_lines {
-        inner(operation, Counted::new(), first_operand, rest, out)
+    if count {
+        calculate2(operation, Count::Lines, first_operand, rest, out)
     } else {
-        inner(operation, Uncounted::new(), first_operand, rest, out)
+        calculate2(operation, Count::Nothing, first_operand, rest, out)
     }
 }
-fn output<SetTally: Tally, PrintTally: Tally, Item: Copy>(
-    set: ZetSet<Item, SetTally>,
-    maybe_count: PrintTally,
+
+pub fn calculate2<O: LaterOperand>(
+    operation: OpName,
+    count: Count,
+    first_operand: &[u8],
+    rest: impl Iterator<Item = Result<O>>,
     out: impl std::io::Write,
 ) -> Result<()> {
-    if maybe_count.actually_counts() {
-        set.output_with_count_to(out)?;
-    } else {
-        set.output_to(out)?;
+    match count {
+        Count::Nothing => inner(operation, Noop::new(1), first_operand, rest, out),
+
+        // When `count` is `Count::Lines` and `operation` is `Single` or
+        // `Multiple`, both logging and selection need a `LineCount` in the
+        // bookkeeping item, so `inner` would call `count_and` with bookkeeping
+        // values of `Dual<LineCount, LineCount>`. It would be safe to count
+        // each line in both fields of a `Dual` item, but slower.  And it's
+        // seems unlikely that the optimizer would avoid doing the counting
+        // twice. So we call `count_and` directly, with a single `LineCount`
+        // bookkeeping value.
+        Count::Lines => match operation {
+            Single => count_and(Keep::Single, LineCount::new(1), first_operand, rest, out),
+            Multiple => count_and(Keep::Multiple, LineCount::new(1), first_operand, rest, out),
+            _ => inner(operation, LineCount::new(1), first_operand, rest, out),
+        },
+
+        // Similarly, we don't want `inner` to use `Dual<FileCount, FileCount>`
+        // bookkeeping values, so we call `count_and` directly when `count` is
+        // Count::Files` and `operation` is `SingleByFile` or `MultipleByFile`.
+        Count::Files => match operation {
+            SingleByFile => count_and(Keep::Single, FileCount::new(1), first_operand, rest, out),
+            MultipleByFile => {
+                count_and(Keep::Multiple, FileCount::new(1), first_operand, rest, out)
+            }
+
+            _ => inner(operation, FileCount::new(1), first_operand, rest, out),
+        },
     }
+}
+
+/// For most operations, we insert every line in the input into the `ZetSet`.
+/// Both `new` and `insert_or_modify` will call `item.modify(file_number)` on
+/// the line's bookkeeping item if the line is already present in the `ZetSet`.
+/// The operation will then call `set.retain()` to examine the each line's
+/// bookkeeping item to decide whether or not it belongs in the set.
+fn every_line<O: LaterOperand, Item: Log>(
+    item: Item,
+    first_operand: &[u8],
+    rest: impl Iterator<Item = Result<O>>,
+) -> Result<ZetSet<Item>> {
+    let mut set = ZetSet::new(first_operand, item);
+    let mut file_number = 1;
+    for operand in rest {
+        file_number += 1;
+        set.insert_or_modify(operand?, file_number, item.fresh(file_number))?;
+    }
+    Ok(set)
+}
+
+/// For `Single` and `Multiple` each line's `LineCount` item will keep track of
+/// how many times it has appeared in the entire input.  For `SingleByFile` and
+/// `MultipleByFile` each line's bookkeeping item will keep track of how many
+/// files the line has appeared in.
+///
+/// For `Single` and `SingleByFile` we'll call `count_and(Keep::Single, ...)`
+/// and for `Multiple` and `MultipleByFile` we'll call `count_and(Keep:Multiple, ...)`
+#[derive(Clone, Copy, PartialEq)]
+enum Keep {
+    Single,
+    Multiple,
+}
+
+/// Create a `ZetSet` whose bookkeeping items must keep track of the number of
+/// times a line has appeared in the input, or the number of files it has
+/// appeared in.  Then retain those whose bookkeeping item's value is 1 (for
+/// `Keep::Single`) or greater than 1 (for `Keep::Multiple`).
+fn count_and<Item: Log, O: LaterOperand>(
+    keep: Keep,
+    item: Item,
+    first_operand: &[u8],
+    rest: impl Iterator<Item = Result<O>>,
+    out: impl std::io::Write,
+) -> Result<()> {
+    let mut set = every_line(item, first_operand, rest)?;
+    match keep {
+        Keep::Single => set.retain(|v| v == 1),
+        Keep::Multiple => set.retain(|v| v > 1),
+    }
+    output_and_discard(set, out)
+}
+
+/// When we're done with a `ZetSet`, we write its lines to our output and exit
+/// the program.
+fn output_and_discard<Item: Log>(set: ZetSet<Item>, out: impl std::io::Write) -> Result<()> {
+    set.output_to(out)?;
     std::mem::forget(set); // Slightly faster to just abandon this, since we're about to exit.
                            // Thanks to [Karolin Varner](https://github.com/koraa)'s huniq
     Ok(())
 }
 
-fn inner<O: LaterOperand, Counter: Tally>(
+/// The `inner` function does most of the work, calling `every_line` or
+/// `count_and` for most operations. (`Diff` and `Intersect` need more
+/// specialized code.)
+fn inner<L: Log, O: LaterOperand>(
     operation: OpName,
-    count: Counter,
+    log: L,
     first_operand: &[u8],
     rest: impl Iterator<Item = Result<O>>,
     out: impl std::io::Write,
 ) -> Result<()> {
-    fn union<O: LaterOperand, Counter: Tally>(
-        first_operand: &[u8],
-        rest: impl Iterator<Item = Result<O>>,
-        count: Counter,
-    ) -> Result<ZetSet<(), Counter>> {
-        let mut set = ZetSet::new(first_operand, (), count);
-        for operand in rest {
-            set.insert_or_modify(operand?, (), |_| {})?;
-        }
-        Ok(set)
+    fn line_count_with<L: Log>(log: L) -> Dual<LineCount, L> {
+        Dual { select: LineCount::new(1), log }
+    }
+    fn file_count_with<L: Log>(log: L) -> Dual<FileCount, L> {
+        Dual { select: FileCount::new(1), log }
     }
     match operation {
-        // `Union` doesn't need bookkeeping, so we use the unit type as its
-        // bookkeeping value.
-        OpName::Union => {
-            let set = union(first_operand, rest, count)?;
-            output(set, count, out)
+        // `Union` collects every line, so we don't need to call `retain`; and
+        // the only bookkeeping needed is for the line/file counts, so we don't
+        // need a `Dual` bookkeeping value.
+        Union => {
+            let set = every_line(log, first_operand, rest)?;
+            output_and_discard(set, out)
         }
 
-        // `Single` and `Multiple` print those lines that occur once and more than once,
-        // respectively, in the entire input.
-        OpName::Single | OpName::Multiple => {
-            let mut set = union(first_operand, rest, Counted::new())?;
+        // The `Single, `Multiple`, `SingleByFile`, and `MultipleByFile`
+        // operations need to collect line/file counts independently of what
+        // might be logged.  The `line_count_with` function gives a `Dual`
+        // bookkeeping value combining `LineCount` and whatever has been passed
+        // for logging. Similarly, the `file_count_with` function combines
+        // `FileCount` and the logging value.
+        Single => count_and(Keep::Single, line_count_with(log), first_operand, rest, out),
+        Multiple => count_and(Keep::Multiple, line_count_with(log), first_operand, rest, out),
+        SingleByFile => count_and(Keep::Single, file_count_with(log), first_operand, rest, out),
+        MultipleByFile => count_and(Keep::Multiple, file_count_with(log), first_operand, rest, out),
 
-            if operation == OpName::Single {
-                set.retain_single();
-            } else {
-                set.retain_multiple();
-            }
-
-            output(set, count, out)
-        }
-
-        // For `Diff`, the bookkeeping value of `true` means we've seen the line
-        // only in the first operand, and `false` that the line is present in
-        // some other operand.
-        OpName::Diff => {
-            let mut set = ZetSet::new(first_operand, true, count);
+        // Only lines that appear in the first operand will be in the result of
+        // Diff`; so `Diff` uses `modify_if_present` rather than
+        // `insert_or_modify`, changing the file number of each file seen in a
+        // subsequent operand. We discard lines whose `LastFileSeen` value
+        // is not `1`, so we're left only with lines that appear only in the
+        // first file.
+        Diff => {
+            let item = Dual { select: LastFileSeen::new(1), log };
+            let mut set = ZetSet::new(first_operand, item);
+            let mut file_number = 1;
             for operand in rest {
-                set.modify_if_present(operand?, |keepme| *keepme = false)?;
+                file_number += 1;
+                set.modify_if_present(operand?, file_number)?;
             }
-            set.retain(|keepme| keepme);
-            output(set, count, out)
+            set.retain(|v| v == 1);
+            output_and_discard(set, out)
         }
 
-        // `Intersect` is more complicated — we start with each line in the
-        // first operand colored with `this_cycle`. So
-        // (1)  All lines in `set` colored with `this_cycle` have been seen in
-        //      every operand so far, and
-        // (2)  All lines in `set` are colored with `this_cycle`, so
-        // (3)  All lines in `set` have been seen in every operand so far.
-        //
-        // When we look at the next operand, (1) becomes unknown. We restore its
-        // truth by
-        // * Flipping `this_cycle` to the opposite color.
-        // * Setting every line that occurs in the the next operand to the new
-        //   value of `this_cycle`.
-        // Then we restore the truth of (2) by removing every line whose
-        // bookkeeping value is not `this_cycle`
-        //
-        // Once we've done this for each operand, the remaining lines are those
-        // occurring in each operand, so we've calculated the intersection of
-        // the operands.
-        OpName::Intersect => {
-            const BLUE: bool = true; //  We're using Booleans, but we could
-            const _RED: bool = false; // be using two different colors
-
-            let mut set = ZetSet::new(first_operand, BLUE, count);
-            let mut this_cycle = BLUE;
+        // Similarly, only lines that appear in the first operand will be in the result of
+        // `Intersect`; so `Intersect` also uses `modify_if_present` rather than
+        // `insert_or_modify`. But lines in `Intersect`'s result must also
+        // appear in every other file; so after each file we discard those lines
+        // whose `LastFileSeen` number is not the current `file_number`.
+        Intersect => {
+            let item = Dual { select: LastFileSeen::new(1), log };
+            let mut set = ZetSet::new(first_operand, item);
+            let mut file_number = 1;
             for operand in rest {
-                this_cycle = !this_cycle; // flip BLUE -> RED and RED -> BLUE
-                set.modify_if_present(operand?, |when_seen| *when_seen = this_cycle)?;
-                set.retain(|when_seen| when_seen == this_cycle);
+                file_number += 1;
+                set.modify_if_present(operand?, file_number)?;
+                set.retain(|v| v == file_number);
             }
-            output(set, count, out)
-        }
-
-        // For `SingleByFile` and `MultipleByFile`, we keep track of the id number of the
-        // operand in which each line occurs, if there is exactly one such
-        // operand. At the end, if a line has occurred in just one operand,
-        // with id n, then its bookkeeping value will be Some(n).  If it occurs
-        // in multiple operands, then its bookkeeping value will be None.
-        // At the end:
-        // *  For `SingleByFile`, we keep the operands with Some(n)
-        // *  For `MultipleByFile`, we keep the operands with None (meaning the line was
-        //    seen in at least two operands).:
-        // As you may have noticed, at the end we don't care *what* the id n is,
-        // just that there is only one.  We keep track of n because a line that
-        // occurs multiple times, but only in a single operand, is still
-        // considered to have occurred once.
-        OpName::SingleByFile | OpName::MultipleByFile => {
-            let seen_in_first_operand = NonZeroUsize::new(1);
-            let mut this_operand_uid = seen_in_first_operand.expect("1 is nonzero");
-            let mut set = ZetSet::new(first_operand, seen_in_first_operand, count);
-
-            for operand in rest {
-                let seen_in_this_operand = this_operand_uid.checked_add(1);
-                match seen_in_this_operand {
-                    Some(n) => this_operand_uid = n,
-                    None => anyhow::bail!("Can't handle {} arguments", std::usize::MAX),
-                }
-                set.insert_or_modify(operand?, seen_in_this_operand, |unique_source| {
-                    if *unique_source != seen_in_this_operand {
-                        *unique_source = None
-                    }
-                })?;
-            }
-
-            if operation == OpName::SingleByFile {
-                set.retain(|unique_source| unique_source.is_some());
-            } else {
-                set.retain(|unique_source| unique_source.is_none());
-            }
-
-            output(set, count, out)
+            output_and_discard(set, out)
         }
     }
 }
