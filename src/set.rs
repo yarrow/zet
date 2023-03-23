@@ -1,6 +1,6 @@
 //! Provides the `ZetSet` structure, intended to be initialized from the
 //! contents of the first input file.
-use crate::tally::Log;
+use crate::tally::Bookkeeping;
 use anyhow::Result;
 use fxhash::FxBuildHasher;
 use indexmap::IndexMap;
@@ -22,12 +22,12 @@ use std::io;
 ///   file operand had one, and will use the same line terminator as that file's first
 ///   line.
 #[derive(Clone, Debug)]
-pub(crate) struct ZetSet<'data, Bookkeeping: Log> {
-    set: CowSet<'data, Bookkeeping>,
+pub(crate) struct ZetSet<'data, B: Bookkeeping> {
+    set: CowSet<'data, B>,
     bom: &'static [u8],             // Byte Order Mark or empty
     line_terminator: &'static [u8], // \n or \r\n
 }
-type CowSet<'data, Bookkeeping> = IndexMap<Cow<'data, [u8]>, Bookkeeping, FxBuildHasher>;
+type CowSet<'data, B> = IndexMap<Cow<'data, [u8]>, B, FxBuildHasher>;
 
 /// We don't, in fact, require the second and following "files" to be files! Our
 /// only requirement is that they implement `for_byte_line`. The `LaterOperand`
@@ -57,22 +57,22 @@ pub trait LaterOperand {
 /// item's `write_count` method (when appropriate) to prefix each line with the
 /// number of times it appears in the input, or the number of files it appears
 /// in.
-impl<'data, Bookkeeping: Log> ZetSet<'data, Bookkeeping> {
+impl<'data, B: Bookkeeping> ZetSet<'data, B> {
     /// Create a new `ZetSet`, with each key a line borrowed from `slice`, and
-    /// value `Bookkeeping::new(1)` for every line — the correct `Bookkeeping`
+    /// value `B::new(1)` for every line — the correct `B`
     /// value for a line in the first file.
     ///
-    /// Even though we know that we'll be inserting `Bookkeeping::new(1)`, we
+    /// Even though we know that we'll be inserting `B::new(1)`, we
     /// make the caller pass it in. Why make the caller pass a fixed value?  We
     /// need `item` not for its value, but its type — monomorphism needs to know
     /// the type of bookkeeping value we're using. So the choices are to make
     /// the caller pass in a value that we'll ignore, or to make the caller pass
     /// in the right value. The latter seems least bad.
-    pub(crate) fn new(mut slice: &'data [u8], item: Bookkeeping) -> Self {
-        assert!(item == Bookkeeping::new(1));
+    pub(crate) fn new(mut slice: &'data [u8], item: B) -> Self {
+        assert!(item == B::new(1));
         let (bom, line_terminator) = output_info(slice);
         slice = &slice[bom.len()..];
-        let mut set = CowSet::<Bookkeeping>::default();
+        let mut set = CowSet::<B>::default();
         while let Some(end) = memchr(b'\n', slice) {
             let (mut line, rest) = slice.split_at(end);
             slice = &rest[1..];
@@ -97,7 +97,7 @@ impl<'data, Bookkeeping: Log> ZetSet<'data, Bookkeeping> {
         &mut self,
         operand: impl LaterOperand,
         file_number: u32,
-        item: Bookkeeping,
+        item: B,
     ) -> Result<()> {
         operand.for_byte_line(|line| {
             self.set

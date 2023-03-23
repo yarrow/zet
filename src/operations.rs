@@ -6,7 +6,7 @@ use crate::args::OpName::{
     self, Diff, Intersect, Multiple, MultipleByFile, Single, SingleByFile, Union,
 };
 use crate::set::{LaterOperand, ZetSet};
-use crate::tally::{Dual, FileCount, LastFileSeen, LineCount, Log, Noop, Select};
+use crate::tally::{Bookkeeping, Dual, FileCount, LastFileSeen, LineCount, Noop, Select};
 
 #[derive(Clone, Copy)]
 pub enum Count {
@@ -82,11 +82,11 @@ pub fn calculate2<O: LaterOperand>(
 /// the line's bookkeeping item if the line is already present in the `ZetSet`.
 /// The operation will then call `set.retain()` to examine the each line's
 /// bookkeeping item to decide whether or not it belongs in the set.
-fn every_line<O: LaterOperand, Item: Log>(
-    item: Item,
+fn every_line<O: LaterOperand, B: Bookkeeping>(
+    item: B,
     first_operand: &[u8],
     rest: impl Iterator<Item = Result<O>>,
-) -> Result<ZetSet<Item>> {
+) -> Result<ZetSet<B>> {
     let mut set = ZetSet::new(first_operand, item);
     let mut file_number = 1;
     for operand in rest {
@@ -113,9 +113,9 @@ enum Keep {
 /// times a line has appeared in the input, or the number of files it has
 /// appeared in.  Then retain those whose bookkeeping item's value is 1 (for
 /// `Keep::Single`) or greater than 1 (for `Keep::Multiple`).
-fn count_and<Item: Log, O: LaterOperand>(
+fn count_and<B: Bookkeeping, O: LaterOperand>(
     keep: Keep,
-    item: Item,
+    item: B,
     first_operand: &[u8],
     rest: impl Iterator<Item = Result<O>>,
     out: impl std::io::Write,
@@ -130,7 +130,7 @@ fn count_and<Item: Log, O: LaterOperand>(
 
 /// When we're done with a `ZetSet`, we write its lines to our output and exit
 /// the program.
-fn output_and_discard<Item: Log>(set: ZetSet<Item>, out: impl std::io::Write) -> Result<()> {
+fn output_and_discard<B: Bookkeeping>(set: ZetSet<B>, out: impl std::io::Write) -> Result<()> {
     set.output_to(out)?;
     std::mem::forget(set); // Slightly faster to just abandon this, since we're about to exit.
                            // Thanks to [Karolin Varner](https://github.com/koraa)'s huniq
@@ -140,17 +140,23 @@ fn output_and_discard<Item: Log>(set: ZetSet<Item>, out: impl std::io::Write) ->
 /// The `inner` function does most of the work, calling `every_line` or
 /// `count_and` for most operations. (`Diff` and `Intersect` need more
 /// specialized code.)
-fn inner<L: Log, O: LaterOperand>(
+///
+/// The `Bookkeeping` item passed in will be used for logging the line/file
+/// count of each line (or `Noop` for not logging).  Most operations will use it
+/// as the `log` field of a `Dual` bookkeeping value, using another type for the
+/// `select` field. (`Union` doesn't need bookkeeping, so it just uses the `log`
+/// argument as-is.)
+fn inner<Log: Bookkeeping, O: LaterOperand>(
     operation: OpName,
-    log: L,
+    log: Log,
     first_operand: &[u8],
     rest: impl Iterator<Item = Result<O>>,
     out: impl std::io::Write,
 ) -> Result<()> {
-    fn line_count_with<L: Log>(log: L) -> Dual<LineCount, L> {
+    fn line_count_with<Log: Bookkeeping>(log: Log) -> Dual<LineCount, Log> {
         Dual { select: LineCount::new(1), log }
     }
-    fn file_count_with<L: Log>(log: L) -> Dual<FileCount, L> {
+    fn file_count_with<Log: Bookkeeping>(log: Log) -> Dual<FileCount, Log> {
         Dual { select: FileCount::new(1), log }
     }
     match operation {

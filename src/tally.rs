@@ -8,7 +8,7 @@ pub(crate) trait Select: Copy + PartialEq + Debug {
     fn value(self) -> u32;
     fn modify(&mut self, file_number: u32);
 }
-pub(crate) trait Log: Select {
+pub(crate) trait Bookkeeping: Select {
     fn count(self) -> u32 {
         self.value()
     }
@@ -28,7 +28,7 @@ impl Select for LineCount {
         self.0 += 1
     }
 }
-impl Log for LineCount {
+impl Bookkeeping for LineCount {
     fn write_count(&self, width: usize, out: &mut impl std::io::Write) -> Result<()> {
         write!(out, "{:width$} ", self.0)?;
         Ok(())
@@ -54,7 +54,7 @@ impl Select for FileCount {
         }
     }
 }
-impl Log for FileCount {
+impl Bookkeeping for FileCount {
     fn write_count(&self, width: usize, out: &mut impl std::io::Write) -> Result<()> {
         write!(out, "{:width$} ", self.files_seen)?;
         Ok(())
@@ -72,7 +72,7 @@ impl Select for Noop {
     }
     fn modify(&mut self, _file_number: u32) {}
 }
-impl Log for Noop {
+impl Bookkeeping for Noop {
     fn write_count(&self, _width: usize, _out: &mut impl std::io::Write) -> Result<()> {
         Ok(())
     }
@@ -93,14 +93,14 @@ impl Select for LastFileSeen {
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
-pub(crate) struct Dual<S: Select, L: Log> {
+pub(crate) struct Dual<S: Select, B: Bookkeeping> {
     pub(crate) select: S,
-    pub(crate) log: L,
+    pub(crate) log: B,
 }
 
-impl<S: Select, L: Log> Select for Dual<S, L> {
+impl<S: Select, B: Bookkeeping> Select for Dual<S, B> {
     fn new(file_number: u32) -> Self {
-        Dual { select: S::new(file_number), log: L::new(file_number) }
+        Dual { select: S::new(file_number), log: B::new(file_number) }
     }
     fn value(self) -> u32 {
         self.select.value()
@@ -111,7 +111,7 @@ impl<S: Select, L: Log> Select for Dual<S, L> {
     }
 }
 
-impl<S: Select, L: Log> Log for Dual<S, L> {
+impl<S: Select, B: Bookkeeping> Bookkeeping for Dual<S, B> {
     fn count(self) -> u32 {
         self.log.count()
     }
