@@ -131,6 +131,27 @@ fn diff<Log: Bookkeeping, O: LaterOperand>(
     output_and_discard(set, out)
 }
 
+/// Similarly, only lines that appear in the first operand will be in the result
+/// of `Intersect`; so `Intersect` also uses `modify_if_present` rather than
+/// `insert_or_modify`. But lines in `Intersect`'s result must also appear in
+/// every other file; so after each file we discard those lines whose
+/// `LastFileSeen` number is not the current `file_number`.
+fn intersect<Log: Bookkeeping, O: LaterOperand>(
+    log: Log,
+    first_operand: &[u8],
+    rest: impl Iterator<Item = Result<O>>,
+    out: impl std::io::Write,
+) -> Result<()> {
+    let item = Dual { select: LastFileSeen::new(1), log };
+    let mut set = ZetSet::new(first_operand, item);
+    let mut file_number = 1;
+    for operand in rest {
+        file_number += 1;
+        set.modify_if_present(operand?, file_number)?;
+        set.retain(|v| v == file_number);
+    }
+    output_and_discard(set, out)
+}
 /// For `Single` and `Multiple` each line's `LineCount` item will keep track of
 /// how many times it has appeared in the entire input.  For `SingleByFile` and
 /// `MultipleByFile` each line's bookkeeping item will keep track of how many
@@ -215,6 +236,7 @@ fn inner<Log: Bookkeeping, O: LaterOperand>(
     match operation {
         Union => union(log, first_operand, rest, out),
         Diff => diff(log, first_operand, rest, out),
+        Intersect => intersect(log, first_operand, rest, out),
 
         // The `Single, `Multiple`, `SingleByFile`, and `MultipleByFile`
         // operations need to collect line/file counts independently of what
@@ -226,23 +248,6 @@ fn inner<Log: Bookkeeping, O: LaterOperand>(
         Multiple => count_lines_and(Keep::Multiple, log, first_operand, rest, out),
         SingleByFile => count_files_and(Keep::Single, log, first_operand, rest, out),
         MultipleByFile => count_files_and(Keep::Multiple, log, first_operand, rest, out),
-
-        // Similarly, only lines that appear in the first operand will be in the result of
-        // `Intersect`; so `Intersect` also uses `modify_if_present` rather than
-        // `insert_or_modify`. But lines in `Intersect`'s result must also
-        // appear in every other file; so after each file we discard those lines
-        // whose `LastFileSeen` number is not the current `file_number`.
-        Intersect => {
-            let item = Dual { select: LastFileSeen::new(1), log };
-            let mut set = ZetSet::new(first_operand, item);
-            let mut file_number = 1;
-            for operand in rest {
-                file_number += 1;
-                set.modify_if_present(operand?, file_number)?;
-                set.retain(|v| v == file_number);
-            }
-            output_and_discard(set, out)
-        }
     }
 }
 
