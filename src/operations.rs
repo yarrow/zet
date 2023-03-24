@@ -47,23 +47,23 @@ pub fn calculate2<O: LaterOperand>(
     out: impl std::io::Write,
 ) -> Result<()> {
     match count {
-        Count::Nothing => inner(operation, Noop::new(1), first_operand, rest, out),
+        Count::Nothing => dispatch(operation, Noop::new(1), first_operand, rest, out),
 
         // When `count` is `Count::Lines` and `operation` is `Single` or
         // `Multiple`, both logging and selection need a `LineCount` in the
-        // bookkeeping item, so `inner` would call `count_and` with bookkeeping
-        // values of `Dual<LineCount, LineCount>`. It would be safe to count
-        // each line in both fields of a `Dual` item, but slower.  And it's
-        // seems unlikely that the optimizer would avoid doing the counting
+        // bookkeeping item, so `dispatch` would call `count_and` with
+        // bookkeeping values of `Dual<LineCount, LineCount>`. It would be safe
+        // to count each line in both fields of a `Dual` item, but slower.  And
+        // it seems unlikely that the optimizer would avoid doing the counting
         // twice. So we call `count_and` directly, with a single `LineCount`
         // bookkeeping value.
         Count::Lines => match operation {
             Single => count_and(Keep::Single, LineCount::new(1), first_operand, rest, out),
             Multiple => count_and(Keep::Multiple, LineCount::new(1), first_operand, rest, out),
-            _ => inner(operation, LineCount::new(1), first_operand, rest, out),
+            _ => dispatch(operation, LineCount::new(1), first_operand, rest, out),
         },
 
-        // Similarly, we don't want `inner` to use `Dual<FileCount, FileCount>`
+        // Similarly, we don't want `dispatch` to use `Dual<FileCount, FileCount>`
         // bookkeeping values, so we call `count_and` directly when `count` is
         // Count::Files` and `operation` is `SingleByFile` or `MultipleByFile`.
         Count::Files => match operation {
@@ -72,8 +72,31 @@ pub fn calculate2<O: LaterOperand>(
                 count_and(Keep::Multiple, FileCount::new(1), first_operand, rest, out)
             }
 
-            _ => inner(operation, FileCount::new(1), first_operand, rest, out),
+            _ => dispatch(operation, FileCount::new(1), first_operand, rest, out),
         },
+    }
+}
+
+/// The `dispatch` function calls the relevant function to do the actual work.
+/// Calling `dispatch` from `calculate` means that the monomorphizer knows the
+/// type of `log`, and create three different versions of `dispatch`, for `Noop`, `LineCount`,
+/// and `FileCount` (and so three different version of `union`, `diff`,
+/// `intersect`, `count_lines_and`, and `count_files_and`).
+fn dispatch<Log: Bookkeeping, O: LaterOperand>(
+    operation: OpName,
+    log: Log,
+    first_operand: &[u8],
+    rest: impl Iterator<Item = Result<O>>,
+    out: impl std::io::Write,
+) -> Result<()> {
+    match operation {
+        Union => union(log, first_operand, rest, out),
+        Diff => diff(log, first_operand, rest, out),
+        Intersect => intersect(log, first_operand, rest, out),
+        Single => count_lines_and(Keep::Single, log, first_operand, rest, out),
+        Multiple => count_lines_and(Keep::Multiple, log, first_operand, rest, out),
+        SingleByFile => count_files_and(Keep::Single, log, first_operand, rest, out),
+        MultipleByFile => count_files_and(Keep::Multiple, log, first_operand, rest, out),
     }
 }
 
@@ -152,6 +175,7 @@ fn intersect<Log: Bookkeeping, O: LaterOperand>(
     }
     output_and_discard(set, out)
 }
+
 /// For `Single` and `Multiple` each line's `LineCount` item will keep track of
 /// how many times it has appeared in the entire input.  For `SingleByFile` and
 /// `MultipleByFile` each line's bookkeeping item will keep track of how many
@@ -215,40 +239,6 @@ fn output_and_discard<B: Bookkeeping>(set: ZetSet<B>, out: impl std::io::Write) 
     std::mem::forget(set); // Slightly faster to just abandon this, since we're about to exit.
                            // Thanks to [Karolin Varner](https://github.com/koraa)'s huniq
     Ok(())
-}
-
-/// The `inner` function does most of the work, calling `every_line` or
-/// `count_and` for most operations. (`Diff` and `Intersect` need more
-/// specialized code.)
-///
-/// The `Bookkeeping` item passed in will be used for logging the line/file
-/// count of each line (or `Noop` for not logging).  Most operations will use it
-/// as the `log` field of a `Dual` bookkeeping value, using another type for the
-/// `select` field. (`Union` doesn't need bookkeeping, so it just uses the `log`
-/// argument as-is.)
-fn inner<Log: Bookkeeping, O: LaterOperand>(
-    operation: OpName,
-    log: Log,
-    first_operand: &[u8],
-    rest: impl Iterator<Item = Result<O>>,
-    out: impl std::io::Write,
-) -> Result<()> {
-    match operation {
-        Union => union(log, first_operand, rest, out),
-        Diff => diff(log, first_operand, rest, out),
-        Intersect => intersect(log, first_operand, rest, out),
-
-        // The `Single, `Multiple`, `SingleByFile`, and `MultipleByFile`
-        // operations need to collect line/file counts independently of what
-        // might be logged.  The `line_count_with` function gives a `Dual`
-        // bookkeeping value combining `LineCount` and whatever has been passed
-        // for logging. Similarly, the `file_count_with` function combines
-        // `FileCount` and the logging value.
-        Single => count_lines_and(Keep::Single, log, first_operand, rest, out),
-        Multiple => count_lines_and(Keep::Multiple, log, first_operand, rest, out),
-        SingleByFile => count_files_and(Keep::Single, log, first_operand, rest, out),
-        MultipleByFile => count_files_and(Keep::Multiple, log, first_operand, rest, out),
-    }
 }
 
 #[allow(clippy::pedantic)]
