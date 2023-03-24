@@ -96,6 +96,18 @@ fn every_line<O: LaterOperand, B: Bookkeeping>(
     Ok(set)
 }
 
+/// `Union` collects every line, so we don't need to call `retain`; and
+/// the only bookkeeping needed is for the line/file counts, so we don't
+/// need a `Dual` bookkeeping value and just use the `Log` argument passed in.
+fn union<Log: Bookkeeping, O: LaterOperand>(
+    log: Log,
+    first_operand: &[u8],
+    rest: impl Iterator<Item = Result<O>>,
+    out: impl std::io::Write,
+) -> Result<()> {
+    let set = every_line(log, first_operand, rest)?;
+    output_and_discard(set, out)
+}
 /// For `Single` and `Multiple` each line's `LineCount` item will keep track of
 /// how many times it has appeared in the entire input.  For `SingleByFile` and
 /// `MultipleByFile` each line's bookkeeping item will keep track of how many
@@ -178,13 +190,7 @@ fn inner<Log: Bookkeeping, O: LaterOperand>(
     out: impl std::io::Write,
 ) -> Result<()> {
     match operation {
-        // `Union` collects every line, so we don't need to call `retain`; and
-        // the only bookkeeping needed is for the line/file counts, so we don't
-        // need a `Dual` bookkeeping value.
-        Union => {
-            let set = every_line(log, first_operand, rest)?;
-            output_and_discard(set, out)
-        }
+        Union => union(log, first_operand, rest, out),
 
         // The `Single, `Multiple`, `SingleByFile`, and `MultipleByFile`
         // operations need to collect line/file counts independently of what
