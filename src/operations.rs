@@ -128,6 +128,30 @@ fn count_and<B: Bookkeeping, O: LaterOperand>(
     output_and_discard(set, out)
 }
 
+/// Specifically a `LineCount`ed `ZetSet`.
+fn count_lines_and<Log: Bookkeeping, O: LaterOperand>(
+    keep: Keep,
+    log: Log,
+    first_operand: &[u8],
+    rest: impl Iterator<Item = Result<O>>,
+    out: impl std::io::Write,
+) -> Result<()> {
+    let item = Dual { select: LineCount::new(1), log };
+    count_and(keep, item, first_operand, rest, out)
+}
+
+/// Specifically a `FileCount`ed `ZetSet`.
+fn count_files_and<Log: Bookkeeping, O: LaterOperand>(
+    keep: Keep,
+    log: Log,
+    first_operand: &[u8],
+    rest: impl Iterator<Item = Result<O>>,
+    out: impl std::io::Write,
+) -> Result<()> {
+    let item = Dual { select: FileCount::new(1), log };
+    count_and(keep, item, first_operand, rest, out)
+}
+
 /// When we're done with a `ZetSet`, we write its lines to our output and exit
 /// the program.
 fn output_and_discard<B: Bookkeeping>(set: ZetSet<B>, out: impl std::io::Write) -> Result<()> {
@@ -153,12 +177,6 @@ fn inner<Log: Bookkeeping, O: LaterOperand>(
     rest: impl Iterator<Item = Result<O>>,
     out: impl std::io::Write,
 ) -> Result<()> {
-    fn line_count_with<Log: Bookkeeping>(log: Log) -> Dual<LineCount, Log> {
-        Dual { select: LineCount::new(1), log }
-    }
-    fn file_count_with<Log: Bookkeeping>(log: Log) -> Dual<FileCount, Log> {
-        Dual { select: FileCount::new(1), log }
-    }
     match operation {
         // `Union` collects every line, so we don't need to call `retain`; and
         // the only bookkeeping needed is for the line/file counts, so we don't
@@ -174,10 +192,10 @@ fn inner<Log: Bookkeeping, O: LaterOperand>(
         // bookkeeping value combining `LineCount` and whatever has been passed
         // for logging. Similarly, the `file_count_with` function combines
         // `FileCount` and the logging value.
-        Single => count_and(Keep::Single, line_count_with(log), first_operand, rest, out),
-        Multiple => count_and(Keep::Multiple, line_count_with(log), first_operand, rest, out),
-        SingleByFile => count_and(Keep::Single, file_count_with(log), first_operand, rest, out),
-        MultipleByFile => count_and(Keep::Multiple, file_count_with(log), first_operand, rest, out),
+        Single => count_lines_and(Keep::Single, log, first_operand, rest, out),
+        Multiple => count_lines_and(Keep::Multiple, log, first_operand, rest, out),
+        SingleByFile => count_files_and(Keep::Single, log, first_operand, rest, out),
+        MultipleByFile => count_files_and(Keep::Multiple, log, first_operand, rest, out),
 
         // Only lines that appear in the first operand will be in the result of
         // Diff`; so `Diff` uses `modify_if_present` rather than
