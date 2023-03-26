@@ -198,30 +198,33 @@ mod tally_test {
         assert_eq!(first_file_number::<Dual<LastFileSeen, FileCount>>(), 0);
         assert_eq!(first_file_number::<Dual<LastFileSeen, Noop>>(), 0);
     }
-    fn bump_twice<S: Select>() -> u32 {
+    fn bump_twice<S: Select>() -> S {
         let mut select = S::first_file();
         select.next_file();
         select.next_file();
-        select.file_number()
+        select
+    }
+    fn bump_twice_file_number<S: Select>() -> u32 {
+        bump_twice::<S>().file_number()
     }
     #[test]
     #[allow(non_snake_case)]
     fn next_file_increments_file_number_only_for_LastFileSeen_and_FileCount() {
-        assert_eq!(bump_twice::<LineCount>(), 0);
-        assert_eq!(bump_twice::<FileCount>(), 2);
-        assert_eq!(bump_twice::<Noop>(), 0);
-        assert_eq!(bump_twice::<LastFileSeen>(), 2);
-        assert_eq!(bump_twice::<Dual<LineCount, LineCount>>(), 0);
-        assert_eq!(bump_twice::<Dual<LineCount, FileCount>>(), 2);
-        assert_eq!(bump_twice::<Dual<LineCount, Noop>>(), 0);
-        assert_eq!(bump_twice::<Dual<FileCount, LineCount>>(), 2);
-        assert_eq!(bump_twice::<Dual<FileCount, FileCount>>(), 2);
-        assert_eq!(bump_twice::<Dual<FileCount, Noop>>(), 2);
-        assert_eq!(bump_twice::<Dual<Noop, LineCount>>(), 0);
-        assert_eq!(bump_twice::<Dual<Noop, FileCount>>(), 2);
-        assert_eq!(bump_twice::<Dual<Noop, Noop>>(), 0);
-        assert_eq!(bump_twice::<Dual<LastFileSeen, LineCount>>(), 2);
-        assert_eq!(bump_twice::<Dual<LastFileSeen, FileCount>>(), 2);
-        assert_eq!(bump_twice::<Dual<LastFileSeen, Noop>>(), 2);
+        assert_eq!(bump_twice_file_number::<LineCount>(), 0);
+        assert_eq!(bump_twice_file_number::<FileCount>(), 2);
+        assert_eq!(bump_twice_file_number::<Noop>(), 0);
+        assert_eq!(bump_twice_file_number::<LastFileSeen>(), 2);
+        assert_eq!(bump_twice_file_number::<Dual<LineCount, LineCount>>(), 0);
+        assert_eq!(bump_twice_file_number::<Dual<LineCount, FileCount>>(), 2);
+        assert_eq!(bump_twice_file_number::<Dual<LineCount, Noop>>(), 0);
+        assert_eq!(bump_twice_file_number::<Dual<FileCount, LineCount>>(), 2);
+        assert_eq!(bump_twice_file_number::<Dual<FileCount, FileCount>>(), 2);
+        assert_eq!(bump_twice_file_number::<Dual<FileCount, Noop>>(), 2);
+        assert_eq!(bump_twice_file_number::<Dual<Noop, LineCount>>(), 0);
+        assert_eq!(bump_twice_file_number::<Dual<Noop, FileCount>>(), 2);
+        assert_eq!(bump_twice_file_number::<Dual<Noop, Noop>>(), 0);
+        assert_eq!(bump_twice_file_number::<Dual<LastFileSeen, LineCount>>(), 2);
+        assert_eq!(bump_twice_file_number::<Dual<LastFileSeen, FileCount>>(), 2);
+        assert_eq!(bump_twice_file_number::<Dual<LastFileSeen, Noop>>(), 2);
     }
 }
