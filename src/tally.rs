@@ -170,27 +170,27 @@ mod tally_test {
     use std::fs::File;
 
     use super::*;
-    fn dual<S: Select, Log: Bookkeeping>(select: S, log: Log) -> Dual<S, Log> {
-        Dual { select, log }
+    fn first_file_number<S: Select>() -> u32 {
+        S::first_file().file_number()
     }
     #[test]
     fn first_file_file_number_is_zero() {
-        assert_eq!(LineCount::first_file().file_number(), 0);
-        assert_eq!(FileCount::first_file().file_number(), 0);
-        assert_eq!(Noop::first_file().file_number(), 0);
-        assert_eq!(LastFileSeen::first_file().file_number(), 0);
-        assert_eq!(dual(LineCount::first_file(), LineCount::first_file()).file_number(), 0);
-        assert_eq!(dual(LineCount::first_file(), FileCount::first_file()).file_number(), 0);
-        assert_eq!(dual(LineCount::first_file(), Noop::first_file()).file_number(), 0);
-        assert_eq!(dual(FileCount::first_file(), LineCount::first_file()).file_number(), 0);
-        assert_eq!(dual(FileCount::first_file(), FileCount::first_file()).file_number(), 0);
-        assert_eq!(dual(FileCount::first_file(), Noop::first_file()).file_number(), 0);
-        assert_eq!(dual(Noop::first_file(), LineCount::first_file()).file_number(), 0);
-        assert_eq!(dual(Noop::first_file(), FileCount::first_file()).file_number(), 0);
-        assert_eq!(dual(Noop::first_file(), Noop::first_file()).file_number(), 0);
-        assert_eq!(dual(LastFileSeen::first_file(), LineCount::first_file()).file_number(), 0);
-        assert_eq!(dual(LastFileSeen::first_file(), FileCount::first_file()).file_number(), 0);
-        assert_eq!(dual(LastFileSeen::first_file(), Noop::first_file()).file_number(), 0);
+        assert_eq!(first_file_number::<LineCount>(), 0);
+        assert_eq!(first_file_number::<FileCount>(), 0);
+        assert_eq!(first_file_number::<Noop>(), 0);
+        assert_eq!(first_file_number::<LastFileSeen>(), 0);
+        assert_eq!(first_file_number::<Dual<LineCount, LineCount>>(), 0);
+        assert_eq!(first_file_number::<Dual<LineCount, FileCount>>(), 0);
+        assert_eq!(first_file_number::<Dual<LineCount, Noop>>(), 0);
+        assert_eq!(first_file_number::<Dual<FileCount, LineCount>>(), 0);
+        assert_eq!(first_file_number::<Dual<FileCount, FileCount>>(), 0);
+        assert_eq!(first_file_number::<Dual<FileCount, Noop>>(), 0);
+        assert_eq!(first_file_number::<Dual<Noop, LineCount>>(), 0);
+        assert_eq!(first_file_number::<Dual<Noop, FileCount>>(), 0);
+        assert_eq!(first_file_number::<Dual<Noop, Noop>>(), 0);
+        assert_eq!(first_file_number::<Dual<LastFileSeen, LineCount>>(), 0);
+        assert_eq!(first_file_number::<Dual<LastFileSeen, FileCount>>(), 0);
+        assert_eq!(first_file_number::<Dual<LastFileSeen, Noop>>(), 0);
     }
     fn bump_twice<S: Select>() -> u32 {
         let mut select = S::first_file();
