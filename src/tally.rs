@@ -26,7 +26,9 @@ impl Select for LineCount {
         Self::new(0)
     }
     fn next_file(&mut self) {}
-    fn update_with(&mut self, _the_vogue: Self) {}
+    fn update_with(&mut self, _the_vogue: Self) {
+        self.0 += 1
+    }
     fn file_number(self) -> u32 {
         0
     }
@@ -60,7 +62,10 @@ impl Select for FileCount {
         self.file_number += 1;
     }
     fn update_with(&mut self, the_vogue: Self) {
-        self.file_number = the_vogue.file_number;
+        if the_vogue.file_number != self.file_number {
+            self.files_seen += 1;
+            self.file_number = the_vogue.file_number;
+        }
     }
     fn file_number(self) -> u32 {
         self.file_number
@@ -236,11 +241,6 @@ mod tally_test {
         assert_eq!(bump_twice_file_number::<Dual<LastFileSeen, Noop>>(), 2);
     }
 
-    fn updated_file_number<S: Select>() -> u32 {
-        let mut select = S::first_file();
-        select.update_with(bump_twice::<S>());
-        select.file_number()
-    }
     fn assert_update_with_sets_self_file_number_to_arguments<S: Select>() {
         let mut naive = S::first_file();
         let mut the_vogue = S::first_file();
@@ -267,5 +267,38 @@ mod tally_test {
         assert_update_with_sets_self_file_number_to_arguments::<Dual<LastFileSeen, LineCount>>();
         assert_update_with_sets_self_file_number_to_arguments::<Dual<LastFileSeen, FileCount>>();
         assert_update_with_sets_self_file_number_to_arguments::<Dual<LastFileSeen, Noop>>();
+    }
+
+    fn assert_update_with_is_the_same_as_modify<S: Select>() {
+        let mut the_vogue = S::first_file();
+        the_vogue.next_file();
+        the_vogue.next_file();
+
+        let mut modified = S::new(1);
+        modified.modify(2);
+
+        let mut updated = S::new(1);
+        updated.update_with(the_vogue);
+
+        assert_eq!(updated, modified);
+    }
+    #[test]
+    fn updated_works_the_same_as_modify_with_the_vogues_file_number() {
+        assert_update_with_is_the_same_as_modify::<LineCount>();
+        assert_update_with_is_the_same_as_modify::<FileCount>();
+        assert_update_with_is_the_same_as_modify::<Noop>();
+        assert_update_with_is_the_same_as_modify::<LastFileSeen>();
+        assert_update_with_is_the_same_as_modify::<Dual<LineCount, LineCount>>();
+        assert_update_with_is_the_same_as_modify::<Dual<LineCount, FileCount>>();
+        assert_update_with_is_the_same_as_modify::<Dual<LineCount, Noop>>();
+        assert_update_with_is_the_same_as_modify::<Dual<FileCount, LineCount>>();
+        assert_update_with_is_the_same_as_modify::<Dual<FileCount, FileCount>>();
+        assert_update_with_is_the_same_as_modify::<Dual<FileCount, Noop>>();
+        assert_update_with_is_the_same_as_modify::<Dual<Noop, LineCount>>();
+        assert_update_with_is_the_same_as_modify::<Dual<Noop, FileCount>>();
+        assert_update_with_is_the_same_as_modify::<Dual<Noop, Noop>>();
+        assert_update_with_is_the_same_as_modify::<Dual<LastFileSeen, LineCount>>();
+        assert_update_with_is_the_same_as_modify::<Dual<LastFileSeen, FileCount>>();
+        assert_update_with_is_the_same_as_modify::<Dual<LastFileSeen, Noop>>();
     }
 }
