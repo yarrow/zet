@@ -1,8 +1,9 @@
 use anyhow::Result;
 use std::fmt::Debug;
 pub(crate) trait Select: Copy + PartialEq + Debug {
-    fn new(file_number: u32) -> Self;
     fn first_file() -> Self;
+    fn file_number(self) -> u32;
+    fn new(file_number: u32) -> Self;
     fn fresh(&self, file_number: u32) -> Self {
         Self::new(file_number)
     }
@@ -19,11 +20,14 @@ pub(crate) trait Bookkeeping: Select {
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub(crate) struct LineCount(u32);
 impl Select for LineCount {
-    fn new(_file_number: u32) -> Self {
-        LineCount(1)
-    }
     fn first_file() -> Self {
         Self::new(0)
+    }
+    fn file_number(self) -> u32 {
+        0
+    }
+    fn new(_file_number: u32) -> Self {
+        LineCount(1)
     }
     fn value(self) -> u32 {
         self.0
@@ -45,11 +49,14 @@ pub(crate) struct FileCount {
     files_seen: u32,
 }
 impl Select for FileCount {
-    fn new(file_number: u32) -> Self {
-        FileCount { file_number, files_seen: 1 }
-    }
     fn first_file() -> Self {
         Self::new(0)
+    }
+    fn file_number(self) -> u32 {
+        self.file_number
+    }
+    fn new(file_number: u32) -> Self {
+        FileCount { file_number, files_seen: 1 }
     }
     fn value(self) -> u32 {
         self.files_seen
@@ -74,6 +81,9 @@ impl Select for Noop {
     fn first_file() -> Self {
         Self::new(0)
     }
+    fn file_number(self) -> u32 {
+        0
+    }
     fn new(_file_number: u32) -> Self {
         Noop()
     }
@@ -93,6 +103,9 @@ pub(crate) struct LastFileSeen(u32);
 impl Select for LastFileSeen {
     fn first_file() -> Self {
         Self::new(0)
+    }
+    fn file_number(self) -> u32 {
+        self.0
     }
     fn new(file_number: u32) -> Self {
         LastFileSeen(file_number)
@@ -114,6 +127,9 @@ pub(crate) struct Dual<S: Select, B: Bookkeeping> {
 impl<S: Select, B: Bookkeeping> Select for Dual<S, B> {
     fn first_file() -> Self {
         Self::new(0)
+    }
+    fn file_number(self) -> u32 {
+        self.select.file_number().max(self.log.file_number())
     }
     fn new(file_number: u32) -> Self {
         Dual { select: S::new(file_number), log: B::new(file_number) }
