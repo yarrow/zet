@@ -59,15 +59,8 @@ pub trait LaterOperand {
 /// in.
 impl<'data, B: Bookkeeping> ZetSet<'data, B> {
     /// Create a new `ZetSet`, with each key a line borrowed from `slice`, and
-    /// value `B::new(1)` for every line — the correct `B`
-    /// value for a line in the first file.
-    ///
-    /// Even though we know that we'll be inserting `B::new(1)`, we
-    /// make the caller pass it in. Why make the caller pass a fixed value?  We
-    /// need `item` not for its value, but its type — monomorphism needs to know
-    /// the type of bookkeeping value we're using. So the choices are to make
-    /// the caller pass in a value that we'll ignore, or to make the caller pass
-    /// in the right value. The latter seems least bad.
+    /// value `item` for every line newly seen. If a line is already present,
+    /// with bookkeeping value `v`, update it by calling `v.modify_with(item)`
     pub(crate) fn new(mut slice: &'data [u8], item: B) -> Self {
         assert!(item == B::new(1));
         let (bom, line_terminator) = output_info(slice);
@@ -81,28 +74,23 @@ impl<'data, B: Bookkeeping> ZetSet<'data, B> {
                     line = &line[..line.len() - 1];
                 }
             }
-            set.entry(Cow::Borrowed(line)).and_modify(|v| v.modify(1)).or_insert(item);
+            set.entry(Cow::Borrowed(line)).and_modify(|v| v.update_with(item)).or_insert(item);
         }
         if !slice.is_empty() {
-            set.entry(Cow::Borrowed(slice)).and_modify(|v| v.modify(1)).or_insert(item);
+            set.entry(Cow::Borrowed(slice)).and_modify(|v| v.update_with(item)).or_insert(item);
         }
         ZetSet { set, bom, line_terminator }
     }
 
     /// For each line in `operand`, insert `line` as `Cow::Owned` to the
     /// underlying `IndexMap` if it is not already present, with bookkeeping
-    /// value `item`. If the line is present, call `modify` on the bookkeeping
-    /// value.
-    pub(crate) fn insert_or_modify(
-        &mut self,
-        operand: impl LaterOperand,
-        file_number: u32,
-        item: B,
-    ) -> Result<()> {
+    /// value `item`. If `line` is already present, with bookkeeping value `v`,
+    /// update it by calling `v.modify_with(item)`
+    pub(crate) fn insert_or_modify(&mut self, operand: impl LaterOperand, item: B) -> Result<()> {
         operand.for_byte_line(|line| {
             self.set
                 .entry(Cow::from(line.to_vec()))
-                .and_modify(|v| v.modify(file_number))
+                .and_modify(|v| v.update_with(item))
                 .or_insert(item);
         })
     }
