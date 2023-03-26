@@ -3,6 +3,7 @@ use std::fmt::Debug;
 pub(crate) trait Select: Copy + PartialEq + Debug {
     fn first_file() -> Self;
     fn next_file(&mut self);
+    fn update_with(&mut self, _the_vogue: Self);
     fn file_number(self) -> u32;
     fn new(file_number: u32) -> Self;
     fn fresh(&self, file_number: u32) -> Self {
@@ -25,6 +26,7 @@ impl Select for LineCount {
         Self::new(0)
     }
     fn next_file(&mut self) {}
+    fn update_with(&mut self, _the_vogue: Self) {}
     fn file_number(self) -> u32 {
         0
     }
@@ -57,6 +59,7 @@ impl Select for FileCount {
     fn next_file(&mut self) {
         self.file_number += 1;
     }
+    fn update_with(&mut self, _the_vogue: Self) {}
     fn file_number(self) -> u32 {
         self.file_number
     }
@@ -87,6 +90,7 @@ impl Select for Noop {
         Self::new(0)
     }
     fn next_file(&mut self) {}
+    fn update_with(&mut self, _the_vogue: Self) {}
     fn file_number(self) -> u32 {
         0
     }
@@ -116,6 +120,7 @@ impl Select for LastFileSeen {
     fn file_number(self) -> u32 {
         self.0
     }
+    fn update_with(&mut self, _the_vogue: Self) {}
     fn new(file_number: u32) -> Self {
         LastFileSeen(file_number)
     }
@@ -141,6 +146,7 @@ impl<S: Select, B: Bookkeeping> Select for Dual<S, B> {
         self.select.next_file();
         self.log.next_file();
     }
+    fn update_with(&mut self, _the_vogue: Self) {}
     fn file_number(self) -> u32 {
         self.select.file_number().max(self.log.file_number())
     }
