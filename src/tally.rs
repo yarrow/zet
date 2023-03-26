@@ -151,3 +151,32 @@ impl<S: Select, B: Bookkeeping> Bookkeeping for Dual<S, B> {
         self.log.write_count(width, out)
     }
 }
+
+#[cfg(test)]
+mod tally_test {
+    use std::fs::File;
+
+    use super::*;
+    fn dual<S: Select, Log: Bookkeeping>(select: S, log: Log) -> Dual<S, Log> {
+        Dual { select, log }
+    }
+    #[test]
+    fn first_file_file_number_is_zero() {
+        assert_eq!(LineCount::first_file().file_number(), 0);
+        assert_eq!(FileCount::first_file().file_number(), 0);
+        assert_eq!(Noop::first_file().file_number(), 0);
+        assert_eq!(LastFileSeen::first_file().file_number(), 0);
+        assert_eq!(dual(LineCount::first_file(), LineCount::first_file()).file_number(), 0);
+        assert_eq!(dual(LineCount::first_file(), FileCount::first_file()).file_number(), 0);
+        assert_eq!(dual(LineCount::first_file(), Noop::first_file()).file_number(), 0);
+        assert_eq!(dual(FileCount::first_file(), LineCount::first_file()).file_number(), 0);
+        assert_eq!(dual(FileCount::first_file(), FileCount::first_file()).file_number(), 0);
+        assert_eq!(dual(FileCount::first_file(), Noop::first_file()).file_number(), 0);
+        assert_eq!(dual(Noop::first_file(), LineCount::first_file()).file_number(), 0);
+        assert_eq!(dual(Noop::first_file(), FileCount::first_file()).file_number(), 0);
+        assert_eq!(dual(Noop::first_file(), Noop::first_file()).file_number(), 0);
+        assert_eq!(dual(LastFileSeen::first_file(), LineCount::first_file()).file_number(), 0);
+        assert_eq!(dual(LastFileSeen::first_file(), FileCount::first_file()).file_number(), 0);
+        assert_eq!(dual(LastFileSeen::first_file(), Noop::first_file()).file_number(), 0);
+    }
+}
