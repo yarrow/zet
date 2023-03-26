@@ -59,7 +59,9 @@ impl Select for FileCount {
     fn next_file(&mut self) {
         self.file_number += 1;
     }
-    fn update_with(&mut self, _the_vogue: Self) {}
+    fn update_with(&mut self, the_vogue: Self) {
+        self.file_number = the_vogue.file_number;
+    }
     fn file_number(self) -> u32 {
         self.file_number
     }
@@ -120,7 +122,9 @@ impl Select for LastFileSeen {
     fn file_number(self) -> u32 {
         self.0
     }
-    fn update_with(&mut self, _the_vogue: Self) {}
+    fn update_with(&mut self, the_vogue: Self) {
+        self.0 = the_vogue.0
+    }
     fn new(file_number: u32) -> Self {
         LastFileSeen(file_number)
     }
@@ -146,7 +150,10 @@ impl<S: Select, B: Bookkeeping> Select for Dual<S, B> {
         self.select.next_file();
         self.log.next_file();
     }
-    fn update_with(&mut self, _the_vogue: Self) {}
+    fn update_with(&mut self, the_vogue: Self) {
+        self.select.update_with(the_vogue.select);
+        self.log.update_with(the_vogue.log);
+    }
     fn file_number(self) -> u32 {
         self.select.file_number().max(self.log.file_number())
     }
@@ -198,6 +205,7 @@ mod tally_test {
         assert_eq!(first_file_number::<Dual<LastFileSeen, FileCount>>(), 0);
         assert_eq!(first_file_number::<Dual<LastFileSeen, Noop>>(), 0);
     }
+
     fn bump_twice<S: Select>() -> S {
         let mut select = S::first_file();
         select.next_file();
@@ -226,5 +234,38 @@ mod tally_test {
         assert_eq!(bump_twice_file_number::<Dual<LastFileSeen, LineCount>>(), 2);
         assert_eq!(bump_twice_file_number::<Dual<LastFileSeen, FileCount>>(), 2);
         assert_eq!(bump_twice_file_number::<Dual<LastFileSeen, Noop>>(), 2);
+    }
+
+    fn updated_file_number<S: Select>() -> u32 {
+        let mut select = S::first_file();
+        select.update_with(bump_twice::<S>());
+        select.file_number()
+    }
+    fn assert_update_with_sets_self_file_number_to_arguments<S: Select>() {
+        let mut naive = S::first_file();
+        let mut the_vogue = S::first_file();
+        the_vogue.next_file();
+        the_vogue.next_file();
+        naive.update_with(the_vogue);
+        assert_eq!(naive.file_number(), the_vogue.file_number());
+    }
+    #[test]
+    fn update_with_sets_file_number_to_its_arguments_file_number() {
+        assert_update_with_sets_self_file_number_to_arguments::<LineCount>();
+        assert_update_with_sets_self_file_number_to_arguments::<FileCount>();
+        assert_update_with_sets_self_file_number_to_arguments::<Noop>();
+        assert_update_with_sets_self_file_number_to_arguments::<LastFileSeen>();
+        assert_update_with_sets_self_file_number_to_arguments::<Dual<LineCount, LineCount>>();
+        assert_update_with_sets_self_file_number_to_arguments::<Dual<LineCount, FileCount>>();
+        assert_update_with_sets_self_file_number_to_arguments::<Dual<LineCount, Noop>>();
+        assert_update_with_sets_self_file_number_to_arguments::<Dual<FileCount, LineCount>>();
+        assert_update_with_sets_self_file_number_to_arguments::<Dual<FileCount, FileCount>>();
+        assert_update_with_sets_self_file_number_to_arguments::<Dual<FileCount, Noop>>();
+        assert_update_with_sets_self_file_number_to_arguments::<Dual<Noop, LineCount>>();
+        assert_update_with_sets_self_file_number_to_arguments::<Dual<Noop, FileCount>>();
+        assert_update_with_sets_self_file_number_to_arguments::<Dual<Noop, Noop>>();
+        assert_update_with_sets_self_file_number_to_arguments::<Dual<LastFileSeen, LineCount>>();
+        assert_update_with_sets_self_file_number_to_arguments::<Dual<LastFileSeen, FileCount>>();
+        assert_update_with_sets_self_file_number_to_arguments::<Dual<LastFileSeen, Noop>>();
     }
 }
