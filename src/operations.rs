@@ -70,6 +70,10 @@ pub fn calculate2<O: LaterOperand>(
             SingleByFile => count_and::<FileCount, O>(Keep::Single, first_operand, rest, out),
             MultipleByFile => count_and::<FileCount, O>(Keep::Multiple, first_operand, rest, out),
 
+            // The number reported will always be 1 — a line appearing only once will appear in
+            // only one file
+            Single => count_and::<LineCount, O>(Keep::Single, first_operand, rest, out),
+
             _ => dispatch::<FileCount, O>(operation, first_operand, rest, out),
         },
     }
