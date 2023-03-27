@@ -147,7 +147,7 @@ fn diff<Log: Bookkeeping, O: LaterOperand>(
     let mut set = ZetSet::new(first_operand, item);
     for operand in rest {
         item.next_file();
-        set.modify_if_present(operand?, item.file_number())?;
+        set.modify_if_present(operand?, item)?;
     }
     set.retain(|v| v == 1);
     output_and_discard(set, out)
@@ -167,7 +167,7 @@ fn intersect<Log: Bookkeeping, O: LaterOperand>(
     let mut set = ZetSet::new(first_operand, item);
     for operand in rest {
         item.next_file();
-        set.modify_if_present(operand?, item.file_number())?;
+        set.modify_if_present(operand?, item)?;
         set.retain(|v| v == item.file_number());
     }
     output_and_discard(set, out)

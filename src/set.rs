@@ -62,7 +62,6 @@ impl<'data, B: Bookkeeping> ZetSet<'data, B> {
     /// value `item` for every line newly seen. If a line is already present,
     /// with bookkeeping value `v`, update it by calling `v.modify_with(item)`
     pub(crate) fn new(mut slice: &'data [u8], item: B) -> Self {
-        assert!(item == B::new(1));
         let (bom, line_terminator) = output_info(slice);
         slice = &slice[bom.len()..];
         let mut set = CowSet::<B>::default();
@@ -97,14 +96,10 @@ impl<'data, B: Bookkeeping> ZetSet<'data, B> {
 
     /// For each line in `operand` that is already present in the underlying
     /// `IndexMap`, call `modify` on the bookkeeping value.
-    pub(crate) fn modify_if_present(
-        &mut self,
-        operand: impl LaterOperand,
-        file_number: u32,
-    ) -> Result<()> {
+    pub(crate) fn modify_if_present(&mut self, operand: impl LaterOperand, item: B) -> Result<()> {
         operand.for_byte_line(|line| {
             if let Some(bookkeeping) = self.set.get_mut(line) {
-                bookkeeping.modify(file_number)
+                bookkeeping.update_with(item)
             }
         })
     }

@@ -5,12 +5,7 @@ pub(crate) trait Select: Copy + PartialEq + Debug {
     fn next_file(&mut self);
     fn update_with(&mut self, _the_vogue: Self);
     fn file_number(self) -> u32;
-    fn new(file_number: u32) -> Self;
-    fn fresh(&self, file_number: u32) -> Self {
-        Self::new(file_number)
-    }
     fn value(self) -> u32;
-    fn modify(&mut self, file_number: u32);
 }
 pub(crate) trait Bookkeeping: Select {
     fn count(self) -> u32 {
@@ -23,7 +18,7 @@ pub(crate) trait Bookkeeping: Select {
 pub(crate) struct LineCount(u32);
 impl Select for LineCount {
     fn first_file() -> Self {
-        Self::new(1)
+        LineCount(1)
     }
     fn next_file(&mut self) {}
     fn update_with(&mut self, _the_vogue: Self) {
@@ -32,14 +27,8 @@ impl Select for LineCount {
     fn file_number(self) -> u32 {
         0
     }
-    fn new(_file_number: u32) -> Self {
-        LineCount(1)
-    }
     fn value(self) -> u32 {
         self.0
-    }
-    fn modify(&mut self, _file_number: u32) {
-        self.0 += 1
     }
 }
 impl Bookkeeping for LineCount {
@@ -56,7 +45,7 @@ pub(crate) struct FileCount {
 }
 impl Select for FileCount {
     fn first_file() -> Self {
-        Self::new(1)
+        FileCount { file_number: 1, files_seen: 1 }
     }
     fn next_file(&mut self) {
         self.file_number += 1;
@@ -70,17 +59,8 @@ impl Select for FileCount {
     fn file_number(self) -> u32 {
         self.file_number
     }
-    fn new(file_number: u32) -> Self {
-        FileCount { file_number, files_seen: 1 }
-    }
     fn value(self) -> u32 {
         self.files_seen
-    }
-    fn modify(&mut self, file_number: u32) {
-        if file_number != self.file_number {
-            self.files_seen += 1;
-            self.file_number = file_number;
-        }
     }
 }
 impl Bookkeeping for FileCount {
@@ -94,20 +74,16 @@ impl Bookkeeping for FileCount {
 pub(crate) struct Noop();
 impl Select for Noop {
     fn first_file() -> Self {
-        Self::new(1)
+        Noop()
     }
     fn next_file(&mut self) {}
     fn update_with(&mut self, _the_vogue: Self) {}
     fn file_number(self) -> u32 {
         0
     }
-    fn new(_file_number: u32) -> Self {
-        Noop()
-    }
     fn value(self) -> u32 {
         0
     }
-    fn modify(&mut self, _file_number: u32) {}
 }
 impl Bookkeeping for Noop {
     fn write_count(&self, _width: usize, _out: &mut impl std::io::Write) -> Result<()> {
@@ -119,7 +95,7 @@ impl Bookkeeping for Noop {
 pub(crate) struct LastFileSeen(u32);
 impl Select for LastFileSeen {
     fn first_file() -> Self {
-        Self::new(1)
+        LastFileSeen(1)
     }
     fn next_file(&mut self) {
         self.0 += 1;
@@ -130,14 +106,8 @@ impl Select for LastFileSeen {
     fn update_with(&mut self, the_vogue: Self) {
         self.0 = the_vogue.0
     }
-    fn new(file_number: u32) -> Self {
-        LastFileSeen(file_number)
-    }
     fn value(self) -> u32 {
         self.0
-    }
-    fn modify(&mut self, file_number: u32) {
-        self.0 = file_number;
     }
 }
 
@@ -149,7 +119,7 @@ pub(crate) struct Dual<S: Select, B: Bookkeeping> {
 
 impl<S: Select, B: Bookkeeping> Select for Dual<S, B> {
     fn first_file() -> Self {
-        Self::new(1)
+        Dual { select: S::first_file(), log: B::first_file() }
     }
     fn next_file(&mut self) {
         self.select.next_file();
@@ -162,15 +132,8 @@ impl<S: Select, B: Bookkeeping> Select for Dual<S, B> {
     fn file_number(self) -> u32 {
         self.select.file_number().max(self.log.file_number())
     }
-    fn new(file_number: u32) -> Self {
-        Dual { select: S::new(file_number), log: B::new(file_number) }
-    }
     fn value(self) -> u32 {
         self.select.value()
-    }
-    fn modify(&mut self, file_number: u32) {
-        self.select.modify(file_number);
-        self.log.modify(file_number);
     }
 }
 
@@ -268,38 +231,5 @@ mod tally_test {
         assert_update_with_sets_self_file_number_to_arguments::<Dual<LastFileSeen, LineCount>>();
         assert_update_with_sets_self_file_number_to_arguments::<Dual<LastFileSeen, FileCount>>();
         assert_update_with_sets_self_file_number_to_arguments::<Dual<LastFileSeen, Noop>>();
-    }
-
-    fn assert_update_with_is_the_same_as_modify<S: Select>() {
-        let mut the_vogue = S::first_file();
-        the_vogue.next_file();
-        the_vogue.next_file();
-
-        let mut modified = S::new(1);
-        modified.modify(3);
-
-        let mut updated = S::new(1);
-        updated.update_with(the_vogue);
-
-        assert_eq!(updated, modified);
-    }
-    #[test]
-    fn updated_works_the_same_as_modify_with_the_vogues_file_number() {
-        assert_update_with_is_the_same_as_modify::<LineCount>();
-        assert_update_with_is_the_same_as_modify::<FileCount>();
-        assert_update_with_is_the_same_as_modify::<Noop>();
-        assert_update_with_is_the_same_as_modify::<LastFileSeen>();
-        assert_update_with_is_the_same_as_modify::<Dual<LineCount, LineCount>>();
-        assert_update_with_is_the_same_as_modify::<Dual<LineCount, FileCount>>();
-        assert_update_with_is_the_same_as_modify::<Dual<LineCount, Noop>>();
-        assert_update_with_is_the_same_as_modify::<Dual<FileCount, LineCount>>();
-        assert_update_with_is_the_same_as_modify::<Dual<FileCount, FileCount>>();
-        assert_update_with_is_the_same_as_modify::<Dual<FileCount, Noop>>();
-        assert_update_with_is_the_same_as_modify::<Dual<Noop, LineCount>>();
-        assert_update_with_is_the_same_as_modify::<Dual<Noop, FileCount>>();
-        assert_update_with_is_the_same_as_modify::<Dual<Noop, Noop>>();
-        assert_update_with_is_the_same_as_modify::<Dual<LastFileSeen, LineCount>>();
-        assert_update_with_is_the_same_as_modify::<Dual<LastFileSeen, FileCount>>();
-        assert_update_with_is_the_same_as_modify::<Dual<LastFileSeen, Noop>>();
     }
 }
