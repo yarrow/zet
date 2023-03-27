@@ -58,10 +58,8 @@ pub fn calculate2<O: LaterOperand>(
         // twice. So we call `count_and` directly, with a single `LineCount`
         // bookkeeping value.
         Count::Lines => match operation {
-            Single => count_and(Keep::Single, LineCount::first_file(), first_operand, rest, out),
-            Multiple => {
-                count_and(Keep::Multiple, LineCount::first_file(), first_operand, rest, out)
-            }
+            Single => count_and::<LineCount, O>(Keep::Single, first_operand, rest, out),
+            Multiple => count_and::<LineCount, O>(Keep::Multiple, first_operand, rest, out),
             _ => dispatch(operation, LineCount::first_file(), first_operand, rest, out),
         },
 
@@ -69,12 +67,8 @@ pub fn calculate2<O: LaterOperand>(
         // bookkeeping values, so we call `count_and` directly when `count` is
         // Count::Files` and `operation` is `SingleByFile` or `MultipleByFile`.
         Count::Files => match operation {
-            SingleByFile => {
-                count_and(Keep::Single, FileCount::first_file(), first_operand, rest, out)
-            }
-            MultipleByFile => {
-                count_and(Keep::Multiple, FileCount::first_file(), first_operand, rest, out)
-            }
+            SingleByFile => count_and::<FileCount, O>(Keep::Single, first_operand, rest, out),
+            MultipleByFile => count_and::<FileCount, O>(Keep::Multiple, first_operand, rest, out),
 
             _ => dispatch(operation, FileCount::first_file(), first_operand, rest, out),
         },
@@ -93,14 +87,16 @@ fn dispatch<Log: Bookkeeping, O: LaterOperand>(
     rest: impl Iterator<Item = Result<O>>,
     out: impl std::io::Write,
 ) -> Result<()> {
+    type LineAnd<Log> = Dual<LineCount, Log>;
+    type FileAnd<Log> = Dual<FileCount, Log>;
     match operation {
         Union => union(log, first_operand, rest, out),
         Diff => diff(log, first_operand, rest, out),
         Intersect => intersect(log, first_operand, rest, out),
-        Single => count_lines_and(Keep::Single, log, first_operand, rest, out),
-        Multiple => count_lines_and(Keep::Multiple, log, first_operand, rest, out),
-        SingleByFile => count_files_and(Keep::Single, log, first_operand, rest, out),
-        MultipleByFile => count_files_and(Keep::Multiple, log, first_operand, rest, out),
+        Single => count_and::<LineAnd<Log>, O>(Keep::Single, first_operand, rest, out),
+        Multiple => count_and::<LineAnd<Log>, O>(Keep::Multiple, first_operand, rest, out),
+        SingleByFile => count_and::<FileAnd<Log>, O>(Keep::Single, first_operand, rest, out),
+        MultipleByFile => count_and::<FileAnd<Log>, O>(Keep::Multiple, first_operand, rest, out),
     }
 }
 
@@ -198,41 +194,17 @@ enum Keep {
 /// `Keep::Single`) or greater than 1 (for `Keep::Multiple`).
 fn count_and<B: Bookkeeping, O: LaterOperand>(
     keep: Keep,
-    item: B,
     first_operand: &[u8],
     rest: impl Iterator<Item = Result<O>>,
     out: impl std::io::Write,
 ) -> Result<()> {
+    let item = B::first_file();
     let mut set = every_line(item, first_operand, rest)?;
     match keep {
         Keep::Single => set.retain(|v| v == 1),
         Keep::Multiple => set.retain(|v| v > 1),
     }
     output_and_discard(set, out)
-}
-
-/// Specifically a `LineCount`ed `ZetSet`.
-fn count_lines_and<Log: Bookkeeping, O: LaterOperand>(
-    keep: Keep,
-    _log: Log,
-    first_operand: &[u8],
-    rest: impl Iterator<Item = Result<O>>,
-    out: impl std::io::Write,
-) -> Result<()> {
-    let item = Dual::<LineCount, Log>::first_file();
-    count_and(keep, item, first_operand, rest, out)
-}
-
-/// Specifically a `FileCount`ed `ZetSet`.
-fn count_files_and<Log: Bookkeeping, O: LaterOperand>(
-    keep: Keep,
-    _log: Log,
-    first_operand: &[u8],
-    rest: impl Iterator<Item = Result<O>>,
-    out: impl std::io::Write,
-) -> Result<()> {
-    let item = Dual::<FileCount, Log>::first_file();
-    count_and(keep, item, first_operand, rest, out)
 }
 
 /// When we're done with a `ZetSet`, we write its lines to our output and exit
