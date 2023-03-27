@@ -1,7 +1,7 @@
 use anyhow::Result;
 use std::fmt::Debug;
 pub(crate) trait Select: Copy + PartialEq + Debug {
-    fn first_file() -> Self;
+    fn new() -> Self;
     fn next_file(&mut self);
     fn update_with(&mut self, _the_vogue: Self);
     fn file_number(self) -> u32;
@@ -17,7 +17,7 @@ pub(crate) trait Bookkeeping: Select {
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub(crate) struct LineCount(u32);
 impl Select for LineCount {
-    fn first_file() -> Self {
+    fn new() -> Self {
         LineCount(1)
     }
     fn next_file(&mut self) {}
@@ -44,7 +44,7 @@ pub(crate) struct FileCount {
     files_seen: u32,
 }
 impl Select for FileCount {
-    fn first_file() -> Self {
+    fn new() -> Self {
         FileCount { file_number: 1, files_seen: 1 }
     }
     fn next_file(&mut self) {
@@ -73,7 +73,7 @@ impl Bookkeeping for FileCount {
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub(crate) struct Noop();
 impl Select for Noop {
-    fn first_file() -> Self {
+    fn new() -> Self {
         Noop()
     }
     fn next_file(&mut self) {}
@@ -94,7 +94,7 @@ impl Bookkeeping for Noop {
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub(crate) struct LastFileSeen(u32);
 impl Select for LastFileSeen {
-    fn first_file() -> Self {
+    fn new() -> Self {
         LastFileSeen(1)
     }
     fn next_file(&mut self) {
@@ -118,8 +118,8 @@ pub(crate) struct Dual<S: Select, B: Bookkeeping> {
 }
 
 impl<S: Select, B: Bookkeeping> Select for Dual<S, B> {
-    fn first_file() -> Self {
-        Dual { select: S::first_file(), log: B::first_file() }
+    fn new() -> Self {
+        Dual { select: S::new(), log: B::new() }
     }
     fn next_file(&mut self) {
         self.select.next_file();
@@ -152,7 +152,7 @@ mod tally_test {
 
     use super::*;
     fn first_file_number<S: Select>() -> u32 {
-        S::first_file().file_number()
+        S::new().file_number()
     }
     #[test]
     #[allow(non_snake_case)]
@@ -176,7 +176,7 @@ mod tally_test {
     }
 
     fn bump_twice<S: Select>() -> S {
-        let mut select = S::first_file();
+        let mut select = S::new();
         select.next_file();
         select.next_file();
         select
@@ -206,8 +206,8 @@ mod tally_test {
     }
 
     fn assert_update_with_sets_self_file_number_to_arguments<S: Select>() {
-        let mut naive = S::first_file();
-        let mut the_vogue = S::first_file();
+        let mut naive = S::new();
+        let mut the_vogue = S::new();
         the_vogue.next_file();
         the_vogue.next_file();
         naive.update_with(the_vogue);

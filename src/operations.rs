@@ -112,7 +112,7 @@ fn every_line<B: Bookkeeping, O: LaterOperand>(
     first_operand: &[u8],
     rest: impl Iterator<Item = Result<O>>,
 ) -> Result<ZetSet<B>> {
-    let mut item = B::first_file();
+    let mut item = B::new();
     let mut set = ZetSet::new(first_operand, item);
     for operand in rest {
         item.next_file();
@@ -143,7 +143,7 @@ fn diff<Log: Bookkeeping, O: LaterOperand>(
     rest: impl Iterator<Item = Result<O>>,
     out: impl std::io::Write,
 ) -> Result<()> {
-    let mut item = Dual::<LastFileSeen, Log>::first_file();
+    let mut item = Dual::<LastFileSeen, Log>::new();
     let mut set = ZetSet::new(first_operand, item);
     for operand in rest {
         item.next_file();
@@ -163,7 +163,7 @@ fn intersect<Log: Bookkeeping, O: LaterOperand>(
     rest: impl Iterator<Item = Result<O>>,
     out: impl std::io::Write,
 ) -> Result<()> {
-    let mut item = Dual::<LastFileSeen, Log>::first_file();
+    let mut item = Dual::<LastFileSeen, Log>::new();
     let mut set = ZetSet::new(first_operand, item);
     for operand in rest {
         item.next_file();
