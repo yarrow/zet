@@ -9,10 +9,10 @@ use crate::set::{LaterOperand, ZetSet};
 use crate::tally::{Bookkeeping, Dual, FileCount, LastFileSeen, LineCount, Noop, Select};
 
 #[derive(Clone, Copy)]
-pub enum Count {
+pub enum LogType {
     Lines,
     Files,
-    Nothing,
+    None,
 }
 /// Calculates and prints the set operation named by `operation`. Each file in `files`
 /// is treated as a set of lines:
@@ -33,46 +33,46 @@ pub fn calculate<O: LaterOperand>(
     out: impl std::io::Write,
 ) -> Result<()> {
     if count {
-        calculate2(operation, Count::Lines, first_operand, rest, out)
+        calculate2(operation, LogType::Lines, first_operand, rest, out)
     } else {
-        calculate2(operation, Count::Nothing, first_operand, rest, out)
+        calculate2(operation, LogType::None, first_operand, rest, out)
     }
 }
 
 pub fn calculate2<O: LaterOperand>(
     operation: OpName,
-    count: Count,
+    log_type: LogType,
     first_operand: &[u8],
     rest: impl Iterator<Item = Result<O>>,
     out: impl std::io::Write,
 ) -> Result<()> {
-    match count {
-        Count::Nothing => dispatch::<Noop, O>(operation, first_operand, rest, out),
+    match log_type {
+        LogType::None => dispatch::<Noop, O>(operation, first_operand, rest, out),
 
-        // When `count` is `Count::Lines` and `operation` is `Single` or
+        // When `log_type` is `LogType::Lines` and `operation` is `Single` or
         // `Multiple`, both logging and selection need a `LineCount` in the
-        // bookkeeping item, so `dispatch` would call `count_and` with
+        // bookkeeping item, so `dispatch` would call `count` with
         // bookkeeping values of `Dual<LineCount, LineCount>`. It would be safe
-        // to count each line in both fields of a `Dual` item, but slower.  And
+        // to log_type each line in both fields of a `Dual` item, but slower.  And
         // it seems unlikely that the optimizer would avoid doing the counting
-        // twice. So we call `count_and` directly, with a single `LineCount`
+        // twice. So we call `count` directly, with a single `LineCount`
         // bookkeeping value.
-        Count::Lines => match operation {
-            Single => count_and::<LineCount, O>(Keep::Single, first_operand, rest, out),
-            Multiple => count_and::<LineCount, O>(Keep::Multiple, first_operand, rest, out),
+        LogType::Lines => match operation {
+            Single => count::<LineCount, O>(AndKeep::Single, first_operand, rest, out),
+            Multiple => count::<LineCount, O>(AndKeep::Multiple, first_operand, rest, out),
             _ => dispatch::<LineCount, O>(operation, first_operand, rest, out),
         },
 
         // Similarly, we don't want `dispatch` to use `Dual<FileCount, FileCount>`
-        // bookkeeping values, so we call `count_and` directly when `count` is
-        // Count::Files` and `operation` is `SingleByFile` or `MultipleByFile`.
-        Count::Files => match operation {
-            SingleByFile => count_and::<FileCount, O>(Keep::Single, first_operand, rest, out),
-            MultipleByFile => count_and::<FileCount, O>(Keep::Multiple, first_operand, rest, out),
+        // bookkeeping values, so we call `count` directly when `log_type` is
+        // LogType::Files` and `operation` is `SingleByFile` or `MultipleByFile`.
+        LogType::Files => match operation {
+            SingleByFile => count::<FileCount, O>(AndKeep::Single, first_operand, rest, out),
+            MultipleByFile => count::<FileCount, O>(AndKeep::Multiple, first_operand, rest, out),
 
             // The number reported will always be 1 — a line appearing only once will appear in
             // only one file
-            Single => count_and::<LineCount, O>(Keep::Single, first_operand, rest, out),
+            Single => count::<LineCount, O>(AndKeep::Single, first_operand, rest, out),
 
             _ => dispatch::<FileCount, O>(operation, first_operand, rest, out),
         },
@@ -90,16 +90,16 @@ fn dispatch<Log: Bookkeeping, O: LaterOperand>(
     rest: impl Iterator<Item = Result<O>>,
     out: impl std::io::Write,
 ) -> Result<()> {
-    type LineAnd<Log> = Dual<LineCount, Log>;
-    type FileAnd<Log> = Dual<FileCount, Log>;
+    type LineWith<Log> = Dual<LineCount, Log>;
+    type FileWith<Log> = Dual<FileCount, Log>;
     match operation {
         Union => union::<Log, O>(first_operand, rest, out),
         Diff => diff::<Log, O>(first_operand, rest, out),
         Intersect => intersect::<Log, O>(first_operand, rest, out),
-        Single => count_and::<LineAnd<Log>, O>(Keep::Single, first_operand, rest, out),
-        Multiple => count_and::<LineAnd<Log>, O>(Keep::Multiple, first_operand, rest, out),
-        SingleByFile => count_and::<FileAnd<Log>, O>(Keep::Single, first_operand, rest, out),
-        MultipleByFile => count_and::<FileAnd<Log>, O>(Keep::Multiple, first_operand, rest, out),
+        Single => count::<LineWith<Log>, O>(AndKeep::Single, first_operand, rest, out),
+        Multiple => count::<LineWith<Log>, O>(AndKeep::Multiple, first_operand, rest, out),
+        SingleByFile => count::<FileWith<Log>, O>(AndKeep::Single, first_operand, rest, out),
+        MultipleByFile => count::<FileWith<Log>, O>(AndKeep::Multiple, first_operand, rest, out),
     }
 }
 
@@ -178,10 +178,10 @@ fn intersect<Log: Bookkeeping, O: LaterOperand>(
 /// `MultipleByFile` each line's bookkeeping item will keep track of how many
 /// files the line has appeared in.
 ///
-/// For `Single` and `SingleByFile` we'll call `count_and(Keep::Single, ...)`
-/// and for `Multiple` and `MultipleByFile` we'll call `count_and(Keep:Multiple, ...)`
+/// For `Single` and `SingleByFile` we'll call `count(AndKeep::Single, ...)`
+/// and for `Multiple` and `MultipleByFile` we'll call `count(AndKeep:Multiple, ...)`
 #[derive(Clone, Copy, PartialEq)]
-enum Keep {
+enum AndKeep {
     Single,
     Multiple,
 }
@@ -189,17 +189,17 @@ enum Keep {
 /// Create a `ZetSet` whose bookkeeping items must keep track of the number of
 /// times a line has appeared in the input, or the number of files it has
 /// appeared in.  Then retain those whose bookkeeping item's value is 1 (for
-/// `Keep::Single`) or greater than 1 (for `Keep::Multiple`).
-fn count_and<B: Bookkeeping, O: LaterOperand>(
-    keep: Keep,
+/// `AndKeep::Single`) or greater than 1 (for `AndKeep::Multiple`).
+fn count<B: Bookkeeping, O: LaterOperand>(
+    keep: AndKeep,
     first_operand: &[u8],
     rest: impl Iterator<Item = Result<O>>,
     out: impl std::io::Write,
 ) -> Result<()> {
     let mut set = every_line::<B, O>(first_operand, rest)?;
     match keep {
-        Keep::Single => set.retain(|v| v == 1),
-        Keep::Multiple => set.retain(|v| v > 1),
+        AndKeep::Single => set.retain(|v| v == 1),
+        AndKeep::Multiple => set.retain(|v| v > 1),
     }
     output_and_discard(set, out)
 }
