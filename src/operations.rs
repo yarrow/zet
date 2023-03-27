@@ -47,7 +47,7 @@ pub fn calculate2<O: LaterOperand>(
     out: impl std::io::Write,
 ) -> Result<()> {
     match count {
-        Count::Nothing => dispatch(operation, Noop::first_file(), first_operand, rest, out),
+        Count::Nothing => dispatch::<Noop, O>(operation, first_operand, rest, out),
 
         // When `count` is `Count::Lines` and `operation` is `Single` or
         // `Multiple`, both logging and selection need a `LineCount` in the
@@ -60,7 +60,7 @@ pub fn calculate2<O: LaterOperand>(
         Count::Lines => match operation {
             Single => count_and::<LineCount, O>(Keep::Single, first_operand, rest, out),
             Multiple => count_and::<LineCount, O>(Keep::Multiple, first_operand, rest, out),
-            _ => dispatch(operation, LineCount::first_file(), first_operand, rest, out),
+            _ => dispatch::<LineCount, O>(operation, first_operand, rest, out),
         },
 
         // Similarly, we don't want `dispatch` to use `Dual<FileCount, FileCount>`
@@ -70,7 +70,7 @@ pub fn calculate2<O: LaterOperand>(
             SingleByFile => count_and::<FileCount, O>(Keep::Single, first_operand, rest, out),
             MultipleByFile => count_and::<FileCount, O>(Keep::Multiple, first_operand, rest, out),
 
-            _ => dispatch(operation, FileCount::first_file(), first_operand, rest, out),
+            _ => dispatch::<FileCount, O>(operation, first_operand, rest, out),
         },
     }
 }
@@ -82,7 +82,6 @@ pub fn calculate2<O: LaterOperand>(
 /// `intersect`, `count_lines_and`, and `count_files_and`).
 fn dispatch<Log: Bookkeeping, O: LaterOperand>(
     operation: OpName,
-    log: Log,
     first_operand: &[u8],
     rest: impl Iterator<Item = Result<O>>,
     out: impl std::io::Write,
@@ -90,9 +89,9 @@ fn dispatch<Log: Bookkeeping, O: LaterOperand>(
     type LineAnd<Log> = Dual<LineCount, Log>;
     type FileAnd<Log> = Dual<FileCount, Log>;
     match operation {
-        Union => union(log, first_operand, rest, out),
-        Diff => diff(log, first_operand, rest, out),
-        Intersect => intersect(log, first_operand, rest, out),
+        Union => union::<Log, O>(first_operand, rest, out),
+        Diff => diff::<Log, O>(first_operand, rest, out),
+        Intersect => intersect::<Log, O>(first_operand, rest, out),
         Single => count_and::<LineAnd<Log>, O>(Keep::Single, first_operand, rest, out),
         Multiple => count_and::<LineAnd<Log>, O>(Keep::Multiple, first_operand, rest, out),
         SingleByFile => count_and::<FileAnd<Log>, O>(Keep::Single, first_operand, rest, out),
@@ -105,12 +104,11 @@ fn dispatch<Log: Bookkeeping, O: LaterOperand>(
 /// the line's bookkeeping item if the line is already present in the `ZetSet`.
 /// The operation will then call `set.retain()` to examine the each line's
 /// bookkeeping item to decide whether or not it belongs in the set.
-fn every_line<O: LaterOperand, B: Bookkeeping>(
-    mut item: B,
+fn every_line<B: Bookkeeping, O: LaterOperand>(
     first_operand: &[u8],
     rest: impl Iterator<Item = Result<O>>,
 ) -> Result<ZetSet<B>> {
-    assert_eq!(item, B::first_file());
+    let mut item = B::first_file();
     let mut set = ZetSet::new(first_operand, item);
     for operand in rest {
         item.next_file();
@@ -123,13 +121,11 @@ fn every_line<O: LaterOperand, B: Bookkeeping>(
 /// the only bookkeeping needed is for the line/file counts, so we don't
 /// need a `Dual` bookkeeping value and just use the `Log` argument passed in.
 fn union<Log: Bookkeeping, O: LaterOperand>(
-    log: Log,
     first_operand: &[u8],
     rest: impl Iterator<Item = Result<O>>,
     out: impl std::io::Write,
 ) -> Result<()> {
-    assert_eq!(log, Log::first_file());
-    let set = every_line(log, first_operand, rest)?;
+    let set = every_line::<Log, O>(first_operand, rest)?;
     output_and_discard(set, out)
 }
 
@@ -139,7 +135,6 @@ fn union<Log: Bookkeeping, O: LaterOperand>(
 /// whose `LastFileSeen` value is not `1`, so we're left only with lines that
 /// appear only in the first file.
 fn diff<Log: Bookkeeping, O: LaterOperand>(
-    _log: Log,
     first_operand: &[u8],
     rest: impl Iterator<Item = Result<O>>,
     out: impl std::io::Write,
@@ -160,7 +155,6 @@ fn diff<Log: Bookkeeping, O: LaterOperand>(
 /// every other file; so after each file we discard those lines whose
 /// `LastFileSeen` number is not the current `file_number`.
 fn intersect<Log: Bookkeeping, O: LaterOperand>(
-    _log: Log,
     first_operand: &[u8],
     rest: impl Iterator<Item = Result<O>>,
     out: impl std::io::Write,
@@ -198,8 +192,7 @@ fn count_and<B: Bookkeeping, O: LaterOperand>(
     rest: impl Iterator<Item = Result<O>>,
     out: impl std::io::Write,
 ) -> Result<()> {
-    let item = B::first_file();
-    let mut set = every_line(item, first_operand, rest)?;
+    let mut set = every_line::<B, O>(first_operand, rest)?;
     match keep {
         Keep::Single => set.retain(|v| v == 1),
         Keep::Multiple => set.retain(|v| v > 1),
