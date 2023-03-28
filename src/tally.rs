@@ -18,6 +18,7 @@ trait FileNumber: Copy + PartialEq + Debug {
     fn file_number(self) -> Option<u32> {
         None
     }
+    fn set_file_number(&mut self, file_number: u32) {}
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -79,6 +80,9 @@ impl FileNumber for FileCount {
     fn file_number(self) -> Option<u32> {
         Some(self.file_number)
     }
+    fn set_file_number(&mut self, file_number: u32) {
+        self.file_number = file_number
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -125,6 +129,9 @@ impl FileNumber for LastFileSeen {
     fn file_number(self) -> Option<u32> {
         Some(self.0)
     }
+    fn set_file_number(&mut self, file_number: u32) {
+        self.0 = file_number
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -161,6 +168,10 @@ impl<S: Select, B: Bookkeeping> Bookkeeping for Dual<S, B> {
 impl<S: Select + FileNumber, B: Bookkeeping + FileNumber> FileNumber for Dual<S, B> {
     fn file_number(self) -> Option<u32> {
         self.select.file_number().or(self.log.file_number())
+    }
+    fn set_file_number(&mut self, file_number: u32) {
+        self.select.set_file_number(file_number);
+        self.log.set_file_number(file_number);
     }
 }
 
