@@ -263,27 +263,39 @@ mod test {
     use self::OpName::*;
 
     #[test]
-    fn given_a_single_argument_all_ops_but_multiple_return_its_lines_in_order_without_dups() {
+    fn given_a_single_argument_all_ops_but_multiple_return_input_lines_in_order_without_dups() {
         let arg: Vec<&[u8]> = vec![b"xxx\nabc\nxxx\nyyy\nxxx\nabc\n"];
         let uniq = "xxx\nabc\nyyy\n";
+        let solo = "yyy\n";
+        let multi = "xxx\nabc\n";
         let empty = "";
-        for op in &[Intersect, Union, Diff, SingleByFile, MultipleByFile] {
-            let result = calc(*op, &arg);
-            let expected = if *op == MultipleByFile { empty } else { uniq };
+        for &op in &[Intersect, Union, Diff, Single, SingleByFile, Multiple, MultipleByFile] {
+            let result = calc(op, &arg);
+            let expected = if op == Single {
+                solo
+            } else if op == Multiple {
+                multi
+            } else if op == MultipleByFile {
+                empty
+            } else {
+                uniq
+            };
             assert_eq!(result, *expected, "for {op:?}");
         }
     }
     #[test]
     fn results_for_each_operation() {
         let args: Vec<&[u8]> = vec![
-            b"xyz\nabc\nxy\nxz\nx\n", // Strings containing "x" (and "abc")
-            b"xyz\nabc\nxy\nyz\ny\n", // Strings containing "y" (and "abc")
-            b"xyz\nabc\nxz\nyz\nz\n", // Strings containing "z" (and "abc")
+            b"xyz\nabc\nxy\nxz\nx\n",    // Strings containing "x" (and "abc")
+            b"xyz\nabc\nxy\nyz\ny\ny\n", // Strings containing "y" (and "abc")
+            b"xyz\nabc\nxz\nyz\nz\n",    // Strings containing "z" (and "abc")
         ];
         assert_eq!(calc(Union, &args), "xyz\nabc\nxy\nxz\nx\nyz\ny\nz\n", "for {Union:?}");
         assert_eq!(calc(Intersect, &args), "xyz\nabc\n", "for {Intersect:?}");
         assert_eq!(calc(Diff, &args), "x\n", "for {Diff:?}");
+        assert_eq!(calc(Single, &args), "x\nz\n", "for {Single:?}");
         assert_eq!(calc(SingleByFile, &args), "x\ny\nz\n", "for {SingleByFile:?}");
+        assert_eq!(calc(Multiple, &args), "xyz\nabc\nxy\nxz\nyz\ny\n", "for {Multiple:?}");
         assert_eq!(calc(MultipleByFile, &args), "xyz\nabc\nxy\nxz\nyz\n", "for {MultipleByFile:?}");
     }
 }
