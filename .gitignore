@@ -1,3 +1,4 @@
 /target
+/notes
 **/*.rs.bk
 .DS_Store
