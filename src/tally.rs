@@ -14,11 +14,12 @@ pub(crate) trait Bookkeeping: Select {
 }
 
 #[cfg(test)]
-trait FileNumber: Copy + PartialEq + Debug {
+trait Testable: Copy + PartialEq + Debug {
     fn file_number(self) -> Option<u32> {
         None
     }
     fn set_file_number(&mut self, file_number: u32) {}
+    fn set_line_count(&mut self, line_count: u32) {}
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -31,7 +32,7 @@ impl Select for LineCount {
         Ok(())
     }
     fn update_with(&mut self, _other: Self) {
-        self.0 += 1
+        self.0 = self.0.saturating_add(1);
     }
     fn value(self) -> u32 {
         self.0
@@ -39,12 +40,20 @@ impl Select for LineCount {
 }
 impl Bookkeeping for LineCount {
     fn write_count(&self, width: usize, out: &mut impl std::io::Write) -> Result<()> {
-        write!(out, "{:width$} ", self.0)?;
+        if self.0 == u32::MAX {
+            write!(out, " overflow  ")?
+        } else {
+            write!(out, "{:width$} ", self.0)?
+        }
         Ok(())
     }
 }
 #[cfg(test)]
-impl FileNumber for LineCount {}
+impl Testable for LineCount {
+    fn set_line_count(&mut self, line_count: u32) {
+        self.0 = line_count;
+    }
+}
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub(crate) struct FileCount {
@@ -79,7 +88,7 @@ impl Bookkeeping for FileCount {
     }
 }
 #[cfg(test)]
-impl FileNumber for FileCount {
+impl Testable for FileCount {
     fn file_number(self) -> Option<u32> {
         Some(self.file_number)
     }
@@ -108,7 +117,7 @@ impl Bookkeeping for Noop {
     }
 }
 #[cfg(test)]
-impl FileNumber for Noop {}
+impl Testable for Noop {}
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub(crate) struct LastFileSeen(u32);
@@ -131,7 +140,7 @@ impl Select for LastFileSeen {
     }
 }
 #[cfg(test)]
-impl FileNumber for LastFileSeen {
+impl Testable for LastFileSeen {
     fn file_number(self) -> Option<u32> {
         Some(self.0)
     }
@@ -171,7 +180,7 @@ impl<S: Select, B: Bookkeeping> Bookkeeping for Dual<S, B> {
     }
 }
 #[cfg(test)]
-impl<S: Select + FileNumber, B: Bookkeeping + FileNumber> FileNumber for Dual<S, B> {
+impl<S: Select + Testable, B: Bookkeeping + Testable> Testable for Dual<S, B> {
     fn file_number(self) -> Option<u32> {
         self.select.file_number().or(self.log.file_number())
     }
@@ -179,14 +188,18 @@ impl<S: Select + FileNumber, B: Bookkeeping + FileNumber> FileNumber for Dual<S,
         self.select.set_file_number(file_number);
         self.log.set_file_number(file_number);
     }
+    fn set_line_count(&mut self, line_count: u32) {
+        self.log.set_line_count(line_count);
+    }
 }
 
 #[cfg(test)]
+#[allow(clippy::pedantic)]
 mod tally_test {
     use std::fs::File;
 
     use super::*;
-    fn new_file_number<S: Select + FileNumber>() -> Option<u32> {
+    fn new_file_number<S: Select + Testable>() -> Option<u32> {
         S::new().file_number()
     }
     #[test]
@@ -216,7 +229,7 @@ mod tally_test {
         select.next_file().unwrap();
         select
     }
-    fn bump_twice_file_number<S: Select + FileNumber>() -> Option<u32> {
+    fn bump_twice_file_number<S: Select + Testable>() -> Option<u32> {
         bump_twice::<S>().file_number()
     }
     #[test]
@@ -240,7 +253,7 @@ mod tally_test {
         assert_eq!(bump_twice_file_number::<Dual<LastFileSeen, Noop>>(), Some(2));
     }
 
-    fn assert_update_with_sets_self_file_number_to_arguments<S: Select + FileNumber>() {
+    fn assert_update_with_sets_self_file_number_to_arguments<S: Select + Testable>() {
         let mut naive = S::new();
         let mut other = S::new();
         other.next_file().unwrap();
@@ -268,7 +281,8 @@ mod tally_test {
         assert_update_with_sets_self_file_number_to_arguments::<Dual<LastFileSeen, Noop>>();
     }
 
-    fn assert_next_file_errors_if_file_number_would_wrap_to_zero<S: Select + FileNumber>() {
+    #[allow(non_snake_case)]
+    fn assert_next_file_errors_if_file_number_is_u32_MAX<S: Select + Testable>() {
         let mut item = S::new();
         let start = item.file_number();
         item.next_file().unwrap();
@@ -284,23 +298,63 @@ mod tally_test {
     }
     #[test]
     fn next_file_errors_if_file_number_would_wrap_to_zero() {
-        assert_next_file_errors_if_file_number_would_wrap_to_zero::<LineCount>();
-        assert_next_file_errors_if_file_number_would_wrap_to_zero::<FileCount>();
-        assert_next_file_errors_if_file_number_would_wrap_to_zero::<Noop>();
-        assert_next_file_errors_if_file_number_would_wrap_to_zero::<LastFileSeen>();
-        assert_next_file_errors_if_file_number_would_wrap_to_zero::<Dual<LineCount, LineCount>>();
-        assert_next_file_errors_if_file_number_would_wrap_to_zero::<Dual<LineCount, FileCount>>();
-        assert_next_file_errors_if_file_number_would_wrap_to_zero::<Dual<LineCount, Noop>>();
-        assert_next_file_errors_if_file_number_would_wrap_to_zero::<Dual<FileCount, LineCount>>();
-        assert_next_file_errors_if_file_number_would_wrap_to_zero::<Dual<FileCount, FileCount>>();
-        assert_next_file_errors_if_file_number_would_wrap_to_zero::<Dual<FileCount, Noop>>();
-        assert_next_file_errors_if_file_number_would_wrap_to_zero::<Dual<Noop, LineCount>>();
-        assert_next_file_errors_if_file_number_would_wrap_to_zero::<Dual<Noop, FileCount>>();
-        assert_next_file_errors_if_file_number_would_wrap_to_zero::<Dual<Noop, Noop>>();
-        assert_next_file_errors_if_file_number_would_wrap_to_zero::<Dual<LastFileSeen, LineCount>>(
-        );
-        assert_next_file_errors_if_file_number_would_wrap_to_zero::<Dual<LastFileSeen, FileCount>>(
-        );
-        assert_next_file_errors_if_file_number_would_wrap_to_zero::<Dual<LastFileSeen, Noop>>();
+        assert_next_file_errors_if_file_number_is_u32_MAX::<LineCount>();
+        assert_next_file_errors_if_file_number_is_u32_MAX::<FileCount>();
+        assert_next_file_errors_if_file_number_is_u32_MAX::<Noop>();
+        assert_next_file_errors_if_file_number_is_u32_MAX::<LastFileSeen>();
+        assert_next_file_errors_if_file_number_is_u32_MAX::<Dual<LineCount, LineCount>>();
+        assert_next_file_errors_if_file_number_is_u32_MAX::<Dual<LineCount, FileCount>>();
+        assert_next_file_errors_if_file_number_is_u32_MAX::<Dual<LineCount, Noop>>();
+        assert_next_file_errors_if_file_number_is_u32_MAX::<Dual<FileCount, LineCount>>();
+        assert_next_file_errors_if_file_number_is_u32_MAX::<Dual<FileCount, FileCount>>();
+        assert_next_file_errors_if_file_number_is_u32_MAX::<Dual<FileCount, Noop>>();
+        assert_next_file_errors_if_file_number_is_u32_MAX::<Dual<Noop, LineCount>>();
+        assert_next_file_errors_if_file_number_is_u32_MAX::<Dual<Noop, FileCount>>();
+        assert_next_file_errors_if_file_number_is_u32_MAX::<Dual<Noop, Noop>>();
+        assert_next_file_errors_if_file_number_is_u32_MAX::<Dual<LastFileSeen, LineCount>>();
+        assert_next_file_errors_if_file_number_is_u32_MAX::<Dual<LastFileSeen, FileCount>>();
+        assert_next_file_errors_if_file_number_is_u32_MAX::<Dual<LastFileSeen, Noop>>();
+    }
+
+    fn log_string<B: Bookkeeping + Testable>(item: B) -> String {
+        let mut result = vec![];
+        item.write_count(10, &mut result).unwrap();
+        String::from_utf8(result).unwrap()
+    }
+    fn assert_item_logs_overflow_when_appropriate<B: Bookkeeping + Testable>() {
+        let mut item = B::new();
+        item.set_line_count(42);
+        if log_string(item).trim() == "42" {
+            // Otherwise we're not counting lines
+            let big_but_ok = u32::MAX - 1;
+            item.set_line_count(big_but_ok);
+            assert_eq!(log_string(item).trim(), format!("{big_but_ok}"));
+
+            // Simulate seeing another line
+            item.update_with(item);
+            assert_eq!(log_string(item).trim(), "overflow");
+
+            // And yet another line – Once line count hits overflow, it doesn't change.
+            item.update_with(item);
+            assert_eq!(log_string(item).trim(), "overflow");
+        }
+    }
+    #[test]
+    fn item_logs_overflow_when_appropriate() {
+        assert_item_logs_overflow_when_appropriate::<LineCount>();
+        assert_item_logs_overflow_when_appropriate::<FileCount>();
+        assert_item_logs_overflow_when_appropriate::<Noop>();
+        assert_item_logs_overflow_when_appropriate::<Dual<LineCount, LineCount>>();
+        assert_item_logs_overflow_when_appropriate::<Dual<LineCount, FileCount>>();
+        assert_item_logs_overflow_when_appropriate::<Dual<LineCount, Noop>>();
+        assert_item_logs_overflow_when_appropriate::<Dual<FileCount, LineCount>>();
+        assert_item_logs_overflow_when_appropriate::<Dual<FileCount, FileCount>>();
+        assert_item_logs_overflow_when_appropriate::<Dual<FileCount, Noop>>();
+        assert_item_logs_overflow_when_appropriate::<Dual<Noop, LineCount>>();
+        assert_item_logs_overflow_when_appropriate::<Dual<Noop, FileCount>>();
+        assert_item_logs_overflow_when_appropriate::<Dual<Noop, Noop>>();
+        assert_item_logs_overflow_when_appropriate::<Dual<LastFileSeen, LineCount>>();
+        assert_item_logs_overflow_when_appropriate::<Dual<LastFileSeen, FileCount>>();
+        assert_item_logs_overflow_when_appropriate::<Dual<LastFileSeen, Noop>>();
     }
 }
