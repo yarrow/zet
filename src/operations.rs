@@ -210,30 +210,8 @@ mod test {
     use bstr::ByteSlice;
     use std::path::PathBuf;
 
+    // Does no disk I/O
     fn calc(operation: OpName, operands: &[&[u8]]) -> String {
-        let first = operands[0];
-        let remaining = operands[1..].iter().map(|s| s.to_vec());
-
-        let temp_dir = TempDir::new().unwrap();
-        let mut paths = Vec::new();
-        for operand in remaining {
-            let name = format!("operand{}", paths.len());
-            let op = temp_dir.child(name);
-            op.write_binary(&operand[..]).unwrap();
-            paths.push(PathBuf::from(op.path()));
-        }
-
-        let mut answer = Vec::new();
-        calculate(operation, LogType::None, first, operands::Remaining::from(paths), &mut answer)
-            .unwrap();
-        let slow = String::from_utf8(answer).unwrap();
-        let fast = fast_calc(operation, operands);
-        assert_eq!(slow, fast);
-        slow
-    }
-
-    // Like `calc`, but does no disk I/O
-    fn fast_calc(operation: OpName, operands: &[&[u8]]) -> String {
         let first = operands[0];
         let mut answer = Vec::new();
         let rest = operands[1..].iter().map(|o| Ok(*o));
