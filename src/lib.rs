@@ -44,12 +44,12 @@
 //!   line of `slice`.
 //!
 //! For a `ZetSet` `z`,
-//! * `z.insert_or_modify(operand, file_number, item)` uses `IndexMap`'s `entry`
-//!    method to insert `item` as the value for lines in `operand` that were not
-//!    already present in `z`, or to call `item.modify(file_number)` on the
-//!    bookkeeping item of lines that were present. Inserted lines are allocated,
-//!    not borrowed, so `operand` need not outlive `z`.
-//! * `z.modify_if_present(operand, file_number)` calls `item.modify(file_number)`
+//! * `z.insert_or_update(operand, item)` uses `IndexMap`'s `entry` method to
+//!   insert `item` as the value for lines in `operand` that were not already
+//!   present in `z`, or to call `v.update_with(item)` on the bookkeeping item
+//!   of lines that were present. Inserted lines are allocated, not borrowed, so
+//!   `operand` need not outlive `z`.
+//! * `z.update_if_present(operand, item)` calls `v.update_with(file_number)`
 //!   on the bookkeeping item of lines in operand that are present in `z`,
 //!   ignoring lines that are not already present.
 //! * Finally, `z.retain(keep)` retains lines for which `keep(item.value())` is

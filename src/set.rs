@@ -40,13 +40,13 @@ pub trait LaterOperand {
 
 /// When a `ZetSet` processes a line from an operand, it does one of two things:
 /// * If the line is not present in the set, it is inserted, with a bookkeeping
-/// value passed by the caller.
-/// * If the line is already present in the set, `.modify(file_number)` is
-/// called on its bookkeeping value.
+///   value `item` passed by the caller.
+/// * If the line is already present in the set, `v.update_with(item)` is
+///   called on its bookkeeping value `v`.
 ///
 /// The `new` function inserts lines borrowed from its `slice` argument. The
-/// `insert_or_modify` inserts `Cow::Owned` lines, so its `operand` argument
-/// need not outlive the `ZetSet` The `modify_if_present` method only modifies —
+/// `insert_or_update` inserts `Cow::Owned` lines, so its `operand` argument
+/// need not outlive the `ZetSet` The `update_if_present` method only updates —
 /// it's used by the `Insert` and `Diff` operations, which only decrease the set
 /// returned by `new` and never add to it.
 ///
@@ -60,7 +60,7 @@ pub trait LaterOperand {
 impl<'data, B: Bookkeeping> ZetSet<'data, B> {
     /// Create a new `ZetSet`, with each key a line borrowed from `slice`, and
     /// value `item` for every line newly seen. If a line is already present,
-    /// with bookkeeping value `v`, update it by calling `v.modify_with(item)`
+    /// with bookkeeping value `v`, update it by calling `v.update_with(item)`
     pub(crate) fn new(mut slice: &'data [u8], item: B) -> Self {
         let (bom, line_terminator) = output_info(slice);
         slice = &slice[bom.len()..];
@@ -84,8 +84,8 @@ impl<'data, B: Bookkeeping> ZetSet<'data, B> {
     /// For each line in `operand`, insert `line` as `Cow::Owned` to the
     /// underlying `IndexMap` if it is not already present, with bookkeeping
     /// value `item`. If `line` is already present, with bookkeeping value `v`,
-    /// update it by calling `v.modify_with(item)`
-    pub(crate) fn insert_or_modify(&mut self, operand: impl LaterOperand, item: B) -> Result<()> {
+    /// update it by calling `v.update_with(item)`
+    pub(crate) fn insert_or_update(&mut self, operand: impl LaterOperand, item: B) -> Result<()> {
         operand.for_byte_line(|line| {
             self.set
                 .entry(Cow::from(line.to_vec()))
@@ -95,8 +95,8 @@ impl<'data, B: Bookkeeping> ZetSet<'data, B> {
     }
 
     /// For each line in `operand` that is already present in the underlying
-    /// `IndexMap`, call `modify` on the bookkeeping value.
-    pub(crate) fn modify_if_present(&mut self, operand: impl LaterOperand, item: B) -> Result<()> {
+    /// `IndexMap` with bookkeeping value `v`, call `v.update_with(item)`.
+    pub(crate) fn update_if_present(&mut self, operand: impl LaterOperand, item: B) -> Result<()> {
         operand.for_byte_line(|line| {
             if let Some(bookkeeping) = self.set.get_mut(line) {
                 bookkeeping.update_with(item)

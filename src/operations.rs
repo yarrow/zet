@@ -104,8 +104,8 @@ fn dispatch<Log: Bookkeeping, O: LaterOperand>(
 }
 
 /// For most operations, we insert every line in the input into the `ZetSet`.
-/// Both `new` and `insert_or_modify` will call `item.modify(file_number)` on
-/// the line's bookkeeping item if the line is already present in the `ZetSet`.
+/// Both `new` and `insert_or_update` will call `v.update_with(item)` on the
+/// line's bookkeeping item `v` if the line is already present in the `ZetSet`.
 /// The operation will then call `set.retain()` to examine the each line's
 /// bookkeeping item to decide whether or not it belongs in the set.
 fn every_line<B: Bookkeeping, O: LaterOperand>(
@@ -116,7 +116,7 @@ fn every_line<B: Bookkeeping, O: LaterOperand>(
     let mut set = ZetSet::new(first_operand, item);
     for operand in rest {
         item.next_file();
-        set.insert_or_modify(operand?, item)?;
+        set.insert_or_update(operand?, item)?;
     }
     Ok(set)
 }
@@ -134,7 +134,7 @@ fn union<Log: Bookkeeping, O: LaterOperand>(
 }
 
 /// Only lines that appear in the first operand will be in the result of `Diff`;
-/// so `Diff` uses `modify_if_present` rather than `insert_or_modify`, changing
+/// so `Diff` uses `update_if_present` rather than `insert_or_update`, changing
 /// the file number of each file seen in a subsequent operand. We discard lines
 /// whose `LastFileSeen` value is not `1`, so we're left only with lines that
 /// appear only in the first file.
@@ -148,15 +148,15 @@ fn diff<Log: Bookkeeping, O: LaterOperand>(
     let mut set = ZetSet::new(first_operand, item);
     for operand in rest {
         item.next_file();
-        set.modify_if_present(operand?, item)?;
+        set.update_if_present(operand?, item)?;
     }
     set.retain(|file_number| file_number == first_file);
     output_and_discard(set, out)
 }
 
 /// Similarly, only lines that appear in the first operand will be in the result
-/// of `Intersect`; so `Intersect` also uses `modify_if_present` rather than
-/// `insert_or_modify`. But lines in `Intersect`'s result must also appear in
+/// of `Intersect`; so `Intersect` also uses `update_if_present` rather than
+/// `insert_or_update`. But lines in `Intersect`'s result must also appear in
 /// every other file; so after each file we discard those lines whose
 /// `LastFileSeen` number is not the current `file_number`.
 fn intersect<Log: Bookkeeping, O: LaterOperand>(
@@ -169,7 +169,7 @@ fn intersect<Log: Bookkeeping, O: LaterOperand>(
     for operand in rest {
         item.next_file();
         let this_file = item.value();
-        set.modify_if_present(operand?, item)?;
+        set.update_if_present(operand?, item)?;
         set.retain(|v| v == this_file);
     }
     output_and_discard(set, out)
