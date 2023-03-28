@@ -27,20 +27,6 @@ pub enum LogType {
 ///
 pub fn calculate<O: LaterOperand>(
     operation: OpName,
-    count: bool,
-    first_operand: &[u8],
-    rest: impl Iterator<Item = Result<O>>,
-    out: impl std::io::Write,
-) -> Result<()> {
-    if count {
-        calculate2(operation, LogType::Lines, first_operand, rest, out)
-    } else {
-        calculate2(operation, LogType::None, first_operand, rest, out)
-    }
-}
-
-pub fn calculate2<O: LaterOperand>(
-    operation: OpName,
     log_type: LogType,
     first_operand: &[u8],
     rest: impl Iterator<Item = Result<O>>,
@@ -238,7 +224,8 @@ mod test {
         }
 
         let mut answer = Vec::new();
-        calculate(operation, false, first, operands::Remaining::from(paths), &mut answer).unwrap();
+        calculate(operation, LogType::None, first, operands::Remaining::from(paths), &mut answer)
+            .unwrap();
         let slow = String::from_utf8(answer).unwrap();
         let fast = fast_calc(operation, operands);
         assert_eq!(slow, fast);
@@ -250,7 +237,7 @@ mod test {
         let first = operands[0];
         let mut answer = Vec::new();
         let rest = operands[1..].iter().map(|o| Ok(*o));
-        calculate(operation, false, first, rest, &mut answer).unwrap();
+        calculate(operation, LogType::None, first, rest, &mut answer).unwrap();
         String::from_utf8(answer).unwrap()
     }
     impl LaterOperand for &[u8] {
