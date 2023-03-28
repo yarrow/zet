@@ -2,7 +2,7 @@ use anyhow::Result;
 use std::fmt::Debug;
 pub(crate) trait Select: Copy + PartialEq + Debug {
     fn new() -> Self;
-    fn next_file(&mut self);
+    fn next_file(&mut self) -> Result<()>;
     fn update_with(&mut self, other: Self);
     fn value(self) -> u32;
 }
@@ -26,7 +26,9 @@ impl Select for LineCount {
     fn new() -> Self {
         LineCount(1)
     }
-    fn next_file(&mut self) {}
+    fn next_file(&mut self) -> Result<()> {
+        Ok(())
+    }
     fn update_with(&mut self, _other: Self) {
         self.0 += 1
     }
@@ -52,8 +54,9 @@ impl Select for FileCount {
     fn new() -> Self {
         FileCount { file_number: 0, files_seen: 1 }
     }
-    fn next_file(&mut self) {
+    fn next_file(&mut self) -> Result<()> {
         self.file_number += 1;
+        Ok(())
     }
     fn update_with(&mut self, other: Self) {
         if other.file_number != self.file_number {
@@ -84,7 +87,9 @@ impl Select for Noop {
     fn new() -> Self {
         Noop()
     }
-    fn next_file(&mut self) {}
+    fn next_file(&mut self) -> Result<()> {
+        Ok(())
+    }
     fn update_with(&mut self, _other: Self) {}
     fn value(self) -> u32 {
         0
@@ -104,8 +109,9 @@ impl Select for LastFileSeen {
     fn new() -> Self {
         LastFileSeen(0)
     }
-    fn next_file(&mut self) {
+    fn next_file(&mut self) -> Result<()> {
         self.0 += 1;
+        Ok(())
     }
     fn update_with(&mut self, other: Self) {
         self.0 = other.0
@@ -131,9 +137,9 @@ impl<S: Select, B: Bookkeeping> Select for Dual<S, B> {
     fn new() -> Self {
         Dual { select: S::new(), log: B::new() }
     }
-    fn next_file(&mut self) {
-        self.select.next_file();
-        self.log.next_file();
+    fn next_file(&mut self) -> Result<()> {
+        self.select.next_file()?;
+        self.log.next_file()
     }
     fn update_with(&mut self, other: Self) {
         self.select.update_with(other.select);
@@ -189,8 +195,8 @@ mod tally_test {
 
     fn bump_twice<S: Select>() -> S {
         let mut select = S::new();
-        select.next_file();
-        select.next_file();
+        select.next_file().unwrap();
+        select.next_file().unwrap();
         select
     }
     fn bump_twice_file_number<S: Select + FileNumber>() -> Option<u32> {
@@ -220,8 +226,8 @@ mod tally_test {
     fn assert_update_with_sets_self_file_number_to_arguments<S: Select + FileNumber>() {
         let mut naive = S::new();
         let mut other = S::new();
-        other.next_file();
-        other.next_file();
+        other.next_file().unwrap();
+        other.next_file().unwrap();
         naive.update_with(other);
         assert_eq!(naive.file_number(), other.file_number());
     }

@@ -115,7 +115,7 @@ fn every_line<B: Bookkeeping, O: LaterOperand>(
     let mut item = B::new();
     let mut set = ZetSet::new(first_operand, item);
     for operand in rest {
-        item.next_file();
+        item.next_file()?;
         set.insert_or_update(operand?, item)?;
     }
     Ok(set)
@@ -147,7 +147,7 @@ fn diff<Log: Bookkeeping, O: LaterOperand>(
     let first_file = item.value();
     let mut set = ZetSet::new(first_operand, item);
     for operand in rest {
-        item.next_file();
+        item.next_file()?;
         set.update_if_present(operand?, item)?;
     }
     set.retain(|file_number| file_number == first_file);
@@ -167,7 +167,7 @@ fn intersect<Log: Bookkeeping, O: LaterOperand>(
     let mut item = Dual::<LastFileSeen, Log>::new();
     let mut set = ZetSet::new(first_operand, item);
     for operand in rest {
-        item.next_file();
+        item.next_file()?;
         let this_file = item.value();
         set.update_if_present(operand?, item)?;
         set.retain(|v| v == this_file);
