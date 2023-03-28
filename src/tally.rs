@@ -3,7 +3,7 @@ use std::fmt::Debug;
 pub(crate) trait Select: Copy + PartialEq + Debug {
     fn new() -> Self;
     fn next_file(&mut self);
-    fn update_with(&mut self, _the_vogue: Self);
+    fn update_with(&mut self, other: Self);
     fn file_number(self) -> u32;
     fn value(self) -> u32;
 }
@@ -21,7 +21,7 @@ impl Select for LineCount {
         LineCount(1)
     }
     fn next_file(&mut self) {}
-    fn update_with(&mut self, _the_vogue: Self) {
+    fn update_with(&mut self, _other: Self) {
         self.0 += 1
     }
     fn file_number(self) -> u32 {
@@ -50,10 +50,10 @@ impl Select for FileCount {
     fn next_file(&mut self) {
         self.file_number += 1;
     }
-    fn update_with(&mut self, the_vogue: Self) {
-        if the_vogue.file_number != self.file_number {
+    fn update_with(&mut self, other: Self) {
+        if other.file_number != self.file_number {
             self.files_seen += 1;
-            self.file_number = the_vogue.file_number;
+            self.file_number = other.file_number;
         }
     }
     fn file_number(self) -> u32 {
@@ -77,7 +77,7 @@ impl Select for Noop {
         Noop()
     }
     fn next_file(&mut self) {}
-    fn update_with(&mut self, _the_vogue: Self) {}
+    fn update_with(&mut self, _other: Self) {}
     fn file_number(self) -> u32 {
         0
     }
@@ -103,8 +103,8 @@ impl Select for LastFileSeen {
     fn file_number(self) -> u32 {
         self.0
     }
-    fn update_with(&mut self, the_vogue: Self) {
-        self.0 = the_vogue.0
+    fn update_with(&mut self, other: Self) {
+        self.0 = other.0
     }
     fn value(self) -> u32 {
         self.0
@@ -125,9 +125,9 @@ impl<S: Select, B: Bookkeeping> Select for Dual<S, B> {
         self.select.next_file();
         self.log.next_file();
     }
-    fn update_with(&mut self, the_vogue: Self) {
-        self.select.update_with(the_vogue.select);
-        self.log.update_with(the_vogue.log);
+    fn update_with(&mut self, other: Self) {
+        self.select.update_with(other.select);
+        self.log.update_with(other.log);
     }
     fn file_number(self) -> u32 {
         self.select.file_number().max(self.log.file_number())
@@ -207,11 +207,11 @@ mod tally_test {
 
     fn assert_update_with_sets_self_file_number_to_arguments<S: Select>() {
         let mut naive = S::new();
-        let mut the_vogue = S::new();
-        the_vogue.next_file();
-        the_vogue.next_file();
-        naive.update_with(the_vogue);
-        assert_eq!(naive.file_number(), the_vogue.file_number());
+        let mut other = S::new();
+        other.next_file();
+        other.next_file();
+        naive.update_with(other);
+        assert_eq!(naive.file_number(), other.file_number());
     }
     #[test]
     fn update_with_sets_file_number_to_its_arguments_file_number() {
