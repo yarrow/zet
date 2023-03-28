@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{bail, Result};
 use std::fmt::Debug;
 pub(crate) trait Select: Copy + PartialEq + Debug {
     fn new() -> Self;
@@ -56,7 +56,10 @@ impl Select for FileCount {
         FileCount { file_number: 0, files_seen: 1 }
     }
     fn next_file(&mut self) -> Result<()> {
-        self.file_number += 1;
+        match self.file_number.checked_add(1) {
+            Some(n) => self.file_number = n,
+            None => bail!("Zet can't handle more than {} input files", u32::MAX),
+        }
         Ok(())
     }
     fn update_with(&mut self, other: Self) {
@@ -114,7 +117,10 @@ impl Select for LastFileSeen {
         LastFileSeen(0)
     }
     fn next_file(&mut self) -> Result<()> {
-        self.0 += 1;
+        match self.0.checked_add(1) {
+            Some(n) => self.0 = n,
+            None => bail!("Zet can't handle more than {} input files", u32::MAX),
+        }
         Ok(())
     }
     fn update_with(&mut self, other: Self) {
@@ -260,5 +266,41 @@ mod tally_test {
         assert_update_with_sets_self_file_number_to_arguments::<Dual<LastFileSeen, LineCount>>();
         assert_update_with_sets_self_file_number_to_arguments::<Dual<LastFileSeen, FileCount>>();
         assert_update_with_sets_self_file_number_to_arguments::<Dual<LastFileSeen, Noop>>();
+    }
+
+    fn assert_next_file_errors_if_file_number_would_wrap_to_zero<S: Select + FileNumber>() {
+        let mut item = S::new();
+        let start = item.file_number();
+        item.next_file().unwrap();
+        if item.file_number() == start {
+            return;
+        }
+        item.set_file_number(u32::MAX - 2);
+        item.next_file().unwrap();
+        assert!(item.file_number() == Some(u32::MAX - 1));
+        item.next_file().unwrap();
+        assert!(item.file_number() == Some(u32::MAX));
+        assert!(item.next_file().is_err());
+    }
+    #[test]
+    fn next_file_errors_if_file_number_would_wrap_to_zero() {
+        assert_next_file_errors_if_file_number_would_wrap_to_zero::<LineCount>();
+        assert_next_file_errors_if_file_number_would_wrap_to_zero::<FileCount>();
+        assert_next_file_errors_if_file_number_would_wrap_to_zero::<Noop>();
+        assert_next_file_errors_if_file_number_would_wrap_to_zero::<LastFileSeen>();
+        assert_next_file_errors_if_file_number_would_wrap_to_zero::<Dual<LineCount, LineCount>>();
+        assert_next_file_errors_if_file_number_would_wrap_to_zero::<Dual<LineCount, FileCount>>();
+        assert_next_file_errors_if_file_number_would_wrap_to_zero::<Dual<LineCount, Noop>>();
+        assert_next_file_errors_if_file_number_would_wrap_to_zero::<Dual<FileCount, LineCount>>();
+        assert_next_file_errors_if_file_number_would_wrap_to_zero::<Dual<FileCount, FileCount>>();
+        assert_next_file_errors_if_file_number_would_wrap_to_zero::<Dual<FileCount, Noop>>();
+        assert_next_file_errors_if_file_number_would_wrap_to_zero::<Dual<Noop, LineCount>>();
+        assert_next_file_errors_if_file_number_would_wrap_to_zero::<Dual<Noop, FileCount>>();
+        assert_next_file_errors_if_file_number_would_wrap_to_zero::<Dual<Noop, Noop>>();
+        assert_next_file_errors_if_file_number_would_wrap_to_zero::<Dual<LastFileSeen, LineCount>>(
+        );
+        assert_next_file_errors_if_file_number_would_wrap_to_zero::<Dual<LastFileSeen, FileCount>>(
+        );
+        assert_next_file_errors_if_file_number_would_wrap_to_zero::<Dual<LastFileSeen, Noop>>();
     }
 }
