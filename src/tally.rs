@@ -4,7 +4,6 @@ pub(crate) trait Select: Copy + PartialEq + Debug {
     fn new() -> Self;
     fn next_file(&mut self);
     fn update_with(&mut self, other: Self);
-    fn file_number(self) -> u32;
     fn value(self) -> u32;
 }
 pub(crate) trait Bookkeeping: Select {
@@ -12,6 +11,13 @@ pub(crate) trait Bookkeeping: Select {
         self.value()
     }
     fn write_count(&self, width: usize, out: &mut impl std::io::Write) -> Result<()>;
+}
+
+#[cfg(test)]
+trait FileNumber: Copy + PartialEq + Debug {
+    fn file_number(self) -> Option<u32> {
+        None
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -24,9 +30,6 @@ impl Select for LineCount {
     fn update_with(&mut self, _other: Self) {
         self.0 += 1
     }
-    fn file_number(self) -> u32 {
-        0
-    }
     fn value(self) -> u32 {
         self.0
     }
@@ -37,6 +40,8 @@ impl Bookkeeping for LineCount {
         Ok(())
     }
 }
+#[cfg(test)]
+impl FileNumber for LineCount {}
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub(crate) struct FileCount {
@@ -56,9 +61,6 @@ impl Select for FileCount {
             self.file_number = other.file_number;
         }
     }
-    fn file_number(self) -> u32 {
-        self.file_number
-    }
     fn value(self) -> u32 {
         self.files_seen
     }
@@ -67,6 +69,12 @@ impl Bookkeeping for FileCount {
     fn write_count(&self, width: usize, out: &mut impl std::io::Write) -> Result<()> {
         write!(out, "{:width$} ", self.files_seen)?;
         Ok(())
+    }
+}
+#[cfg(test)]
+impl FileNumber for FileCount {
+    fn file_number(self) -> Option<u32> {
+        Some(self.file_number)
     }
 }
 
@@ -78,9 +86,6 @@ impl Select for Noop {
     }
     fn next_file(&mut self) {}
     fn update_with(&mut self, _other: Self) {}
-    fn file_number(self) -> u32 {
-        0
-    }
     fn value(self) -> u32 {
         0
     }
@@ -90,6 +95,8 @@ impl Bookkeeping for Noop {
         Ok(())
     }
 }
+#[cfg(test)]
+impl FileNumber for Noop {}
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub(crate) struct LastFileSeen(u32);
@@ -100,14 +107,17 @@ impl Select for LastFileSeen {
     fn next_file(&mut self) {
         self.0 += 1;
     }
-    fn file_number(self) -> u32 {
-        self.0
-    }
     fn update_with(&mut self, other: Self) {
         self.0 = other.0
     }
     fn value(self) -> u32 {
         self.0
+    }
+}
+#[cfg(test)]
+impl FileNumber for LastFileSeen {
+    fn file_number(self) -> Option<u32> {
+        Some(self.0)
     }
 }
 
@@ -129,14 +139,10 @@ impl<S: Select, B: Bookkeeping> Select for Dual<S, B> {
         self.select.update_with(other.select);
         self.log.update_with(other.log);
     }
-    fn file_number(self) -> u32 {
-        self.select.file_number().max(self.log.file_number())
-    }
     fn value(self) -> u32 {
         self.select.value()
     }
 }
-
 impl<S: Select, B: Bookkeeping> Bookkeeping for Dual<S, B> {
     fn count(self) -> u32 {
         self.log.count()
@@ -145,34 +151,40 @@ impl<S: Select, B: Bookkeeping> Bookkeeping for Dual<S, B> {
         self.log.write_count(width, out)
     }
 }
+#[cfg(test)]
+impl<S: Select + FileNumber, B: Bookkeeping + FileNumber> FileNumber for Dual<S, B> {
+    fn file_number(self) -> Option<u32> {
+        self.select.file_number().or(self.log.file_number())
+    }
+}
 
 #[cfg(test)]
 mod tally_test {
     use std::fs::File;
 
     use super::*;
-    fn new_file_number<S: Select>() -> u32 {
+    fn new_file_number<S: Select + FileNumber>() -> Option<u32> {
         S::new().file_number()
     }
     #[test]
     #[allow(non_snake_case)]
-    fn first_file_file_number_is_zero_for_Noop_and_LineCount_one_otherwise() {
-        assert_eq!(new_file_number::<LineCount>(), 0);
-        assert_eq!(new_file_number::<FileCount>(), 0);
-        assert_eq!(new_file_number::<Noop>(), 0);
-        assert_eq!(new_file_number::<LastFileSeen>(), 0);
-        assert_eq!(new_file_number::<Dual<LineCount, LineCount>>(), 0);
-        assert_eq!(new_file_number::<Dual<LineCount, FileCount>>(), 0);
-        assert_eq!(new_file_number::<Dual<LineCount, Noop>>(), 0);
-        assert_eq!(new_file_number::<Dual<FileCount, LineCount>>(), 0);
-        assert_eq!(new_file_number::<Dual<FileCount, FileCount>>(), 0);
-        assert_eq!(new_file_number::<Dual<FileCount, Noop>>(), 0);
-        assert_eq!(new_file_number::<Dual<Noop, LineCount>>(), 0);
-        assert_eq!(new_file_number::<Dual<Noop, FileCount>>(), 0);
-        assert_eq!(new_file_number::<Dual<Noop, Noop>>(), 0);
-        assert_eq!(new_file_number::<Dual<LastFileSeen, LineCount>>(), 0);
-        assert_eq!(new_file_number::<Dual<LastFileSeen, FileCount>>(), 0);
-        assert_eq!(new_file_number::<Dual<LastFileSeen, Noop>>(), 0);
+    fn first_file_file_number_is_None_for_Noop_and_LineCount_and_Some_0_otherwise() {
+        assert_eq!(new_file_number::<LineCount>(), None);
+        assert_eq!(new_file_number::<FileCount>(), Some(0));
+        assert_eq!(new_file_number::<Noop>(), None);
+        assert_eq!(new_file_number::<LastFileSeen>(), Some(0));
+        assert_eq!(new_file_number::<Dual<LineCount, LineCount>>(), None);
+        assert_eq!(new_file_number::<Dual<LineCount, FileCount>>(), Some(0));
+        assert_eq!(new_file_number::<Dual<LineCount, Noop>>(), None);
+        assert_eq!(new_file_number::<Dual<FileCount, LineCount>>(), Some(0));
+        assert_eq!(new_file_number::<Dual<FileCount, FileCount>>(), Some(0));
+        assert_eq!(new_file_number::<Dual<FileCount, Noop>>(), Some(0));
+        assert_eq!(new_file_number::<Dual<Noop, LineCount>>(), None);
+        assert_eq!(new_file_number::<Dual<Noop, FileCount>>(), Some(0));
+        assert_eq!(new_file_number::<Dual<Noop, Noop>>(), None);
+        assert_eq!(new_file_number::<Dual<LastFileSeen, LineCount>>(), Some(0));
+        assert_eq!(new_file_number::<Dual<LastFileSeen, FileCount>>(), Some(0));
+        assert_eq!(new_file_number::<Dual<LastFileSeen, Noop>>(), Some(0));
     }
 
     fn bump_twice<S: Select>() -> S {
@@ -181,31 +193,31 @@ mod tally_test {
         select.next_file();
         select
     }
-    fn bump_twice_file_number<S: Select>() -> u32 {
+    fn bump_twice_file_number<S: Select + FileNumber>() -> Option<u32> {
         bump_twice::<S>().file_number()
     }
     #[test]
     #[allow(non_snake_case)]
     fn next_file_increments_file_number_only_for_LastFileSeen_and_FileCount() {
-        assert_eq!(bump_twice_file_number::<LineCount>(), 0);
-        assert_eq!(bump_twice_file_number::<FileCount>(), 2);
-        assert_eq!(bump_twice_file_number::<Noop>(), 0);
-        assert_eq!(bump_twice_file_number::<LastFileSeen>(), 2);
-        assert_eq!(bump_twice_file_number::<Dual<LineCount, LineCount>>(), 0);
-        assert_eq!(bump_twice_file_number::<Dual<LineCount, FileCount>>(), 2);
-        assert_eq!(bump_twice_file_number::<Dual<LineCount, Noop>>(), 0);
-        assert_eq!(bump_twice_file_number::<Dual<FileCount, LineCount>>(), 2);
-        assert_eq!(bump_twice_file_number::<Dual<FileCount, FileCount>>(), 2);
-        assert_eq!(bump_twice_file_number::<Dual<FileCount, Noop>>(), 2);
-        assert_eq!(bump_twice_file_number::<Dual<Noop, LineCount>>(), 0);
-        assert_eq!(bump_twice_file_number::<Dual<Noop, FileCount>>(), 2);
-        assert_eq!(bump_twice_file_number::<Dual<Noop, Noop>>(), 0);
-        assert_eq!(bump_twice_file_number::<Dual<LastFileSeen, LineCount>>(), 2);
-        assert_eq!(bump_twice_file_number::<Dual<LastFileSeen, FileCount>>(), 2);
-        assert_eq!(bump_twice_file_number::<Dual<LastFileSeen, Noop>>(), 2);
+        assert_eq!(bump_twice_file_number::<LineCount>(), None);
+        assert_eq!(bump_twice_file_number::<FileCount>(), Some(2));
+        assert_eq!(bump_twice_file_number::<Noop>(), None);
+        assert_eq!(bump_twice_file_number::<LastFileSeen>(), Some(2));
+        assert_eq!(bump_twice_file_number::<Dual<LineCount, LineCount>>(), None);
+        assert_eq!(bump_twice_file_number::<Dual<LineCount, FileCount>>(), Some(2));
+        assert_eq!(bump_twice_file_number::<Dual<LineCount, Noop>>(), None);
+        assert_eq!(bump_twice_file_number::<Dual<FileCount, LineCount>>(), Some(2));
+        assert_eq!(bump_twice_file_number::<Dual<FileCount, FileCount>>(), Some(2));
+        assert_eq!(bump_twice_file_number::<Dual<FileCount, Noop>>(), Some(2));
+        assert_eq!(bump_twice_file_number::<Dual<Noop, LineCount>>(), None);
+        assert_eq!(bump_twice_file_number::<Dual<Noop, FileCount>>(), Some(2));
+        assert_eq!(bump_twice_file_number::<Dual<Noop, Noop>>(), None);
+        assert_eq!(bump_twice_file_number::<Dual<LastFileSeen, LineCount>>(), Some(2));
+        assert_eq!(bump_twice_file_number::<Dual<LastFileSeen, FileCount>>(), Some(2));
+        assert_eq!(bump_twice_file_number::<Dual<LastFileSeen, Noop>>(), Some(2));
     }
 
-    fn assert_update_with_sets_self_file_number_to_arguments<S: Select>() {
+    fn assert_update_with_sets_self_file_number_to_arguments<S: Select + FileNumber>() {
         let mut naive = S::new();
         let mut other = S::new();
         other.next_file();
