@@ -170,7 +170,7 @@ fn intersect<Log: Bookkeeping, O: LaterOperand>(
         item.next_file()?;
         let this_file = item.value();
         set.update_if_present(operand?, item)?;
-        set.retain(|v| v == this_file);
+        set.retain(|last_file_seen| last_file_seen == this_file);
     }
     output_and_discard(set, out)
 }
@@ -200,8 +200,8 @@ fn count<B: Bookkeeping, O: LaterOperand>(
 ) -> Result<()> {
     let mut set = every_line::<B, O>(first_operand, rest)?;
     match keep {
-        AndKeep::Single => set.retain(|v| v == 1),
-        AndKeep::Multiple => set.retain(|v| v > 1),
+        AndKeep::Single => set.retain(|occurences| occurences == 1),
+        AndKeep::Multiple => set.retain(|occurences| occurences > 1),
     }
     output_and_discard(set, out)
 }
