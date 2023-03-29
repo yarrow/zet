@@ -206,18 +206,9 @@ fn output_and_discard<B: Bookkeeping>(set: ZetSet<B>, out: impl std::io::Write) 
 mod test {
     use super::*;
     use crate::operands;
-    use assert_fs::{prelude::*, TempDir};
     use bstr::ByteSlice;
-    use std::path::PathBuf;
+    use indexmap::IndexMap;
 
-    // Does no disk I/O
-    fn calc(operation: OpName, operands: &[&[u8]]) -> String {
-        let first = operands[0];
-        let mut answer = Vec::new();
-        let rest = operands[1..].iter().map(|o| Ok(*o));
-        calculate(operation, LogType::None, first, rest, &mut answer).unwrap();
-        String::from_utf8(answer).unwrap()
-    }
     impl LaterOperand for &[u8] {
         fn for_byte_line(self, for_each_line: impl FnMut(&[u8])) -> Result<()> {
             self.lines().for_each(for_each_line);
@@ -225,10 +216,19 @@ mod test {
         }
     }
 
+    type V8<'a> = [&'a [u8]];
+    fn calc(operation: OpName, operands: &V8) -> String {
+        let first = operands[0];
+        let rest = operands[1..].iter().map(|o| Ok(*o));
+        let mut answer = Vec::new();
+        calculate(operation, LogType::None, first, rest, &mut answer).unwrap();
+        String::from_utf8(answer).unwrap()
+    }
+
     use self::OpName::*;
 
     #[test]
-    fn given_a_single_argument_all_ops_but_multiple_return_input_lines_in_order_without_dups() {
+    fn given_a_single_argument_all_most_ops_return_input_lines_in_order_without_dups() {
         let arg: Vec<&[u8]> = vec![b"xxx\nabc\nxxx\nyyy\nxxx\nabc\n"];
         let uniq = "xxx\nabc\nyyy\n";
         let solo = "yyy\n";
@@ -262,5 +262,77 @@ mod test {
         assert_eq!(calc(SingleByFile, &args), "x\ny\nz\n", "for {SingleByFile:?}");
         assert_eq!(calc(Multiple, &args), "xyz\nabc\nxy\nxz\nyz\ny\n", "for {Multiple:?}");
         assert_eq!(calc(MultipleByFile, &args), "xyz\nabc\nxy\nxz\nyz\n", "for {MultipleByFile:?}");
+    }
+
+    // Test `LogType::Lines` and `LogType::Files' output
+    type CountMap = IndexMap<String, u32>;
+    fn counted(operation: OpName, count: LogType, operands: &V8) -> CountMap {
+        let first = operands[0];
+        let rest = operands[1..].iter().map(|o| Ok(*o));
+        let mut answer = Vec::new();
+        calculate(operation, count, first, rest, &mut answer).unwrap();
+
+        let mut result = CountMap::new();
+        for line in String::from_utf8(answer).unwrap().lines() {
+            let line = line.trim_start();
+            let v: Vec<_> = line.splitn(2, ' ').collect();
+            let count: u32 = v[0].parse().unwrap();
+            result.insert(v[1].to_string(), count);
+        }
+        result
+    }
+    fn lines(operands: &V8) -> CountMap {
+        let mut result = CountMap::new();
+        for &operand in operands {
+            let operand = String::from_utf8(operand.to_vec()).unwrap();
+            for line in operand.lines() {
+                result.entry(line.to_string()).and_modify(|c| *c += 1).or_insert(1);
+            }
+        }
+        result
+    }
+    fn files(operands: &V8) -> CountMap {
+        let mut result = CountMap::new();
+        for &operand in operands {
+            let operand = String::from_utf8(operand.to_vec()).unwrap();
+            let mut seen = CountMap::new();
+            for line in operand.lines() {
+                seen.insert(line.to_string(), 1);
+            }
+            for line in seen.into_keys() {
+                result.entry(line).and_modify(|c| *c += 1).or_insert(1);
+            }
+        }
+        result
+    }
+    #[test]
+    fn check_line_count() {
+        let args: Vec<&[u8]> = vec![
+            b"xyz\nabc\nxy\nxz\nx\n",    // Strings containing "x" (and "abc")
+            b"xyz\nabc\nxy\nyz\ny\ny\n", // Strings containing "y" (and "abc")
+            b"xyz\nabc\nxz\nyz\nz\n",    // Strings containing "z" (and "abc")
+        ];
+        let line_count = lines(&args);
+        for &op in &[Intersect, Union, Diff, Single, SingleByFile, Multiple, MultipleByFile] {
+            let result = counted(op, LogType::Lines, &args);
+            for line in result.keys() {
+                assert_eq!(result.get(line), line_count.get(line));
+            }
+        }
+    }
+    #[test]
+    fn check_file_count() {
+        let args: Vec<&[u8]> = vec![
+            b"xyz\nabc\nxy\nxz\nx\n",    // Strings containing "x" (and "abc")
+            b"xyz\nabc\nxy\nyz\ny\ny\n", // Strings containing "y" (and "abc")
+            b"xyz\nabc\nxz\nyz\nz\n",    // Strings containing "z" (and "abc")
+        ];
+        let file_count = files(&args);
+        for &op in &[Intersect, Union, Diff, Single, SingleByFile, Multiple, MultipleByFile] {
+            let result = counted(op, LogType::Files, &args);
+            for line in result.keys() {
+                assert_eq!(result.get(line), file_count.get(line));
+            }
+        }
     }
 }
