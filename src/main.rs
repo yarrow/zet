@@ -8,8 +8,8 @@ use zet::operations::calculate;
 fn main() -> Result<()> {
     let args = zet::args::parsed();
 
-    let files = first_and_rest(&args.files).or_else(|| first_and_rest(&["-".into()]));
-    let (first_operand, rest, number_of_operands) = match files {
+    let paths = first_and_rest(&args.paths).or_else(|| first_and_rest(&["-".into()]));
+    let (first_operand, rest, number_of_operands) = match paths {
         None => {
             bail!("This can't happen: with no file arguments, zet should read from standard input")
         }

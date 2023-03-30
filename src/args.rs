@@ -24,11 +24,12 @@ pub fn parsed() -> Args {
     if op == CliName::Help {
         help_and_exit()
     }
-    if parsed.by_file {
+    if parsed.files {
+        //FIXME – remove this once we have a test showing it's in error
         match op {
             CliName::Single | CliName::Multiple => (),
             _ => {
-                eprintln!("{}", help::by_file_usage());
+                eprintln!("{}", help::files_usage());
                 exit_usage();
             }
         }
@@ -38,7 +39,7 @@ pub fn parsed() -> Args {
     } else if parsed.count_lines {
         LogType::Lines
     } else if parsed.count {
-        if parsed.by_file {
+        if parsed.files {
             LogType::Files
         } else {
             LogType::Lines
@@ -53,21 +54,21 @@ pub fn parsed() -> Args {
         CliName::Union => OpName::Union,
         CliName::Diff => OpName::Diff,
         CliName::Single => {
-            if parsed.by_file {
+            if parsed.files {
                 OpName::SingleByFile
             } else {
                 OpName::Single
             }
         }
         CliName::Multiple => {
-            if parsed.by_file {
+            if parsed.files {
                 OpName::MultipleByFile
             } else {
                 OpName::Multiple
             }
         }
     };
-    Args { op, log_type, files: parsed.files }
+    Args { op, log_type, paths: parsed.paths }
 }
 
 fn help_and_exit() -> ! {
@@ -98,8 +99,8 @@ pub struct Args {
     pub op: OpName,
     /// Should we count the number of times each line occurs?
     pub log_type: LogType,
-    /// `files` is the list of files from the command line
-    pub files: Vec<PathBuf>,
+    /// `paths` is the list of files from the command line
+    pub paths: Vec<PathBuf>,
 }
 
 /// Set operation to perform
@@ -138,17 +139,17 @@ struct CliArgs {
     count_none: (),
 
     #[arg(long, overrides_with_all(["count", "count_files", "count_lines", "count_none"]))]
-    /// The --count is like --count-lines, but --by-file makes it act like --count-files
+    /// The --count is like --count-lines, but --files makes it act like --count-files
     count: bool,
 
-    #[arg(long, overrides_with_all(["by_file", "by_line"]))]
-    /// With `--by-file`, the `single` and `multiple` commands count a line as occuring
+    #[arg(long, alias("file"), overrides_with_all(["files", "lines"]))]
+    /// With `--files`, the `single` and `multiple` commands count a line as occuring
     /// once if it's only contained in one file, even if it occurs many times in that file.
-    by_file: bool,
+    files: bool,
 
-    #[arg(long, overrides_with_all(["by_file", "by_line"]))]
-    /// `--by-line` is the default. Specify it explicitly to override a previous `--by-file`
-    by_line: bool,
+    #[arg(long, alias("line"), overrides_with_all(["files", "lines"]))]
+    /// `--lines` is the default. Specify it explicitly to override a previous `--files`
+    lines: bool,
 
     #[arg(short, long)]
     /// Like the `help` command, the `-h` or `--help` flags tell us to print the help message
@@ -169,8 +170,8 @@ struct CliArgs {
     command: Option<CliName>,
 
     #[arg(name = "Input files")]
-    /// `files` is the list of files from the command line
-    files: Vec<PathBuf>,
+    /// `paths` is the list of file paths from the command line
+    paths: Vec<PathBuf>,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, ValueEnum)]

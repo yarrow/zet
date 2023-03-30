@@ -6,13 +6,15 @@ Commands:
   union      Prints lines appearing in ANY input file
   intersect  Prints lines appearing in EVERY input file
   diff       Prints lines appearing in the FIRST input file and no other
-  single     Prints lines appearing exactly once; with --by-file, in exactly one file
-  multiple   Prints lines appearing more than once; with --by-file, in more than one file
+  single     Prints lines appearing exactly once; with --file, in exactly one file
+  multiple   Prints lines appearing more than once; with --files, in more than one file
   help       Print this message
 
 Options:
-  -c  --count         Show the number of times each line occurs in the input
-      --by-file       Lines occuring multiple times, but in only one file, count as single (not multiple)
+      --count-lines   Show the number of times each line occurs in the input
+      --count-files   Show the number of files each line occurs in
+  -c  --count         Like --count-lines, but if --files is present, like --count-files
+      --file[s]       To count as multiple, a line must occur in more than one file. Affects the single and multiple commands, as well as the -c and --count options
       --color <WHEN>  [possible values: auto, always, never]
   -h, --help          Print this message
   -V, --version       Print version

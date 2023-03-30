@@ -49,9 +49,9 @@ fn subcommand_for(op: OpName) -> &'static str {
         Intersect => "intersect",
         Diff => "diff",
         Single => "single",
-        SingleByFile => "single --by-file",
+        SingleByFile => "single --file",
         Multiple => "multiple",
-        MultipleByFile => "multiple --by-file",
+        MultipleByFile => "multiple --files",
     }
 }
 fn subcommands() -> [&'static str; 7] {

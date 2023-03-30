@@ -28,13 +28,13 @@ pub(crate) fn version() -> String {
     format!("{name} {version}")
 }
 
-pub(crate) fn by_file_usage() -> String {
+pub(crate) fn files_usage() -> String {
     let style = global_style();
     let error = style.error("error:");
-    let by_file = style.literal("--by-file");
+    let files = style.literal("--files");
     let single = style.item("single");
     let multiple = style.item("multiple");
-    format!("{error} The '{by_file}' flag is only meaningful with the commands {single} or {multiple}\n\n  note: to pass a file called '{by_file}', use '-- --by-file'")
+    format!("{error} The '{files}' flag is only meaningful with the commands {single} or {multiple}\n\n  note: to pass a file called '{files}', use '-- --files'")
 }
 pub(crate) fn print() {
     let input = include_str!("help.txt");

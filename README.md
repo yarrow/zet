@@ -14,13 +14,15 @@ Here are the subcommands of `zet` and what they do:
 * `zet intersect x y z` outputs the lines that occur in all of `x`, `y`, and `z`.
 * `zet diff x y z` outputs the lines that occur in `x` but not in `y` or `z`.
 * `zet single x y z` outputs the lines that occur exactly once in the entire input.
-* `zet single --by-file x y z` outputs the lines that occur in exactly one of `x`, `y`,
+* `zet single --file x y z` outputs the lines that occur in exactly one of `x`, `y`,
   or `z`. (Including a line that occurs, say, twice in `y` but not in `x` or `z`) 
 * `zet multiple x y z` outputs the lines that occur more than once in the entire input.
-* `zet multiple --by-file x y z` outputs the lines that occur in two or more of `x`, `y`,
+* `zet multiple --files x y z` outputs the lines that occur in two or more of `x`, `y`,
   and `z` (but not a line that occurs twice in `y` but not in `x` or `z`).
 
-The `-c` or `--count` flags make `zet` show the number of times each line occurs in the input.
+The `--count-lines` flag makes `zet` show the number of times each line occurs in the input.
+The `--count-files` flag shows the number of files each line occurs in.
+The `-c` or `--count` flags act like `--count-lines`, unless `--files` is in effect, in which case they act like `--count-files`.
 
 ## Comparisons to other commands
 Some `zet` subcommands are similar to traditional Unix commands:
