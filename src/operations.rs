@@ -8,7 +8,7 @@ use crate::args::OpName::{
 use crate::set::{LaterOperand, ZetSet};
 use crate::tally::{Bookkeeping, Dual, FileCount, LastFileSeen, LineCount, Noop, Select};
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum LogType {
     Lines,
     Files,

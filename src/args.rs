@@ -1,6 +1,7 @@
 //! Code to parse the command line using `clap`, and definitions of the parsed result
 
 use crate::help;
+use crate::operations::LogType;
 use crate::styles::{set_color_choice, ColorChoice};
 use clap::{Parser, ValueEnum};
 use std::path::PathBuf;
@@ -32,6 +33,20 @@ pub fn parsed() -> Args {
             }
         }
     }
+    let log_type = if parsed.count_files {
+        LogType::Files
+    } else if parsed.count_lines {
+        LogType::Lines
+    } else if parsed.count {
+        if parsed.by_file {
+            LogType::Files
+        } else {
+            LogType::Lines
+        }
+    } else {
+        LogType::None
+    };
+
     let op = match op {
         CliName::Help => help_and_exit(), // This can't happen, but...
         CliName::Intersect => OpName::Intersect,
@@ -52,7 +67,7 @@ pub fn parsed() -> Args {
             }
         }
     };
-    Args { op, count_lines: parsed.count, files: parsed.files }
+    Args { op, log_type, files: parsed.files }
 }
 
 fn help_and_exit() -> ! {
@@ -82,7 +97,7 @@ pub struct Args {
     /// `op` is the set operation requested
     pub op: OpName,
     /// Should we count the number of times each line occurs?
-    pub count_lines: bool,
+    pub log_type: LogType,
     /// `files` is the list of files from the command line
     pub files: Vec<PathBuf>,
 }
@@ -110,14 +125,30 @@ pub enum OpName {
 #[command(name = "zet")]
 /// `CliArgs` contains the parsed command line.
 struct CliArgs {
-    #[arg(short, long)]
-    /// The --count flag tells `zet` to count the number of times a line occurs in the input
+    #[arg(short, long, overrides_with_all(["count", "count_files", "count_lines", "count_none"]))]
+    /// The --count-files flag tells `zet` to report the number of files a line occurs in
+    count_files: bool,
+
+    #[arg(long, overrides_with_all(["count", "count_files", "count_lines", "count_none"]))]
+    /// The --count-lines flag tells `zet` to report the times a line appears in the entire input
+    count_lines: bool,
+
+    #[arg(long, overrides_with_all(["count", "count_files", "count_lines", "count_none"]))]
+    /// The --count-none flag tells `zet` to turn off reporting
+    count_none: (),
+
+    #[arg(long, overrides_with_all(["count", "count_files", "count_lines", "count_none"]))]
+    /// The --count is like --count-lines, but --by-file makes it act like --count-files
     count: bool,
 
-    #[arg(long)]
+    #[arg(long, overrides_with_all(["by_file", "by_line"]))]
     /// With `--by-file`, the `single` and `multiple` commands count a line as occuring
     /// once if it's only contained in one file, even if it occurs many times in that file.
     by_file: bool,
+
+    #[arg(long, overrides_with_all(["by_file", "by_line"]))]
+    /// `--by-line` is the default. Specify it explicitly to override a previous `--by-file`
+    by_line: bool,
 
     #[arg(short, long)]
     /// Like the `help` command, the `-h` or `--help` flags tell us to print the help message

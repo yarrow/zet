@@ -123,7 +123,7 @@ fn zet_subcommand_with_count_flag_x_y_z_matches_expected_output_for_all_operatio
     let z_path = &path_with(&temp, "z.txt", &z().join(""), Encoding::Plain);
     for op in OP_NAMES {
         let sub = subcommand_for(op);
-        let output = run([sub, "--count", x_path, y_path, z_path]).unwrap();
+        let output = run([sub, "--count-lines", x_path, y_path, z_path]).unwrap();
         assert_eq!(
             String::from_utf8(output.stdout).unwrap(),
             xpected_with_count(op).join(""),
