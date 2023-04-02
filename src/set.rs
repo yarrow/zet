@@ -1,6 +1,6 @@
 //! Provides the `ZetSet` structure, intended to be initialized from the
 //! contents of the first input file.
-use crate::tally::Bookkeeping;
+use crate::operations::Bookkeeping;
 use anyhow::Result;
 use fxhash::FxBuildHasher;
 use indexmap::IndexMap;
@@ -51,7 +51,7 @@ pub trait LaterOperand {
 /// returned by `new` and never add to it.
 ///
 /// The `retain` method filters the set, using a function passed by the caller that
-/// looks at the `.value()` of the bookkeeping item.
+/// looks at the `.retention_value()` of the bookkeeping item.
 ///
 /// The `output_to` method prints the lines of the set, calling the bookkeeping
 /// item's `write_count` method (when appropriate) to prefix each line with the
@@ -105,9 +105,9 @@ impl<'data, B: Bookkeeping> ZetSet<'data, B> {
     }
 
     /// Like `IndexMap`'s `.retain` method, but exposes just the bookkeeping
-    /// item's `.value()`
+    /// item's `.retention_value()`
     pub(crate) fn retain(&mut self, keep: impl Fn(u32) -> bool) {
-        self.set.retain(|_k, v| keep(v.value()));
+        self.set.retain(|_k, v| keep(v.retention_value()));
     }
 
     /// Output the `ZetSet`'s lines with the appropriate Byte Order Mark and line
