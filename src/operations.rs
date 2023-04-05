@@ -56,57 +56,42 @@ pub fn calculate<O: LaterOperand>(
 
         // When `log_type` is `LogType::Lines` and `operation` is `Single` or
         // `Multiple`, both logging and selection need a `LineCount` in the
-        // bookkeeping item, so `dispatch` would call `count` with
-        // bookkeeping values of `Dual<LineCount, LineCount>`. It would be safe
-        // to log_type each line in both fields of a `Dual` item, but slower.  And
-        // it seems unlikely that the optimizer would avoid doing the counting
-        // twice. So we call `count` directly, with a single `LineCount`
-        // bookkeeping value.
+        // bookkeeping item, so we only need `Logged<LineCount>`, not
+        // bookkeeping values of `Dual<LineCount, LineCount>`.
         LogType::Lines => match operation {
-            Single => count::<LineCount, O>(AndKeep::Single, first_operand, rest, out),
-            Multiple => count::<LineCount, O>(AndKeep::Multiple, first_operand, rest, out),
-            _ => dispatch::<LineCount, O>(operation, first_operand, rest, out),
+            Union => union::<Dual<Noop, LineCount>, O>(first_operand, rest, out),
+            Diff => diff::<Dual<LastFileSeen, LineCount>, O>(first_operand, rest, out),
+            Intersect => intersect::<Dual<LastFileSeen, LineCount>, O>(first_operand, rest, out),
+            Single => count::<Logged<LineCount>, O>(AndKeep::Single, first_operand, rest, out),
+            Multiple => count::<Logged<LineCount>, O>(AndKeep::Multiple, first_operand, rest, out),
+            SingleByFile => {
+                count::<Dual<FileCount, LineCount>, O>(AndKeep::Single, first_operand, rest, out)
+            }
+            MultipleByFile => {
+                count::<Dual<FileCount, LineCount>, O>(AndKeep::Multiple, first_operand, rest, out)
+            }
         },
 
-        // Similarly, we don't want `dispatch` to use `Dual<FileCount, FileCount>`
-        // bookkeeping values, so we call `count` directly when `log_type` is
-        // LogType::Files` and `operation` is `SingleByFile` or `MultipleByFile`.
+        // Similarly, we don't want to use `Dual<FileCount, FileCount>`
+        // bookkeeping values, so we use `Logged<FileCount>` when `log_type` is
+        // LogType::Files` and `operation` is `SingleByFile` or
+        // `MultipleByFile`.
+        //
+        // And we use `Logged<LineCount>` for `Single`, rather than
+        // `Dual<LineCount, FileCount>`, since the number reported for `Single`
+        // will always be 1 — a line appearing only once can appear in only one
+        // file.
         LogType::Files => match operation {
+            Union => union::<Dual<Noop, FileCount>, O>(first_operand, rest, out),
+            Diff => diff::<Dual<LastFileSeen, FileCount>, O>(first_operand, rest, out),
+            Intersect => intersect::<Dual<LastFileSeen, FileCount>, O>(first_operand, rest, out),
+            Single => count::<Logged<LineCount>, O>(AndKeep::Single, first_operand, rest, out),
+            Multiple => {
+                count::<Dual<LineCount, FileCount>, O>(AndKeep::Multiple, first_operand, rest, out)
+            }
             SingleByFile => count::<FileCount, O>(AndKeep::Single, first_operand, rest, out),
             MultipleByFile => count::<FileCount, O>(AndKeep::Multiple, first_operand, rest, out),
-
-            // The number reported will always be 1 — a line appearing only once will appear in
-            // only one file
-            Single => count::<LineCount, O>(AndKeep::Single, first_operand, rest, out),
-
-            _ => dispatch::<FileCount, O>(operation, first_operand, rest, out),
         },
-    }
-}
-
-/// The `dispatch` function calls the relevant function to do the actual work.
-/// Calling `dispatch` from `calculate` means that the monomorphizer knows the
-/// type of `log`, and can create three different versions of `dispatch`, for
-/// `Noop`, `LineCount`, and `FileCount` — and so three different versions of
-/// `union`, `diff`, and `intersect` as well as six different versions of
-/// `count`, which can have `LineCount` or `FileCount` for retention purposes,
-/// as well as `LineCount`, `FileCount`, or `None` for logging purposes.
-fn dispatch<Log: Bookkeeping, O: LaterOperand>(
-    operation: OpName,
-    first_operand: &[u8],
-    rest: impl Iterator<Item = Result<O>>,
-    out: impl std::io::Write,
-) -> Result<()> {
-    type LineWith<Log> = Dual<LineCount, Log>;
-    type FileWith<Log> = Dual<FileCount, Log>;
-    match operation {
-        Union => union::<Log, O>(first_operand, rest, out),
-        Diff => diff::<Log, O>(first_operand, rest, out),
-        Intersect => intersect::<Log, O>(first_operand, rest, out),
-        Single => count::<LineWith<Log>, O>(AndKeep::Single, first_operand, rest, out),
-        Multiple => count::<LineWith<Log>, O>(AndKeep::Multiple, first_operand, rest, out),
-        SingleByFile => count::<FileWith<Log>, O>(AndKeep::Single, first_operand, rest, out),
-        MultipleByFile => count::<FileWith<Log>, O>(AndKeep::Multiple, first_operand, rest, out),
     }
 }
 
@@ -182,6 +167,40 @@ impl<R: Retainable> Bookkeeping for Unlogged<R> {
         Ok(())
     }
 }
+
+/// The `Dual` struct lets us use one item for retention purposes and another
+/// for logging. We take the `retention_value` from the first item and `count`
+/// and `write_count` from the second.
+#[derive(Clone, Copy, PartialEq, Debug)]
+struct Dual<Retain: Retainable, Log: Retainable> {
+    pub(crate) retention: Retain,
+    pub(crate) log: Log,
+}
+impl<Retain: Retainable, Log: Retainable> Retainable for Dual<Retain, Log> {
+    fn new() -> Self {
+        Dual { retention: Retain::new(), log: Log::new() }
+    }
+    fn next_file(&mut self) -> Result<()> {
+        self.retention.next_file()?;
+        self.log.next_file()
+    }
+    fn update_with(&mut self, other: Self) {
+        self.retention.update_with(other.retention);
+        self.log.update_with(other.log);
+    }
+    fn retention_value(self) -> u32 {
+        self.retention.retention_value()
+    }
+}
+impl<Retain: Retainable, Log: Retainable> Bookkeeping for Dual<Retain, Log> {
+    fn count(self) -> u32 {
+        Logged(self.log).count()
+    }
+    fn write_count(&self, width: usize, out: &mut impl std::io::Write) -> Result<()> {
+        Logged(self.log).write_count(width, out)
+    }
+}
+
 /// We use the `Noop` struct for the `Union` operation, since `Union` includes
 /// every line seen and doesn't need bookkeeping. need to keep track of
 /// anything. `Noop` is also used for the default log operantion of not logging
@@ -243,12 +262,12 @@ fn union<Log: Bookkeeping, O: LaterOperand>(
 /// the file number of each file seen in a subsequent operand. We discard lines
 /// whose `LastFileSeen::retention_value` is not `1`, so we're left only with
 /// lines that appear only in the first file.
-fn diff<Log: Bookkeeping, O: LaterOperand>(
+fn diff<B: Bookkeeping, O: LaterOperand>(
     first_operand: &[u8],
     rest: impl Iterator<Item = Result<O>>,
     out: impl std::io::Write,
 ) -> Result<()> {
-    let mut item = Dual::<LastFileSeen, Log>::new();
+    let mut item = B::new();
     let first_file = item.retention_value();
     let mut set = ZetSet::new(first_operand, item);
     for operand in rest {
@@ -286,12 +305,12 @@ impl Retainable for LastFileSeen {
 /// rather than `insert_or_update`. But lines in `Intersect`'s result must also
 /// appear in every other file; so after each file we discard those lines whose
 /// `LastFileSeen` number is not the current `file_number`.
-fn intersect<Log: Bookkeeping, O: LaterOperand>(
+fn intersect<B: Bookkeeping, O: LaterOperand>(
     first_operand: &[u8],
     rest: impl Iterator<Item = Result<O>>,
     out: impl std::io::Write,
 ) -> Result<()> {
-    let mut item = Dual::<LastFileSeen, Log>::new();
+    let mut item = B::new();
     let mut set = ZetSet::new(first_operand, item);
     for operand in rest {
         item.next_file()?;
@@ -412,39 +431,6 @@ fn count<B: Bookkeeping, O: LaterOperand>(
     output_and_discard(set, out)
 }
 
-/// The `Dual` struct lets us use one item for retention purposes and another
-/// for logging. We take the `retention_value` from the first item and `count`
-/// and `write_count` from the second.
-#[derive(Clone, Copy, PartialEq, Debug)]
-struct Dual<R: Retainable, B: Bookkeeping> {
-    pub(crate) retention: R,
-    pub(crate) log: B,
-}
-
-impl<R: Retainable, B: Bookkeeping> Retainable for Dual<R, B> {
-    fn new() -> Self {
-        Dual { retention: R::new(), log: B::new() }
-    }
-    fn next_file(&mut self) -> Result<()> {
-        self.retention.next_file()?;
-        self.log.next_file()
-    }
-    fn update_with(&mut self, other: Self) {
-        self.retention.update_with(other.retention);
-        self.log.update_with(other.log);
-    }
-    fn retention_value(self) -> u32 {
-        self.retention.retention_value()
-    }
-}
-impl<R: Retainable, B: Bookkeeping> Bookkeeping for Dual<R, B> {
-    fn count(self) -> u32 {
-        self.log.count()
-    }
-    fn write_count(&self, width: usize, out: &mut impl std::io::Write) -> Result<()> {
-        self.log.write_count(width, out)
-    }
-}
 /// When we're done with a `ZetSet`, we write its lines to our output and exit
 /// the program.
 fn output_and_discard<B: Bookkeeping>(set: ZetSet<B>, out: impl std::io::Write) -> Result<()> {
