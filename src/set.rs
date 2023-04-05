@@ -3,7 +3,7 @@
 use crate::operations::Bookkeeping;
 use anyhow::Result;
 use fxhash::FxBuildHasher;
-use indexmap::IndexMap;
+use indexmap::{map, IndexMap};
 use memchr::memchr;
 use std::borrow::Cow;
 use std::io;
@@ -110,6 +110,18 @@ impl<'data, B: Bookkeeping> ZetSet<'data, B> {
         self.set.retain(|_k, v| keep(v.retention_value()));
     }
 
+    /// Expose the underlying `ZetSet`'s `keys` method
+    pub(crate) fn keys(&self) -> map::Keys<Cow<[u8]>, B> {
+        self.set.keys()
+    }
+    /// Expose the underlying `ZetSet`'s `iter` method
+    pub(crate) fn iter(&self) -> map::Iter<Cow<[u8]>, B> {
+        self.set.iter()
+    }
+    /// Expose the underlying `ZetSet`'s `values` method
+    pub(crate) fn values(&self) -> map::Values<Cow<[u8]>, B> {
+        self.set.values()
+    }
     /// Output the `ZetSet`'s lines with the appropriate Byte Order Mark and line
     /// terminator.
     pub(crate) fn output_to(&self, mut out: impl io::Write) -> Result<()> {
@@ -118,17 +130,17 @@ impl<'data, B: Bookkeeping> ZetSet<'data, B> {
         if first.count() == 0 {
             // We're counting neither lines nor files
             out.write_all(self.bom)?;
-            for line in self.set.keys() {
+            for line in self.keys() {
                 out.write_all(line)?;
                 out.write_all(self.line_terminator)?;
             }
             out.flush()?;
         } else {
             // We're counting something
-            let Some(max_count) = self.set.values().map(|v| v.count()).max() else { return Ok(()) };
+            let Some(max_count) = self.values().map(|v| v.count()).max() else { return Ok(()) };
             let width = (max_count.ilog10() + 1) as usize;
             out.write_all(self.bom)?;
-            for (line, item) in self.set.iter() {
+            for (line, item) in self.iter() {
                 item.write_count(width, &mut out)?;
                 out.write_all(line)?;
                 out.write_all(self.line_terminator)?;
