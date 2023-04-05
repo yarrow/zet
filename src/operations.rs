@@ -89,8 +89,12 @@ pub fn calculate<O: LaterOperand>(
             Multiple => {
                 count::<Dual<LineCount, FileCount>, O>(AndKeep::Multiple, first_operand, rest, out)
             }
-            SingleByFile => count::<FileCount, O>(AndKeep::Single, first_operand, rest, out),
-            MultipleByFile => count::<FileCount, O>(AndKeep::Multiple, first_operand, rest, out),
+            SingleByFile => {
+                count::<Logged<FileCount>, O>(AndKeep::Single, first_operand, rest, out)
+            }
+            MultipleByFile => {
+                count::<Logged<FileCount>, O>(AndKeep::Multiple, first_operand, rest, out)
+            }
         },
     }
 }
@@ -651,7 +655,7 @@ mod test_bookkeeping {
             self.file_number = file_number
         }
     }
-    impl<R: Retainable + Testable, B: Bookkeeping + Testable> Testable for Dual<R, B> {
+    impl<R: Retainable + Testable, B: Retainable + Testable> Testable for Dual<R, B> {
         fn file_number(self) -> Option<u32> {
             self.retention.file_number().or(self.log.file_number())
         }
@@ -663,29 +667,46 @@ mod test_bookkeeping {
             self.log.set_line_count(line_count);
         }
     }
-
+    impl<R: Retainable + Testable> Testable for Logged<R> {
+        fn file_number(self) -> Option<u32> {
+            self.0.file_number()
+        }
+        fn set_file_number(&mut self, file_number: u32) {
+            self.0.set_file_number(file_number)
+        }
+        fn set_line_count(&mut self, line_count: u32) {
+            self.0.set_line_count(line_count);
+        }
+    }
+    impl<R: Retainable + Testable> Testable for Unlogged<R> {
+        fn file_number(self) -> Option<u32> {
+            self.0.file_number()
+        }
+        fn set_file_number(&mut self, file_number: u32) {
+            self.0.set_file_number(file_number)
+        }
+        fn set_line_count(&mut self, line_count: u32) {
+            self.0.set_line_count(line_count);
+        }
+    }
     fn new_file_number<R: Retainable + Testable>() -> Option<u32> {
         R::new().file_number()
     }
     #[test]
     #[allow(non_snake_case)]
     fn first_file_file_number_is_None_for_Noop_and_LineCount_and_Some_0_otherwise() {
-        assert_eq!(new_file_number::<LineCount>(), None);
-        assert_eq!(new_file_number::<FileCount>(), Some(0));
-        assert_eq!(new_file_number::<Noop>(), None);
-        assert_eq!(new_file_number::<LastFileSeen>(), Some(0));
-        assert_eq!(new_file_number::<Dual<LineCount, LineCount>>(), None);
-        assert_eq!(new_file_number::<Dual<LineCount, FileCount>>(), Some(0));
-        assert_eq!(new_file_number::<Dual<LineCount, Noop>>(), None);
         assert_eq!(new_file_number::<Dual<FileCount, LineCount>>(), Some(0));
-        assert_eq!(new_file_number::<Dual<FileCount, FileCount>>(), Some(0));
-        assert_eq!(new_file_number::<Dual<FileCount, Noop>>(), Some(0));
-        assert_eq!(new_file_number::<Dual<Noop, LineCount>>(), None);
-        assert_eq!(new_file_number::<Dual<Noop, FileCount>>(), Some(0));
-        assert_eq!(new_file_number::<Dual<Noop, Noop>>(), None);
-        assert_eq!(new_file_number::<Dual<LastFileSeen, LineCount>>(), Some(0));
         assert_eq!(new_file_number::<Dual<LastFileSeen, FileCount>>(), Some(0));
-        assert_eq!(new_file_number::<Dual<LastFileSeen, Noop>>(), Some(0));
+        assert_eq!(new_file_number::<Dual<LastFileSeen, LineCount>>(), Some(0));
+        assert_eq!(new_file_number::<Dual<LineCount, FileCount>>(), Some(0));
+        assert_eq!(new_file_number::<Dual<Noop, FileCount>>(), Some(0));
+        assert_eq!(new_file_number::<Dual<Noop, LineCount>>(), None);
+        assert_eq!(new_file_number::<Logged<FileCount>>(), Some(0));
+        assert_eq!(new_file_number::<Logged<LineCount>>(), None);
+        assert_eq!(new_file_number::<Unlogged<FileCount>>(), Some(0));
+        assert_eq!(new_file_number::<Unlogged<LastFileSeen>>(), Some(0));
+        assert_eq!(new_file_number::<Unlogged<LineCount>>(), None);
+        assert_eq!(new_file_number::<Unlogged<Noop>>(), None);
     }
 
     fn bump_twice<R: Retainable>() -> R {
@@ -700,24 +721,36 @@ mod test_bookkeeping {
     #[test]
     #[allow(non_snake_case)]
     fn next_file_increments_file_number_only_for_LastFileSeen_and_FileCount() {
-        assert_eq!(bump_twice_file_number::<LineCount>(), None);
-        assert_eq!(bump_twice_file_number::<FileCount>(), Some(2));
-        assert_eq!(bump_twice_file_number::<Noop>(), None);
-        assert_eq!(bump_twice_file_number::<LastFileSeen>(), Some(2));
-        assert_eq!(bump_twice_file_number::<Dual<LineCount, LineCount>>(), None);
-        assert_eq!(bump_twice_file_number::<Dual<LineCount, FileCount>>(), Some(2));
-        assert_eq!(bump_twice_file_number::<Dual<LineCount, Noop>>(), None);
         assert_eq!(bump_twice_file_number::<Dual<FileCount, LineCount>>(), Some(2));
-        assert_eq!(bump_twice_file_number::<Dual<FileCount, FileCount>>(), Some(2));
-        assert_eq!(bump_twice_file_number::<Dual<FileCount, Noop>>(), Some(2));
-        assert_eq!(bump_twice_file_number::<Dual<Noop, LineCount>>(), None);
-        assert_eq!(bump_twice_file_number::<Dual<Noop, FileCount>>(), Some(2));
-        assert_eq!(bump_twice_file_number::<Dual<Noop, Noop>>(), None);
-        assert_eq!(bump_twice_file_number::<Dual<LastFileSeen, LineCount>>(), Some(2));
         assert_eq!(bump_twice_file_number::<Dual<LastFileSeen, FileCount>>(), Some(2));
-        assert_eq!(bump_twice_file_number::<Dual<LastFileSeen, Noop>>(), Some(2));
+        assert_eq!(bump_twice_file_number::<Dual<LastFileSeen, LineCount>>(), Some(2));
+        assert_eq!(bump_twice_file_number::<Dual<LineCount, FileCount>>(), Some(2));
+        assert_eq!(bump_twice_file_number::<Dual<Noop, FileCount>>(), Some(2));
+        assert_eq!(bump_twice_file_number::<Dual<Noop, LineCount>>(), None);
+        assert_eq!(bump_twice_file_number::<Logged<FileCount>>(), Some(2));
+        assert_eq!(bump_twice_file_number::<Logged<LineCount>>(), None);
+        assert_eq!(bump_twice_file_number::<Unlogged<FileCount>>(), Some(2));
+        assert_eq!(bump_twice_file_number::<Unlogged<LastFileSeen>>(), Some(2));
+        assert_eq!(bump_twice_file_number::<Unlogged<LineCount>>(), None);
+        assert_eq!(bump_twice_file_number::<Unlogged<Noop>>(), None);
     }
 
+    macro_rules! check {
+        ($assert:ident) => {
+            $assert::<Dual<FileCount, LineCount>>();
+            $assert::<Dual<LastFileSeen, FileCount>>();
+            $assert::<Dual<LastFileSeen, LineCount>>();
+            $assert::<Dual<LineCount, FileCount>>();
+            $assert::<Dual<Noop, FileCount>>();
+            $assert::<Dual<Noop, LineCount>>();
+            $assert::<Logged<FileCount>>();
+            $assert::<Logged<LineCount>>();
+            $assert::<Unlogged<FileCount>>();
+            $assert::<Unlogged<LastFileSeen>>();
+            $assert::<Unlogged<LineCount>>();
+            $assert::<Unlogged<Noop>>();
+        };
+    }
     fn assert_update_with_sets_self_file_number_to_arguments<R: Retainable + Testable>() {
         let mut naive = R::new();
         let mut other = R::new();
@@ -728,22 +761,7 @@ mod test_bookkeeping {
     }
     #[test]
     fn update_with_sets_file_number_to_its_arguments_file_number() {
-        assert_update_with_sets_self_file_number_to_arguments::<LineCount>();
-        assert_update_with_sets_self_file_number_to_arguments::<FileCount>();
-        assert_update_with_sets_self_file_number_to_arguments::<Noop>();
-        assert_update_with_sets_self_file_number_to_arguments::<LastFileSeen>();
-        assert_update_with_sets_self_file_number_to_arguments::<Dual<LineCount, LineCount>>();
-        assert_update_with_sets_self_file_number_to_arguments::<Dual<LineCount, FileCount>>();
-        assert_update_with_sets_self_file_number_to_arguments::<Dual<LineCount, Noop>>();
-        assert_update_with_sets_self_file_number_to_arguments::<Dual<FileCount, LineCount>>();
-        assert_update_with_sets_self_file_number_to_arguments::<Dual<FileCount, FileCount>>();
-        assert_update_with_sets_self_file_number_to_arguments::<Dual<FileCount, Noop>>();
-        assert_update_with_sets_self_file_number_to_arguments::<Dual<Noop, LineCount>>();
-        assert_update_with_sets_self_file_number_to_arguments::<Dual<Noop, FileCount>>();
-        assert_update_with_sets_self_file_number_to_arguments::<Dual<Noop, Noop>>();
-        assert_update_with_sets_self_file_number_to_arguments::<Dual<LastFileSeen, LineCount>>();
-        assert_update_with_sets_self_file_number_to_arguments::<Dual<LastFileSeen, FileCount>>();
-        assert_update_with_sets_self_file_number_to_arguments::<Dual<LastFileSeen, Noop>>();
+        check!(assert_update_with_sets_self_file_number_to_arguments);
     }
 
     #[allow(non_snake_case)]
@@ -763,22 +781,7 @@ mod test_bookkeeping {
     }
     #[test]
     fn next_file_errors_if_file_number_would_wrap_to_zero() {
-        assert_next_file_errors_if_file_number_is_u32_MAX::<LineCount>();
-        assert_next_file_errors_if_file_number_is_u32_MAX::<FileCount>();
-        assert_next_file_errors_if_file_number_is_u32_MAX::<Noop>();
-        assert_next_file_errors_if_file_number_is_u32_MAX::<LastFileSeen>();
-        assert_next_file_errors_if_file_number_is_u32_MAX::<Dual<LineCount, LineCount>>();
-        assert_next_file_errors_if_file_number_is_u32_MAX::<Dual<LineCount, FileCount>>();
-        assert_next_file_errors_if_file_number_is_u32_MAX::<Dual<LineCount, Noop>>();
-        assert_next_file_errors_if_file_number_is_u32_MAX::<Dual<FileCount, LineCount>>();
-        assert_next_file_errors_if_file_number_is_u32_MAX::<Dual<FileCount, FileCount>>();
-        assert_next_file_errors_if_file_number_is_u32_MAX::<Dual<FileCount, Noop>>();
-        assert_next_file_errors_if_file_number_is_u32_MAX::<Dual<Noop, LineCount>>();
-        assert_next_file_errors_if_file_number_is_u32_MAX::<Dual<Noop, FileCount>>();
-        assert_next_file_errors_if_file_number_is_u32_MAX::<Dual<Noop, Noop>>();
-        assert_next_file_errors_if_file_number_is_u32_MAX::<Dual<LastFileSeen, LineCount>>();
-        assert_next_file_errors_if_file_number_is_u32_MAX::<Dual<LastFileSeen, FileCount>>();
-        assert_next_file_errors_if_file_number_is_u32_MAX::<Dual<LastFileSeen, Noop>>();
+        check!(assert_next_file_errors_if_file_number_is_u32_MAX);
     }
 
     fn log_string<B: Bookkeeping + Testable>(item: B) -> String {
@@ -806,20 +809,6 @@ mod test_bookkeeping {
     }
     #[test]
     fn item_logs_overflow_when_appropriate() {
-        assert_item_logs_overflow_when_appropriate::<LineCount>();
-        assert_item_logs_overflow_when_appropriate::<FileCount>();
-        assert_item_logs_overflow_when_appropriate::<Noop>();
-        assert_item_logs_overflow_when_appropriate::<Dual<LineCount, LineCount>>();
-        assert_item_logs_overflow_when_appropriate::<Dual<LineCount, FileCount>>();
-        assert_item_logs_overflow_when_appropriate::<Dual<LineCount, Noop>>();
-        assert_item_logs_overflow_when_appropriate::<Dual<FileCount, LineCount>>();
-        assert_item_logs_overflow_when_appropriate::<Dual<FileCount, FileCount>>();
-        assert_item_logs_overflow_when_appropriate::<Dual<FileCount, Noop>>();
-        assert_item_logs_overflow_when_appropriate::<Dual<Noop, LineCount>>();
-        assert_item_logs_overflow_when_appropriate::<Dual<Noop, FileCount>>();
-        assert_item_logs_overflow_when_appropriate::<Dual<Noop, Noop>>();
-        assert_item_logs_overflow_when_appropriate::<Dual<LastFileSeen, LineCount>>();
-        assert_item_logs_overflow_when_appropriate::<Dual<LastFileSeen, FileCount>>();
-        assert_item_logs_overflow_when_appropriate::<Dual<LastFileSeen, Noop>>();
+        check!(assert_item_logs_overflow_when_appropriate);
     }
 }
