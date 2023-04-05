@@ -6,7 +6,6 @@ use fxhash::FxBuildHasher;
 use indexmap::{map, IndexMap};
 use memchr::memchr;
 use std::borrow::Cow;
-use std::io;
 
 /// A `ZetSet` is a set of lines, each line represented as a key of an `IndexMap`.
 /// * Keys are `Cow<'data, [u8]>`
@@ -24,8 +23,8 @@ use std::io;
 #[derive(Clone, Debug)]
 pub(crate) struct ZetSet<'data, B: Bookkeeping> {
     set: CowSet<'data, B>,
-    bom: &'static [u8],             // Byte Order Mark or empty
-    line_terminator: &'static [u8], // \n or \r\n
+    pub(crate) bom: &'static [u8], // Byte Order Mark or empty
+    pub(crate) line_terminator: &'static [u8], // \n or \r\n
 }
 type CowSet<'data, B> = IndexMap<Cow<'data, [u8]>, B, FxBuildHasher>;
 
@@ -122,33 +121,9 @@ impl<'data, B: Bookkeeping> ZetSet<'data, B> {
     pub(crate) fn values(&self) -> map::Values<Cow<[u8]>, B> {
         self.set.values()
     }
-    /// Output the `ZetSet`'s lines with the appropriate Byte Order Mark and line
-    /// terminator.
-    pub(crate) fn output_to(&self, mut out: impl io::Write) -> Result<()> {
-        let Some((_key, first)) = self.set.first() else { return Ok(()) };
-
-        if first.count() == 0 {
-            // We're counting neither lines nor files
-            out.write_all(self.bom)?;
-            for line in self.keys() {
-                out.write_all(line)?;
-                out.write_all(self.line_terminator)?;
-            }
-            out.flush()?;
-        } else {
-            // We're counting something
-            let Some(max_count) = self.values().map(|v| v.count()).max() else { return Ok(()) };
-            let width = (max_count.ilog10() + 1) as usize;
-            out.write_all(self.bom)?;
-            for (line, item) in self.iter() {
-                item.write_count(width, &mut out)?;
-                out.write_all(line)?;
-                out.write_all(self.line_terminator)?;
-            }
-            out.flush()?;
-        };
-
-        Ok(())
+    /// Expose the underlying `ZetSet`'s `first` method
+    pub(crate) fn first(&self) -> Option<B> {
+        self.set.first().map(|(_key, &first)| first)
     }
 }
 
