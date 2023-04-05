@@ -1,6 +1,6 @@
 //! Provides the `ZetSet` structure, intended to be initialized from the
 //! contents of the first input file.
-use crate::operations::Bookkeeping;
+use crate::operations::Retainable;
 use anyhow::Result;
 use fxhash::FxBuildHasher;
 use indexmap::{map, IndexMap};
@@ -21,7 +21,7 @@ use std::borrow::Cow;
 ///   file operand had one, and will use the same line terminator as that file's first
 ///   line.
 #[derive(Clone, Debug)]
-pub(crate) struct ZetSet<'data, B: Bookkeeping> {
+pub(crate) struct ZetSet<'data, B: Retainable> {
     set: CowSet<'data, B>,
     pub(crate) bom: &'static [u8], // Byte Order Mark or empty
     pub(crate) line_terminator: &'static [u8], // \n or \r\n
@@ -56,7 +56,7 @@ pub trait LaterOperand {
 /// item's `write_count` method (when appropriate) to prefix each line with the
 /// number of times it appears in the input, or the number of files it appears
 /// in.
-impl<'data, B: Bookkeeping> ZetSet<'data, B> {
+impl<'data, B: Retainable> ZetSet<'data, B> {
     /// Create a new `ZetSet`, with each key a line borrowed from `slice`, and
     /// value `item` for every line newly seen. If a line is already present,
     /// with bookkeeping value `v`, update it by calling `v.update_with(item)`
