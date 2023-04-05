@@ -38,7 +38,21 @@ pub fn calculate<O: LaterOperand>(
     out: impl std::io::Write,
 ) -> Result<()> {
     match log_type {
-        LogType::None => dispatch::<Noop, O>(operation, first_operand, rest, out),
+        LogType::None => match operation {
+            Union => union::<Unlogged<Noop>, O>(first_operand, rest, out),
+            Diff => diff::<Unlogged<LastFileSeen>, O>(first_operand, rest, out),
+            Intersect => intersect::<Unlogged<LastFileSeen>, O>(first_operand, rest, out),
+            Single => count::<Unlogged<LineCount>, O>(AndKeep::Single, first_operand, rest, out),
+            Multiple => {
+                count::<Unlogged<LineCount>, O>(AndKeep::Multiple, first_operand, rest, out)
+            }
+            SingleByFile => {
+                count::<Unlogged<FileCount>, O>(AndKeep::Single, first_operand, rest, out)
+            }
+            MultipleByFile => {
+                count::<Unlogged<FileCount>, O>(AndKeep::Multiple, first_operand, rest, out)
+            }
+        },
 
         // When `log_type` is `LogType::Lines` and `operation` is `Single` or
         // `Multiple`, both logging and selection need a `LineCount` in the
@@ -114,6 +128,60 @@ pub(crate) trait Bookkeeping: Retainable {
     fn write_count(&self, width: usize, out: &mut impl std::io::Write) -> Result<()>;
 }
 
+#[derive(Clone, Copy, PartialEq, Debug)]
+struct Logged<R: Retainable>(R);
+impl<R: Retainable> Retainable for Logged<R> {
+    fn new() -> Self {
+        Self(R::new())
+    }
+    fn next_file(&mut self) -> Result<()> {
+        self.0.next_file()
+    }
+    fn update_with(&mut self, other: Self) {
+        self.0.update_with(other.0)
+    }
+    fn retention_value(self) -> u32 {
+        self.0.retention_value()
+    }
+}
+impl<R: Retainable> Bookkeeping for Logged<R> {
+    fn count(self) -> u32 {
+        self.0.retention_value()
+    }
+    fn write_count(&self, width: usize, out: &mut impl std::io::Write) -> Result<()> {
+        if self.count() == u32::MAX {
+            write!(out, " overflow  ")?
+        } else {
+            write!(out, "{:width$} ", self.count())?
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+struct Unlogged<R: Retainable>(R);
+impl<R: Retainable> Retainable for Unlogged<R> {
+    fn new() -> Self {
+        Self(R::new())
+    }
+    fn next_file(&mut self) -> Result<()> {
+        self.0.next_file()
+    }
+    fn update_with(&mut self, other: Self) {
+        self.0.update_with(other.0)
+    }
+    fn retention_value(self) -> u32 {
+        self.0.retention_value()
+    }
+}
+impl<R: Retainable> Bookkeeping for Unlogged<R> {
+    fn count(self) -> u32 {
+        0
+    }
+    fn write_count(&self, _width: usize, _out: &mut impl std::io::Write) -> Result<()> {
+        Ok(())
+    }
+}
 /// We use the `Noop` struct for the `Union` operation, since `Union` includes
 /// every line seen and doesn't need bookkeeping. need to keep track of
 /// anything. `Noop` is also used for the default log operantion of not logging
