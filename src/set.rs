@@ -121,10 +121,6 @@ impl<'data, B: Bookkeeping> ZetSet<'data, B> {
     pub(crate) fn values(&self) -> map::Values<Cow<[u8]>, B> {
         self.set.values()
     }
-    /// Expose the underlying `ZetSet`'s `first` method
-    pub(crate) fn first(&self) -> Option<B> {
-        self.set.first().map(|(_key, &first)| first)
-    }
 }
 
 /// Returns `(bom, line_terminator)`, where `bom` is the (UTF-8) Byte Order

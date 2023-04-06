@@ -110,6 +110,10 @@ pub(crate) trait Bookkeeping: Copy + PartialEq + Debug {
         self.retention_value()
     }
     fn write_count(&self, width: usize, out: &mut impl std::io::Write) -> Result<()>;
+    #[allow(unused_variables)]
+    fn output_zet_set(set: &ZetSet<Self>, out: impl std::io::Write) -> Result<()> {
+        unimplemented!()
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -135,6 +139,18 @@ impl<R: Bookkeeping> Bookkeeping for Logged<R> {
         }
         Ok(())
     }
+    fn output_zet_set(set: &ZetSet<Self>, mut out: impl std::io::Write) -> Result<()> {
+        let Some(max_count) = set.values().map(|v| v.count()).max() else { return Ok(()) };
+        let width = (max_count.ilog10() + 1) as usize;
+        out.write_all(set.bom)?;
+        for (line, item) in set.iter() {
+            item.write_count(width, &mut out)?;
+            out.write_all(line)?;
+            out.write_all(set.line_terminator)?;
+        }
+        out.flush()?;
+        Ok(())
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -152,17 +168,15 @@ impl<R: Bookkeeping> Bookkeeping for Unlogged<R> {
     fn retention_value(self) -> u32 {
         self.0.retention_value()
     }
-    /*
-    fn output_zet_set(&set: ZetSet<R>, mut out: impl io::Write) -> Result<()> {
+    fn output_zet_set(set: &ZetSet<Self>, mut out: impl std::io::Write) -> Result<()> {
         out.write_all(set.bom)?;
-        for line in set.keys {
+        for line in set.keys() {
             out.write_all(line)?;
             out.write_all(set.line_terminator)?;
         }
         out.flush()?;
         Ok(())
     }
-    */
     fn write_count(&self, _width: usize, _out: &mut impl std::io::Write) -> Result<()> {
         Ok(())
     }
@@ -196,6 +210,18 @@ impl<Retain: Bookkeeping, Log: Bookkeeping> Bookkeeping for Dual<Retain, Log> {
     }
     fn write_count(&self, width: usize, out: &mut impl std::io::Write) -> Result<()> {
         Logged(self.log).write_count(width, out)
+    }
+    fn output_zet_set(set: &ZetSet<Self>, mut out: impl std::io::Write) -> Result<()> {
+        let Some(max_count) = set.values().map(|v| v.count()).max() else { return Ok(()) };
+        let width = (max_count.ilog10() + 1) as usize;
+        out.write_all(set.bom)?;
+        for (line, item) in set.iter() {
+            item.write_count(width, &mut out)?;
+            out.write_all(line)?;
+            out.write_all(set.line_terminator)?;
+        }
+        out.flush()?;
+        Ok(())
     }
 }
 
@@ -420,40 +446,12 @@ fn count<B: Bookkeeping, O: LaterOperand>(
 /// When we're done with a `ZetSet`, we write its lines to our output and exit
 /// the program.
 fn output_and_discard<B: Bookkeeping>(set: ZetSet<B>, out: impl std::io::Write) -> Result<()> {
-    output_zet_set(&set, out)?;
+    B::output_zet_set(&set, out)?;
     std::mem::forget(set); // Slightly faster to just abandon this, since we're about to exit.
                            // Thanks to [Karolin Varner](https://github.com/koraa)'s huniq
     Ok(())
 }
 
-/// Output the `ZetSet`'s lines with the appropriate Byte Order Mark and line
-/// terminator.
-fn output_zet_set<B: Bookkeeping>(set: &ZetSet<B>, mut out: impl std::io::Write) -> Result<()> {
-    let Some(first) = set.first() else { return Ok(()) };
-
-    if first.count() == 0 {
-        // We're counting neither lines nor files
-        out.write_all(set.bom)?;
-        for line in set.keys() {
-            out.write_all(line)?;
-            out.write_all(set.line_terminator)?;
-        }
-        out.flush()?;
-    } else {
-        // We're counting something
-        let Some(max_count) = set.values().map(|v| v.count()).max() else { return Ok(()) };
-        let width = (max_count.ilog10() + 1) as usize;
-        out.write_all(set.bom)?;
-        for (line, item) in set.iter() {
-            item.write_count(width, &mut out)?;
-            out.write_all(line)?;
-            out.write_all(set.line_terminator)?;
-        }
-        out.flush()?;
-    };
-
-    Ok(())
-}
 #[allow(clippy::pedantic)]
 #[cfg(test)]
 mod test {
