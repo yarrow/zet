@@ -99,27 +99,20 @@ pub fn calculate<O: LaterOperand>(
     }
 }
 
-/// The `Retainable` and `Bookkeeping` traits specify the kind of types that can
-/// serve as the bookkeeping values for a `ZetSet`. A `Retainable` type
-/// implements the functions used to decide whether a line in the input will be
-/// part of the output result.
-pub(crate) trait Retainable: Copy + PartialEq + Debug {
+/// The `Bookkeeping` trait specifies the kind of types that can
+/// serve as the bookkeeping values for a `ZetSet`.
+pub(crate) trait Bookkeeping: Copy + PartialEq + Debug {
     fn new() -> Self;
     fn next_file(&mut self) -> Result<()>;
     fn update_with(&mut self, other: Self);
     fn retention_value(self) -> u32;
-}
-/// The `Bookkeeping` trait adds two functions that are used only for logging
-/// the number of times a line appears in the input, or the number of files it
-/// occurs in (or neither).
-pub(crate) trait Bookkeeping: Retainable {
     fn count(self) -> u32;
     fn write_count(&self, width: usize, out: &mut impl std::io::Write) -> Result<()>;
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
-struct Logged<R: Retainable>(R);
-impl<R: Retainable> Retainable for Logged<R> {
+struct Logged<R: Bookkeeping>(R);
+impl<R: Bookkeeping> Bookkeeping for Logged<R> {
     fn new() -> Self {
         Self(R::new())
     }
@@ -132,8 +125,6 @@ impl<R: Retainable> Retainable for Logged<R> {
     fn retention_value(self) -> u32 {
         self.0.retention_value()
     }
-}
-impl<R: Retainable> Bookkeeping for Logged<R> {
     fn count(self) -> u32 {
         self.0.retention_value()
     }
@@ -148,8 +139,8 @@ impl<R: Retainable> Bookkeeping for Logged<R> {
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
-struct Unlogged<R: Retainable>(R);
-impl<R: Retainable> Retainable for Unlogged<R> {
+struct Unlogged<R: Bookkeeping>(R);
+impl<R: Bookkeeping> Bookkeeping for Unlogged<R> {
     fn new() -> Self {
         Self(R::new())
     }
@@ -162,8 +153,6 @@ impl<R: Retainable> Retainable for Unlogged<R> {
     fn retention_value(self) -> u32 {
         self.0.retention_value()
     }
-}
-impl<R: Retainable> Bookkeeping for Unlogged<R> {
     /*
     fn output_zet_set(&set: ZetSet<R>, mut out: impl io::Write) -> Result<()> {
         out.write_all(set.bom)?;
@@ -187,11 +176,11 @@ impl<R: Retainable> Bookkeeping for Unlogged<R> {
 /// for logging. We take the `retention_value` from the first item and `count`
 /// and `write_count` from the second.
 #[derive(Clone, Copy, PartialEq, Debug)]
-struct Dual<Retain: Retainable, Log: Retainable> {
+struct Dual<Retain: Bookkeeping, Log: Bookkeeping> {
     pub(crate) retention: Retain,
     pub(crate) log: Log,
 }
-impl<Retain: Retainable, Log: Retainable> Retainable for Dual<Retain, Log> {
+impl<Retain: Bookkeeping, Log: Bookkeeping> Bookkeeping for Dual<Retain, Log> {
     fn new() -> Self {
         Dual { retention: Retain::new(), log: Log::new() }
     }
@@ -206,8 +195,6 @@ impl<Retain: Retainable, Log: Retainable> Retainable for Dual<Retain, Log> {
     fn retention_value(self) -> u32 {
         self.retention.retention_value()
     }
-}
-impl<Retain: Retainable, Log: Retainable> Bookkeeping for Dual<Retain, Log> {
     fn count(self) -> u32 {
         Logged(self.log).count()
     }
@@ -222,7 +209,7 @@ impl<Retain: Retainable, Log: Retainable> Bookkeeping for Dual<Retain, Log> {
 /// anything.
 #[derive(Clone, Copy, PartialEq, Debug)]
 struct Noop();
-impl Retainable for Noop {
+impl Bookkeeping for Noop {
     fn new() -> Self {
         Noop()
     }
@@ -233,8 +220,6 @@ impl Retainable for Noop {
     fn retention_value(self) -> u32 {
         0
     }
-}
-impl Bookkeeping for Noop {
     fn count(self) -> u32 {
         self.retention_value()
     }
@@ -297,7 +282,7 @@ fn diff<B: Bookkeeping, O: LaterOperand>(
 /// checked increment
 #[derive(Clone, Copy, PartialEq, Debug)]
 struct LastFileSeen(u32);
-impl Retainable for LastFileSeen {
+impl Bookkeeping for LastFileSeen {
     fn new() -> Self {
         LastFileSeen(0)
     }
@@ -313,6 +298,12 @@ impl Retainable for LastFileSeen {
     }
     fn retention_value(self) -> u32 {
         self.0
+    }
+    fn count(self) -> u32 {
+        0
+    }
+    fn write_count(&self, _width: usize, _out: &mut impl std::io::Write) -> Result<()> {
+        Ok(())
     }
 }
 /// Similarly, only lines that appear in the first operand will be in the result
@@ -348,7 +339,7 @@ fn intersect<B: Bookkeeping, O: LaterOperand>(
 /// `u32::MAX` times or more than to stop `zet` completely.
 #[derive(Clone, Copy, PartialEq, Debug)]
 struct LineCount(u32);
-impl Retainable for LineCount {
+impl Bookkeeping for LineCount {
     fn new() -> Self {
         LineCount(1)
     }
@@ -361,8 +352,6 @@ impl Retainable for LineCount {
     fn retention_value(self) -> u32 {
         self.0
     }
-}
-impl Bookkeeping for LineCount {
     fn count(self) -> u32 {
         self.retention_value()
     }
@@ -389,7 +378,7 @@ struct FileCount {
     file_number: u32,
     files_seen: u32,
 }
-impl Retainable for FileCount {
+impl Bookkeeping for FileCount {
     fn new() -> Self {
         FileCount { file_number: 0, files_seen: 1 }
     }
@@ -409,8 +398,6 @@ impl Retainable for FileCount {
     fn retention_value(self) -> u32 {
         self.files_seen
     }
-}
-impl Bookkeeping for FileCount {
     fn count(self) -> u32 {
         self.retention_value()
     }
@@ -655,7 +642,7 @@ mod test_bookkeeping {
             self.file_number = file_number
         }
     }
-    impl<R: Retainable + Testable, B: Retainable + Testable> Testable for Dual<R, B> {
+    impl<R: Bookkeeping + Testable, B: Bookkeeping + Testable> Testable for Dual<R, B> {
         fn file_number(self) -> Option<u32> {
             self.retention.file_number().or(self.log.file_number())
         }
@@ -667,7 +654,7 @@ mod test_bookkeeping {
             self.log.set_line_count(line_count);
         }
     }
-    impl<R: Retainable + Testable> Testable for Logged<R> {
+    impl<R: Bookkeeping + Testable> Testable for Logged<R> {
         fn file_number(self) -> Option<u32> {
             self.0.file_number()
         }
@@ -678,7 +665,7 @@ mod test_bookkeeping {
             self.0.set_line_count(line_count);
         }
     }
-    impl<R: Retainable + Testable> Testable for Unlogged<R> {
+    impl<R: Bookkeeping + Testable> Testable for Unlogged<R> {
         fn file_number(self) -> Option<u32> {
             self.0.file_number()
         }
@@ -689,7 +676,7 @@ mod test_bookkeeping {
             self.0.set_line_count(line_count);
         }
     }
-    fn new_file_number<R: Retainable + Testable>() -> Option<u32> {
+    fn new_file_number<R: Bookkeeping + Testable>() -> Option<u32> {
         R::new().file_number()
     }
     #[test]
@@ -709,13 +696,13 @@ mod test_bookkeeping {
         assert_eq!(new_file_number::<Unlogged<Noop>>(), None);
     }
 
-    fn bump_twice<R: Retainable>() -> R {
+    fn bump_twice<R: Bookkeeping>() -> R {
         let mut select = R::new();
         select.next_file().unwrap();
         select.next_file().unwrap();
         select
     }
-    fn bump_twice_file_number<R: Retainable + Testable>() -> Option<u32> {
+    fn bump_twice_file_number<R: Bookkeeping + Testable>() -> Option<u32> {
         bump_twice::<R>().file_number()
     }
     #[test]
@@ -751,7 +738,7 @@ mod test_bookkeeping {
             $assert::<Unlogged<Noop>>();
         };
     }
-    fn assert_update_with_sets_self_file_number_to_arguments<R: Retainable + Testable>() {
+    fn assert_update_with_sets_self_file_number_to_arguments<R: Bookkeeping + Testable>() {
         let mut naive = R::new();
         let mut other = R::new();
         other.next_file().unwrap();
@@ -765,7 +752,7 @@ mod test_bookkeeping {
     }
 
     #[allow(non_snake_case)]
-    fn assert_next_file_errors_if_file_number_is_u32_MAX<R: Retainable + Testable>() {
+    fn assert_next_file_errors_if_file_number_is_u32_MAX<R: Bookkeeping + Testable>() {
         let mut item = R::new();
         let start = item.file_number();
         item.next_file().unwrap();
