@@ -106,7 +106,9 @@ pub(crate) trait Bookkeeping: Copy + PartialEq + Debug {
     fn next_file(&mut self) -> Result<()>;
     fn update_with(&mut self, other: Self);
     fn retention_value(self) -> u32;
-    fn count(self) -> u32;
+    fn count(self) -> u32 {
+        self.retention_value()
+    }
     fn write_count(&self, width: usize, out: &mut impl std::io::Write) -> Result<()>;
 }
 
@@ -125,14 +127,11 @@ impl<R: Bookkeeping> Bookkeeping for Logged<R> {
     fn retention_value(self) -> u32 {
         self.0.retention_value()
     }
-    fn count(self) -> u32 {
-        self.0.retention_value()
-    }
     fn write_count(&self, width: usize, out: &mut impl std::io::Write) -> Result<()> {
-        if self.count() == u32::MAX {
+        if self.retention_value() == u32::MAX {
             write!(out, " overflow  ")?
         } else {
-            write!(out, "{:width$} ", self.count())?
+            write!(out, "{:width$} ", self.retention_value())?
         }
         Ok(())
     }
@@ -164,9 +163,6 @@ impl<R: Bookkeeping> Bookkeeping for Unlogged<R> {
         Ok(())
     }
     */
-    fn count(self) -> u32 {
-        0
-    }
     fn write_count(&self, _width: usize, _out: &mut impl std::io::Write) -> Result<()> {
         Ok(())
     }
@@ -196,7 +192,7 @@ impl<Retain: Bookkeeping, Log: Bookkeeping> Bookkeeping for Dual<Retain, Log> {
         self.retention.retention_value()
     }
     fn count(self) -> u32 {
-        Logged(self.log).count()
+        Logged(self.log).retention_value()
     }
     fn write_count(&self, width: usize, out: &mut impl std::io::Write) -> Result<()> {
         Logged(self.log).write_count(width, out)
@@ -219,9 +215,6 @@ impl Bookkeeping for Noop {
     fn update_with(&mut self, _other: Self) {}
     fn retention_value(self) -> u32 {
         0
-    }
-    fn count(self) -> u32 {
-        self.retention_value()
     }
     fn write_count(&self, _width: usize, _out: &mut impl std::io::Write) -> Result<()> {
         Ok(())
@@ -299,9 +292,6 @@ impl Bookkeeping for LastFileSeen {
     fn retention_value(self) -> u32 {
         self.0
     }
-    fn count(self) -> u32 {
-        0
-    }
     fn write_count(&self, _width: usize, _out: &mut impl std::io::Write) -> Result<()> {
         Ok(())
     }
@@ -352,9 +342,6 @@ impl Bookkeeping for LineCount {
     fn retention_value(self) -> u32 {
         self.0
     }
-    fn count(self) -> u32 {
-        self.retention_value()
-    }
     fn write_count(&self, width: usize, out: &mut impl std::io::Write) -> Result<()> {
         if self.0 == u32::MAX {
             write!(out, " overflow  ")?
@@ -397,9 +384,6 @@ impl Bookkeeping for FileCount {
     }
     fn retention_value(self) -> u32 {
         self.files_seen
-    }
-    fn count(self) -> u32 {
-        self.retention_value()
     }
     fn write_count(&self, width: usize, out: &mut impl std::io::Write) -> Result<()> {
         write!(out, "{:width$} ", self.files_seen)?;
