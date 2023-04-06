@@ -594,190 +594,42 @@ mod test_bookkeeping {
     use super::*;
     use std::fs::File;
 
-    trait Testable: Copy + PartialEq + Debug {
-        fn file_number(self) -> Option<u32> {
-            None
-        }
-        fn set_file_number(&mut self, file_number: u32) {}
-        fn set_line_count(&mut self, line_count: u32) {}
-    }
-
-    impl Testable for Noop {}
-    impl Testable for LastFileSeen {
-        fn file_number(self) -> Option<u32> {
-            Some(self.0)
-        }
-        fn set_file_number(&mut self, file_number: u32) {
-            self.0 = file_number
-        }
-    }
-    impl Testable for LineCount {
-        fn set_line_count(&mut self, line_count: u32) {
-            self.0 = line_count;
-        }
-    }
-    impl Testable for FileCount {
-        fn file_number(self) -> Option<u32> {
-            Some(self.file_number)
-        }
-        fn set_file_number(&mut self, file_number: u32) {
-            self.file_number = file_number
-        }
-    }
-    impl<R: Bookkeeping + Testable, B: Bookkeeping + Testable> Testable for Dual<R, B> {
-        fn file_number(self) -> Option<u32> {
-            self.retention.file_number().or(self.log.file_number())
-        }
-        fn set_file_number(&mut self, file_number: u32) {
-            self.retention.set_file_number(file_number);
-            self.log.set_file_number(file_number);
-        }
-        fn set_line_count(&mut self, line_count: u32) {
-            self.log.set_line_count(line_count);
-        }
-    }
-    impl<R: Bookkeeping + Testable> Testable for Logged<R> {
-        fn file_number(self) -> Option<u32> {
-            self.0.file_number()
-        }
-        fn set_file_number(&mut self, file_number: u32) {
-            self.0.set_file_number(file_number)
-        }
-        fn set_line_count(&mut self, line_count: u32) {
-            self.0.set_line_count(line_count);
-        }
-    }
-    impl<R: Bookkeeping + Testable> Testable for Unlogged<R> {
-        fn file_number(self) -> Option<u32> {
-            self.0.file_number()
-        }
-        fn set_file_number(&mut self, file_number: u32) {
-            self.0.set_file_number(file_number)
-        }
-        fn set_line_count(&mut self, line_count: u32) {
-            self.0.set_line_count(line_count);
-        }
-    }
-    fn new_file_number<R: Bookkeeping + Testable>() -> Option<u32> {
-        R::new().file_number()
-    }
     #[test]
-    #[allow(non_snake_case)]
-    fn first_file_file_number_is_None_for_Noop_and_LineCount_and_Some_0_otherwise() {
-        assert_eq!(new_file_number::<Dual<FileCount, LineCount>>(), Some(0));
-        assert_eq!(new_file_number::<Dual<LastFileSeen, FileCount>>(), Some(0));
-        assert_eq!(new_file_number::<Dual<LastFileSeen, LineCount>>(), Some(0));
-        assert_eq!(new_file_number::<Dual<LineCount, FileCount>>(), Some(0));
-        assert_eq!(new_file_number::<Dual<Noop, FileCount>>(), Some(0));
-        assert_eq!(new_file_number::<Dual<Noop, LineCount>>(), None);
-        assert_eq!(new_file_number::<Logged<FileCount>>(), Some(0));
-        assert_eq!(new_file_number::<Logged<LineCount>>(), None);
-        assert_eq!(new_file_number::<Unlogged<FileCount>>(), Some(0));
-        assert_eq!(new_file_number::<Unlogged<LastFileSeen>>(), Some(0));
-        assert_eq!(new_file_number::<Unlogged<LineCount>>(), None);
-        assert_eq!(new_file_number::<Unlogged<Noop>>(), None);
+    fn line_count_update_with_uses_saturating_increment() {
+        let mut changer = LineCount(u32::MAX - 2);
+        let other = LineCount::new();
+        assert_eq!(changer.retention_value(), u32::MAX - 2);
+        changer.update_with(other);
+        assert_eq!(changer.retention_value(), u32::MAX - 1);
+        changer.update_with(other);
+        assert_eq!(changer.retention_value(), u32::MAX);
+        changer.update_with(other);
+        assert_eq!(changer.retention_value(), u32::MAX);
     }
 
-    fn bump_twice<R: Bookkeeping>() -> R {
-        let mut select = R::new();
-        select.next_file().unwrap();
-        select.next_file().unwrap();
-        select
-    }
-    fn bump_twice_file_number<R: Bookkeeping + Testable>() -> Option<u32> {
-        bump_twice::<R>().file_number()
-    }
     #[test]
-    #[allow(non_snake_case)]
-    fn next_file_increments_file_number_only_for_LastFileSeen_and_FileCount() {
-        assert_eq!(bump_twice_file_number::<Dual<FileCount, LineCount>>(), Some(2));
-        assert_eq!(bump_twice_file_number::<Dual<LastFileSeen, FileCount>>(), Some(2));
-        assert_eq!(bump_twice_file_number::<Dual<LastFileSeen, LineCount>>(), Some(2));
-        assert_eq!(bump_twice_file_number::<Dual<LineCount, FileCount>>(), Some(2));
-        assert_eq!(bump_twice_file_number::<Dual<Noop, FileCount>>(), Some(2));
-        assert_eq!(bump_twice_file_number::<Dual<Noop, LineCount>>(), None);
-        assert_eq!(bump_twice_file_number::<Logged<FileCount>>(), Some(2));
-        assert_eq!(bump_twice_file_number::<Logged<LineCount>>(), None);
-        assert_eq!(bump_twice_file_number::<Unlogged<FileCount>>(), Some(2));
-        assert_eq!(bump_twice_file_number::<Unlogged<LastFileSeen>>(), Some(2));
-        assert_eq!(bump_twice_file_number::<Unlogged<LineCount>>(), None);
-        assert_eq!(bump_twice_file_number::<Unlogged<Noop>>(), None);
+    fn file_count_next_file_uses_checked_increment() {
+        let mut changer = FileCount { file_number: u32::MAX - 1, files_seen: 1 };
+        changer.next_file().unwrap();
+        assert_eq!(changer, FileCount { file_number: u32::MAX, files_seen: 1 });
+        assert!(changer.next_file().is_err());
     }
 
-    macro_rules! check {
-        ($assert:ident) => {
-            $assert::<Dual<FileCount, LineCount>>();
-            $assert::<Dual<LastFileSeen, FileCount>>();
-            $assert::<Dual<LastFileSeen, LineCount>>();
-            $assert::<Dual<LineCount, FileCount>>();
-            $assert::<Dual<Noop, FileCount>>();
-            $assert::<Dual<Noop, LineCount>>();
-            $assert::<Logged<FileCount>>();
-            $assert::<Logged<LineCount>>();
-            $assert::<Unlogged<FileCount>>();
-            $assert::<Unlogged<LastFileSeen>>();
-            $assert::<Unlogged<LineCount>>();
-            $assert::<Unlogged<Noop>>();
-        };
-    }
-    fn assert_update_with_sets_self_file_number_to_arguments<R: Bookkeeping + Testable>() {
-        let mut naive = R::new();
-        let mut other = R::new();
-        other.next_file().unwrap();
-        other.next_file().unwrap();
-        naive.update_with(other);
-        assert_eq!(naive.file_number(), other.file_number());
-    }
     #[test]
-    fn update_with_sets_file_number_to_its_arguments_file_number() {
-        check!(assert_update_with_sets_self_file_number_to_arguments);
+    fn last_file_seen_next_file_uses_checked_increment() {
+        let mut changer = LastFileSeen(u32::MAX - 1);
+        changer.next_file().unwrap();
+        assert_eq!(changer, LastFileSeen(u32::MAX));
+        assert!(changer.next_file().is_err());
     }
 
-    #[allow(non_snake_case)]
-    fn assert_next_file_errors_if_file_number_is_u32_MAX<R: Bookkeeping + Testable>() {
-        let mut item = R::new();
-        let start = item.file_number();
-        item.next_file().unwrap();
-        if item.file_number() == start {
-            return;
-        }
-        item.set_file_number(u32::MAX - 2);
-        item.next_file().unwrap();
-        assert!(item.file_number() == Some(u32::MAX - 1));
-        item.next_file().unwrap();
-        assert!(item.file_number() == Some(u32::MAX));
-        assert!(item.next_file().is_err());
-    }
     #[test]
-    fn next_file_errors_if_file_number_would_wrap_to_zero() {
-        check!(assert_next_file_errors_if_file_number_is_u32_MAX);
-    }
-
-    fn log_string<B: Bookkeeping + Testable>(item: B) -> String {
-        let mut result = vec![];
-        item.write_count(10, &mut result).unwrap();
-        String::from_utf8(result).unwrap()
-    }
-    fn assert_item_logs_overflow_when_appropriate<B: Bookkeeping + Testable>() {
-        let mut item = B::new();
-        item.set_line_count(42);
-        if log_string(item).trim() == "42" {
-            // Otherwise we're not counting lines
-            let big_but_ok = u32::MAX - 1;
-            item.set_line_count(big_but_ok);
-            assert_eq!(log_string(item).trim(), format!("{big_but_ok}"));
-
-            // Simulate seeing another line
-            item.update_with(item);
-            assert_eq!(log_string(item).trim(), "overflow");
-
-            // And yet another line – Once line count hits overflow, it doesn't change.
-            item.update_with(item);
-            assert_eq!(log_string(item).trim(), "overflow");
-        }
-    }
-    #[test]
-    fn item_logs_overflow_when_appropriate() {
-        check!(assert_item_logs_overflow_when_appropriate);
+    fn line_count_logs_the_string_overflow_for_u32_max() {
+        let zet =
+            ZetSet::<Logged<LineCount>>::new(b"a\na\na\nb\n", Logged(LineCount(u32::MAX - 1)));
+        let mut result = Vec::new();
+        Logged::<LineCount>::output_zet_set(&zet, &mut result).unwrap();
+        let result = String::from_utf8(result).unwrap();
+        assert_eq!(result, format!(" overflow  a\n{} b\n", u32::MAX - 1));
     }
 }
