@@ -26,8 +26,8 @@ pub enum LogType {
 /// * `OpName::MultipleByFile` prints the lines that occur in more than one file.
 ///
 /// The `log_type` operand specifies whether `calculate` should print the number
-/// of time each line appears in the input (`LogType::Lines`), the number of
-/// files in which each argument appears (`LogType::Files`), or neither
+/// of times each line appears in the input (`LogType::Lines`), the number of
+/// files in which each line appears (`LogType::Files`), or neither
 /// (`LogType::None`).
 ///
 pub fn calculate<O: LaterOperand>(
@@ -39,9 +39,9 @@ pub fn calculate<O: LaterOperand>(
 ) -> Result<()> {
     match log_type {
         LogType::None => match operation {
-            Union => union::<Noop, O>(first_operand, rest, out),
-            Diff => diff::<LastFileSeen, O>(first_operand, rest, out),
-            Intersect => intersect::<LastFileSeen, O>(first_operand, rest, out),
+            Union => union::<TrackNothing, O>(first_operand, rest, out),
+            Diff => diff::<TrackLastFileSeen, O>(first_operand, rest, out),
+            Intersect => intersect::<TrackLastFileSeen, O>(first_operand, rest, out),
             Single => count::<CountLines, O>(AndKeep::Single, first_operand, rest, out),
             Multiple => count::<CountLines, O>(AndKeep::Multiple, first_operand, rest, out),
             SingleByFile => count::<CountFiles, O>(AndKeep::Single, first_operand, rest, out),
@@ -53,9 +53,11 @@ pub fn calculate<O: LaterOperand>(
         // `Dual<CountLines, CountLines>` would do duplicate bookkeeping, we just
         // use `CountLines` by itself.
         LogType::Lines => match operation {
-            Union => union::<Dual<Noop, LogLines>, O>(first_operand, rest, out),
-            Diff => diff::<Dual<LastFileSeen, LogLines>, O>(first_operand, rest, out),
-            Intersect => intersect::<Dual<LastFileSeen, CountLines>, O>(first_operand, rest, out),
+            Union => union::<Dual<TrackNothing, LogLines>, O>(first_operand, rest, out),
+            Diff => diff::<Dual<TrackLastFileSeen, LogLines>, O>(first_operand, rest, out),
+            Intersect => {
+                intersect::<Dual<TrackLastFileSeen, CountLines>, O>(first_operand, rest, out)
+            }
             Single => count::<LogLines, O>(AndKeep::Single, first_operand, rest, out),
             Multiple => count::<LogLines, O>(AndKeep::Multiple, first_operand, rest, out),
             SingleByFile => {
@@ -75,9 +77,11 @@ pub fn calculate<O: LaterOperand>(
         // CountFiles>`, since the number reported for `Single` will always be 1
         // — a line appearing only once can appear in only one file.
         LogType::Files => match operation {
-            Union => union::<Dual<Noop, LogFiles>, O>(first_operand, rest, out),
-            Diff => diff::<Dual<LastFileSeen, LogFiles>, O>(first_operand, rest, out),
-            Intersect => intersect::<Dual<LastFileSeen, LogFiles>, O>(first_operand, rest, out),
+            Union => union::<Dual<TrackNothing, LogFiles>, O>(first_operand, rest, out),
+            Diff => diff::<Dual<TrackLastFileSeen, LogFiles>, O>(first_operand, rest, out),
+            Intersect => {
+                intersect::<Dual<TrackLastFileSeen, LogFiles>, O>(first_operand, rest, out)
+            }
             Single => count::<LogLines, O>(AndKeep::Single, first_operand, rest, out),
             Multiple => {
                 count::<Dual<CountLines, LogFiles>, O>(AndKeep::Multiple, first_operand, rest, out)
@@ -182,15 +186,15 @@ impl<Retain: Bookkeeping, Log: Bookkeeping + Loggable> Loggable for Duo<Retain, 
     }
 }
 
-/// We use the `Noop` struct for the `Union` operation, since `Union` includes
+/// We use the `TrackNothing` struct for the `Union` operation, since `Union` includes
 /// every line seen and doesn't need bookkeeping. need to keep track of
-/// anything. `Noop` is also used for the default log operantion of not logging
+/// anything. `TrackNothing` is also used for the default log operantion of not logging
 /// anything.
 #[derive(Clone, Copy, PartialEq, Debug)]
-struct Noop();
-impl Bookkeeping for Noop {
+struct TrackNothing();
+impl Bookkeeping for TrackNothing {
     fn new() -> Self {
-        Noop()
+        TrackNothing()
     }
     fn next_file(&mut self) -> Result<()> {
         Ok(())
@@ -233,7 +237,7 @@ fn union<Log: Bookkeeping, O: LaterOperand>(
 /// Only lines that appear in the first operand will be in the result of `Diff`;
 /// so `Diff` uses `update_if_present` rather than `insert_or_update`, changing
 /// the file number of each file seen in a subsequent operand. We discard lines
-/// whose `LastFileSeen::retention_value` is not `1`, so we're left only with
+/// whose `TrackLastFileSeen::retention_value` is not `1`, so we're left only with
 /// lines that appear only in the first file.
 fn diff<B: Bookkeeping, O: LaterOperand>(
     first_operand: &[u8],
@@ -251,13 +255,13 @@ fn diff<B: Bookkeeping, O: LaterOperand>(
     output_and_discard(set, out)
 }
 
-/// `LastFileSeen` is a thin wrapper around a `u32`, with `next_file` being a
+/// `TrackLastFileSeen` is a thin wrapper around a `u32`, with `next_file` being a
 /// checked increment
 #[derive(Clone, Copy, PartialEq, Debug)]
-struct LastFileSeen(u32);
-impl Bookkeeping for LastFileSeen {
+struct TrackLastFileSeen(u32);
+impl Bookkeeping for TrackLastFileSeen {
     fn new() -> Self {
-        LastFileSeen(0)
+        TrackLastFileSeen(0)
     }
     fn next_file(&mut self) -> Result<()> {
         match self.0.checked_add(1) {
@@ -277,7 +281,7 @@ impl Bookkeeping for LastFileSeen {
 /// of `Intersect`; so `Intersect` as well as `Diff` uses `update_if_present`
 /// rather than `insert_or_update`. But lines in `Intersect`'s result must also
 /// appear in every other file; so after each file we discard those lines whose
-/// `LastFileSeen` number is not the current `file_number`.
+/// `TrackLastFileSeen` number is not the current `file_number`.
 fn intersect<B: Bookkeeping, O: LaterOperand>(
     first_operand: &[u8],
     rest: impl Iterator<Item = Result<O>>,
@@ -298,7 +302,7 @@ fn intersect<B: Bookkeeping, O: LaterOperand>(
 /// how many times it has appeared in the entire input. `CountLines` can also be
 /// used for reporting the number of times each line appears in the input.
 ///
-/// Like `LastFileSeen`, `CountLines` is a thin wrapper around `u32` — but
+/// Like `TrackLastFileSeen`, `CountLines` is a thin wrapper around `u32` — but
 /// `CountLines` ignores `next_file`, and uses `update_with` only to increment the
 /// `u32`. Here we use a saturating increment, because neither `Single` and
 /// `Multiple` care only whether the `u32` is `1` or greater than `1`, and for
@@ -340,7 +344,7 @@ type LogFiles = Logged<CountFiles>;
 /// be used to report the file count information for operatons whose selection
 /// criteria are different from number of files.
 ///
-/// Like `LastFileSeen`, `CountFiles` keeps track of the last file seen, and
+/// Like `TrackLastFileSeen`, `CountFiles` keeps track of the last file seen, and
 /// `bail`s if the number of files seen exceeds `u32::MAX`. It has a separate
 /// `files_seen` field for tracking the number of files seen.
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -579,9 +583,9 @@ mod test_bookkeeping {
 
     #[test]
     fn last_file_seen_next_file_uses_checked_increment() {
-        let mut changer = LastFileSeen(u32::MAX - 1);
+        let mut changer = TrackLastFileSeen(u32::MAX - 1);
         changer.next_file().unwrap();
-        assert_eq!(changer, LastFileSeen(u32::MAX));
+        assert_eq!(changer, TrackLastFileSeen(u32::MAX));
         assert!(changer.next_file().is_err());
     }
 
