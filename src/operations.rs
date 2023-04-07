@@ -106,19 +106,38 @@ pub(crate) trait Bookkeeping: Copy + PartialEq + Debug {
     fn next_file(&mut self) -> Result<()>;
     fn update_with(&mut self, other: Self);
     fn retention_value(self) -> u32;
+}
+
+trait Accounting: Bookkeeping {
+    fn output_zet_set(set: &ZetSet<Self>, out: impl std::io::Write) -> Result<()>;
+}
+
+trait Countable: Bookkeeping {
     fn count(self) -> u32 {
         self.retention_value()
     }
     fn write_count(&self, width: usize, out: &mut impl std::io::Write) -> Result<()>;
+    fn output_counted_zet_set(set: &ZetSet<Self>, mut out: impl std::io::Write) -> Result<()> {
+        let Some(max_count) = set.values().map(|v| v.count()).max() else { return Ok(()) };
+        let width = (max_count.ilog10() + 1) as usize;
+        out.write_all(set.bom)?;
+        for (line, item) in set.iter() {
+            item.write_count(width, &mut out)?;
+            out.write_all(line)?;
+            out.write_all(set.line_terminator)?;
+        }
+        out.flush()?;
+        Ok(())
+    }
 }
-
-pub(crate) trait Accounting: Bookkeeping {
-    fn output_zet_set(set: &ZetSet<Self>, out: impl std::io::Write) -> Result<()>;
+impl<C: Countable> Accounting for C {
+    fn output_zet_set(set: &ZetSet<C>, out: impl std::io::Write) -> Result<()> {
+        C::output_counted_zet_set(set, out)
+    }
 }
-
 #[derive(Clone, Copy, PartialEq, Debug)]
-struct Logged<R: Bookkeeping>(R);
-impl<R: Bookkeeping> Bookkeeping for Logged<R> {
+struct Logged<R: Countable>(R);
+impl<R: Countable> Bookkeeping for Logged<R> {
     fn new() -> Self {
         Self(R::new())
     }
@@ -131,27 +150,10 @@ impl<R: Bookkeeping> Bookkeeping for Logged<R> {
     fn retention_value(self) -> u32 {
         self.0.retention_value()
     }
-    fn write_count(&self, width: usize, out: &mut impl std::io::Write) -> Result<()> {
-        if self.retention_value() == u32::MAX {
-            write!(out, " overflow  ")?
-        } else {
-            write!(out, "{:width$} ", self.retention_value())?
-        }
-        Ok(())
-    }
 }
-impl<R: Bookkeeping> Accounting for Logged<R> {
-    fn output_zet_set(set: &ZetSet<Logged<R>>, mut out: impl std::io::Write) -> Result<()> {
-        let Some(max_count) = set.values().map(|v| v.count()).max() else { return Ok(()) };
-        let width = (max_count.ilog10() + 1) as usize;
-        out.write_all(set.bom)?;
-        for (line, item) in set.iter() {
-            item.write_count(width, &mut out)?;
-            out.write_all(line)?;
-            out.write_all(set.line_terminator)?;
-        }
-        out.flush()?;
-        Ok(())
+impl<R: Countable> Countable for Logged<R> {
+    fn write_count(&self, width: usize, mut out: &mut impl std::io::Write) -> Result<()> {
+        self.0.write_count(width, &mut out)
     }
 }
 
@@ -170,9 +172,6 @@ impl<R: Bookkeeping> Bookkeeping for Unlogged<R> {
     fn retention_value(self) -> u32 {
         self.0.retention_value()
     }
-    fn write_count(&self, _width: usize, _out: &mut impl std::io::Write) -> Result<()> {
-        Ok(())
-    }
 }
 impl<R: Bookkeeping> Accounting for Unlogged<R> {
     fn output_zet_set(set: &ZetSet<Self>, mut out: impl std::io::Write) -> Result<()> {
@@ -190,11 +189,11 @@ impl<R: Bookkeeping> Accounting for Unlogged<R> {
 /// for logging. We take the `retention_value` from the first item and `count`
 /// and `write_count` from the second.
 #[derive(Clone, Copy, PartialEq, Debug)]
-struct Dual<Retain: Bookkeeping, Log: Bookkeeping> {
+struct Dual<Retain: Bookkeeping, Log: Countable> {
     pub(crate) retention: Retain,
     pub(crate) log: Log,
 }
-impl<Retain: Bookkeeping, Log: Bookkeeping> Bookkeeping for Dual<Retain, Log> {
+impl<Retain: Bookkeeping, Log: Countable> Bookkeeping for Dual<Retain, Log> {
     fn new() -> Self {
         Dual { retention: Retain::new(), log: Log::new() }
     }
@@ -209,25 +208,13 @@ impl<Retain: Bookkeeping, Log: Bookkeeping> Bookkeeping for Dual<Retain, Log> {
     fn retention_value(self) -> u32 {
         self.retention.retention_value()
     }
-    fn count(self) -> u32 {
-        Logged(self.log).retention_value()
-    }
-    fn write_count(&self, width: usize, out: &mut impl std::io::Write) -> Result<()> {
-        Logged(self.log).write_count(width, out)
-    }
 }
-impl<Retain: Bookkeeping, Log: Bookkeeping> Accounting for Dual<Retain, Log> {
-    fn output_zet_set(set: &ZetSet<Self>, mut out: impl std::io::Write) -> Result<()> {
-        let Some(max_count) = set.values().map(|v| v.count()).max() else { return Ok(()) };
-        let width = (max_count.ilog10() + 1) as usize;
-        out.write_all(set.bom)?;
-        for (line, item) in set.iter() {
-            item.write_count(width, &mut out)?;
-            out.write_all(line)?;
-            out.write_all(set.line_terminator)?;
-        }
-        out.flush()?;
-        Ok(())
+impl<Retain: Bookkeeping, Log: Countable> Countable for Dual<Retain, Log> {
+    fn count(self) -> u32 {
+        self.log.retention_value()
+    }
+    fn write_count(&self, width: usize, mut out: &mut impl std::io::Write) -> Result<()> {
+        self.log.write_count(width, &mut out)
     }
 }
 
@@ -247,9 +234,6 @@ impl Bookkeeping for Noop {
     fn update_with(&mut self, _other: Self) {}
     fn retention_value(self) -> u32 {
         0
-    }
-    fn write_count(&self, _width: usize, _out: &mut impl std::io::Write) -> Result<()> {
-        Ok(())
     }
 }
 /// For most operations, we insert every line in the input into the `ZetSet`.
@@ -324,9 +308,6 @@ impl Bookkeeping for LastFileSeen {
     fn retention_value(self) -> u32 {
         self.0
     }
-    fn write_count(&self, _width: usize, _out: &mut impl std::io::Write) -> Result<()> {
-        Ok(())
-    }
 }
 /// Similarly, only lines that appear in the first operand will be in the result
 /// of `Intersect`; so `Intersect` as well as `Diff` uses `update_if_present`
@@ -374,6 +355,8 @@ impl Bookkeeping for LineCount {
     fn retention_value(self) -> u32 {
         self.0
     }
+}
+impl Countable for LineCount {
     fn write_count(&self, width: usize, out: &mut impl std::io::Write) -> Result<()> {
         if self.0 == u32::MAX {
             write!(out, " overflow  ")?
@@ -417,6 +400,8 @@ impl Bookkeeping for FileCount {
     fn retention_value(self) -> u32 {
         self.files_seen
     }
+}
+impl Countable for FileCount {
     fn write_count(&self, width: usize, out: &mut impl std::io::Write) -> Result<()> {
         write!(out, "{:width$} ", self.files_seen)?;
         Ok(())
