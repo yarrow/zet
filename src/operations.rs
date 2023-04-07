@@ -53,19 +53,22 @@ pub fn calculate<O: LaterOperand>(
         // `Dual<CountLines, CountLines>` would do duplicate bookkeeping, we just
         // use `CountLines` by itself.
         LogType::Lines => match operation {
-            Union => union::<Dual<TrackNothing, LogLines>, O>(first_operand, rest, out),
-            Diff => diff::<Dual<TrackLastFileSeen, LogLines>, O>(first_operand, rest, out),
+            Union => union::<LogLines, O>(first_operand, rest, out),
+            Diff => diff::<Dual<TrackLastFileSeen, CountLines>, O>(first_operand, rest, out),
             Intersect => {
                 intersect::<Dual<TrackLastFileSeen, CountLines>, O>(first_operand, rest, out)
             }
             Single => count::<LogLines, O>(AndKeep::Single, first_operand, rest, out),
             Multiple => count::<LogLines, O>(AndKeep::Multiple, first_operand, rest, out),
             SingleByFile => {
-                count::<Dual<CountFiles, LogLines>, O>(AndKeep::Single, first_operand, rest, out)
+                count::<Dual<CountFiles, CountLines>, O>(AndKeep::Single, first_operand, rest, out)
             }
-            MultipleByFile => {
-                count::<Dual<CountFiles, LogLines>, O>(AndKeep::Multiple, first_operand, rest, out)
-            }
+            MultipleByFile => count::<Dual<CountFiles, CountLines>, O>(
+                AndKeep::Multiple,
+                first_operand,
+                rest,
+                out,
+            ),
         },
 
         // Similarly, we don't want to use `Dual<CountFiles, CountFiles>`
@@ -77,15 +80,18 @@ pub fn calculate<O: LaterOperand>(
         // CountFiles>`, since the number reported for `Single` will always be 1
         // — a line appearing only once can appear in only one file.
         LogType::Files => match operation {
-            Union => union::<Dual<TrackNothing, LogFiles>, O>(first_operand, rest, out),
-            Diff => diff::<Dual<TrackLastFileSeen, LogFiles>, O>(first_operand, rest, out),
+            Union => union::<LogFiles, O>(first_operand, rest, out),
+            Diff => diff::<Dual<TrackLastFileSeen, CountFiles>, O>(first_operand, rest, out),
             Intersect => {
-                intersect::<Dual<TrackLastFileSeen, LogFiles>, O>(first_operand, rest, out)
+                intersect::<Dual<TrackLastFileSeen, CountFiles>, O>(first_operand, rest, out)
             }
             Single => count::<LogLines, O>(AndKeep::Single, first_operand, rest, out),
-            Multiple => {
-                count::<Dual<CountLines, LogFiles>, O>(AndKeep::Multiple, first_operand, rest, out)
-            }
+            Multiple => count::<Dual<CountLines, CountFiles>, O>(
+                AndKeep::Multiple,
+                first_operand,
+                rest,
+                out,
+            ),
             SingleByFile => count::<LogFiles, O>(AndKeep::Single, first_operand, rest, out),
             MultipleByFile => count::<LogFiles, O>(AndKeep::Multiple, first_operand, rest, out),
         },
@@ -116,10 +122,10 @@ trait Loggable {
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
-struct Logged<R: Bookkeeping + Loggable>(R);
-impl<R: Bookkeeping + Loggable> Bookkeeping for Logged<R> {
+struct Logged<B: Bookkeeping + Loggable>(B);
+impl<B: Bookkeeping + Loggable> Bookkeeping for Logged<B> {
     fn new() -> Self {
-        Self(R::new())
+        Self(B::new())
     }
     fn next_file(&mut self) -> Result<()> {
         self.0.next_file()
@@ -143,7 +149,7 @@ impl<R: Bookkeeping + Loggable> Bookkeeping for Logged<R> {
         Ok(())
     }
 }
-impl<R: Bookkeeping + Loggable> Loggable for Logged<R> {
+impl<B: Bookkeeping + Loggable> Loggable for Logged<B> {
     fn log_value(self) -> u32 {
         self.0.log_value()
     }
@@ -152,7 +158,7 @@ impl<R: Bookkeeping + Loggable> Loggable for Logged<R> {
     }
 }
 
-type Dual<B, C> = Logged<Duo<B, C>>;
+type Dual<Retain, Log> = Logged<Duo<Retain, Log>>;
 /// The `Dual` struct lets us use one item for retention purposes and another
 /// for logging. We take the `retention_value` from the first item and `log_value`
 /// and `write_log` from the second.
