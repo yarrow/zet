@@ -39,19 +39,13 @@ pub fn calculate<O: LaterOperand>(
 ) -> Result<()> {
     match log_type {
         LogType::None => match operation {
-            Union => union::<Unlogged<Noop>, O>(first_operand, rest, out),
-            Diff => diff::<Unlogged<LastFileSeen>, O>(first_operand, rest, out),
-            Intersect => intersect::<Unlogged<LastFileSeen>, O>(first_operand, rest, out),
-            Single => count::<Unlogged<CountLines>, O>(AndKeep::Single, first_operand, rest, out),
-            Multiple => {
-                count::<Unlogged<CountLines>, O>(AndKeep::Multiple, first_operand, rest, out)
-            }
-            SingleByFile => {
-                count::<Unlogged<CountFiles>, O>(AndKeep::Single, first_operand, rest, out)
-            }
-            MultipleByFile => {
-                count::<Unlogged<CountFiles>, O>(AndKeep::Multiple, first_operand, rest, out)
-            }
+            Union => union::<Noop, O>(first_operand, rest, out),
+            Diff => diff::<LastFileSeen, O>(first_operand, rest, out),
+            Intersect => intersect::<LastFileSeen, O>(first_operand, rest, out),
+            Single => count::<CountLines, O>(AndKeep::Single, first_operand, rest, out),
+            Multiple => count::<CountLines, O>(AndKeep::Multiple, first_operand, rest, out),
+            SingleByFile => count::<CountFiles, O>(AndKeep::Single, first_operand, rest, out),
+            MultipleByFile => count::<CountFiles, O>(AndKeep::Multiple, first_operand, rest, out),
         },
 
         // When `log_type` is `LogType::Lines` and `operation` is `Single` or
@@ -115,23 +109,6 @@ pub(crate) trait Bookkeeping: Copy + PartialEq + Debug {
 trait Countable {
     fn count(self) -> u32;
     fn write_count(&self, width: usize, out: &mut impl std::io::Write) -> Result<()>;
-}
-
-#[derive(Clone, Copy, PartialEq, Debug)]
-struct Unlogged<R: Bookkeeping>(R);
-impl<R: Bookkeeping> Bookkeeping for Unlogged<R> {
-    fn new() -> Self {
-        Self(R::new())
-    }
-    fn next_file(&mut self) -> Result<()> {
-        self.0.next_file()
-    }
-    fn update_with(&mut self, other: Self) {
-        self.0.update_with(other.0)
-    }
-    fn retention_value(self) -> u32 {
-        self.0.retention_value()
-    }
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
