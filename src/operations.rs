@@ -107,12 +107,12 @@ trait Accounting: Bookkeeping {
     fn output_zet_set(set: &ZetSet<Self>, out: impl std::io::Write) -> Result<()>;
 }
 
-trait Countable: Bookkeeping {
-    fn count(self) -> u32 {
-        self.retention_value()
-    }
+trait Countable {
+    fn count(self) -> u32;
     fn write_count(&self, width: usize, out: &mut impl std::io::Write) -> Result<()>;
-    fn output_counted_zet_set(set: &ZetSet<Self>, mut out: impl std::io::Write) -> Result<()> {
+}
+impl<C: Bookkeeping + Countable> Accounting for C {
+    fn output_zet_set(set: &ZetSet<Self>, mut out: impl std::io::Write) -> Result<()> {
         let Some(max_count) = set.values().map(|v| v.count()).max() else { return Ok(()) };
         let width = (max_count.ilog10() + 1) as usize;
         out.write_all(set.bom)?;
@@ -123,11 +123,6 @@ trait Countable: Bookkeeping {
         }
         out.flush()?;
         Ok(())
-    }
-}
-impl<C: Countable> Accounting for C {
-    fn output_zet_set(set: &ZetSet<C>, out: impl std::io::Write) -> Result<()> {
-        C::output_counted_zet_set(set, out)
     }
 }
 
@@ -163,11 +158,11 @@ impl<R: Bookkeeping> Accounting for Unlogged<R> {
 /// for logging. We take the `retention_value` from the first item and `count`
 /// and `write_count` from the second.
 #[derive(Clone, Copy, PartialEq, Debug)]
-struct Dual<Retain: Bookkeeping, Log: Countable> {
+struct Dual<Retain: Bookkeeping, Log: Bookkeeping + Countable> {
     pub(crate) retention: Retain,
     pub(crate) log: Log,
 }
-impl<Retain: Bookkeeping, Log: Countable> Bookkeeping for Dual<Retain, Log> {
+impl<Retain: Bookkeeping, Log: Bookkeeping + Countable> Bookkeeping for Dual<Retain, Log> {
     fn new() -> Self {
         Dual { retention: Retain::new(), log: Log::new() }
     }
@@ -183,7 +178,7 @@ impl<Retain: Bookkeeping, Log: Countable> Bookkeeping for Dual<Retain, Log> {
         self.retention.retention_value()
     }
 }
-impl<Retain: Bookkeeping, Log: Countable> Countable for Dual<Retain, Log> {
+impl<Retain: Bookkeeping, Log: Bookkeeping + Countable> Countable for Dual<Retain, Log> {
     fn count(self) -> u32 {
         self.log.retention_value()
     }
@@ -331,6 +326,9 @@ impl Bookkeeping for LineCount {
     }
 }
 impl Countable for LineCount {
+    fn count(self) -> u32 {
+        self.retention_value()
+    }
     fn write_count(&self, width: usize, out: &mut impl std::io::Write) -> Result<()> {
         if self.0 == u32::MAX {
             write!(out, " overflow  ")?
@@ -376,6 +374,9 @@ impl Bookkeeping for FileCount {
     }
 }
 impl Countable for FileCount {
+    fn count(self) -> u32 {
+        self.retention_value()
+    }
     fn write_count(&self, width: usize, out: &mut impl std::io::Write) -> Result<()> {
         write!(out, "{:width$} ", self.files_seen)?;
         Ok(())
