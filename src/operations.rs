@@ -55,15 +55,15 @@ pub fn calculate<O: LaterOperand>(
         },
 
         // When `log_type` is `LogType::Lines` and `operation` is `Single` or
-        // `Multiple`, both logging and selection need a `LineCount` in the
-        // bookkeeping item, so we only need `Logged<LineCount>`, not
-        // bookkeeping values of `Dual<LineCount, LineCount>`.
+        // `Multiple`, both logging and selection use `LineCount`. Since
+        // `Dual<LineCount, LineCount>` would do duplicate bookkeeping, we just
+        // use `LineCount` by itself.
         LogType::Lines => match operation {
             Union => union::<Dual<Noop, LineCount>, O>(first_operand, rest, out),
             Diff => diff::<Dual<LastFileSeen, LineCount>, O>(first_operand, rest, out),
             Intersect => intersect::<Dual<LastFileSeen, LineCount>, O>(first_operand, rest, out),
-            Single => count::<Logged<LineCount>, O>(AndKeep::Single, first_operand, rest, out),
-            Multiple => count::<Logged<LineCount>, O>(AndKeep::Multiple, first_operand, rest, out),
+            Single => count::<LineCount, O>(AndKeep::Single, first_operand, rest, out),
+            Multiple => count::<LineCount, O>(AndKeep::Multiple, first_operand, rest, out),
             SingleByFile => {
                 count::<Dual<FileCount, LineCount>, O>(AndKeep::Single, first_operand, rest, out)
             }
@@ -73,28 +73,23 @@ pub fn calculate<O: LaterOperand>(
         },
 
         // Similarly, we don't want to use `Dual<FileCount, FileCount>`
-        // bookkeeping values, so we use `Logged<FileCount>` when `log_type` is
+        // bookkeeping values, so we use `FileCount` by itselfwhen `log_type` is
         // LogType::Files` and `operation` is `SingleByFile` or
         // `MultipleByFile`.
         //
-        // And we use `Logged<LineCount>` for `Single`, rather than
-        // `Dual<LineCount, FileCount>`, since the number reported for `Single`
-        // will always be 1 — a line appearing only once can appear in only one
-        // file.
+        // And we use `LineCount` for `Single`, rather than `Dual<LineCount,
+        // FileCount>`, since the number reported for `Single` will always be 1
+        // — a line appearing only once can appear in only one file.
         LogType::Files => match operation {
             Union => union::<Dual<Noop, FileCount>, O>(first_operand, rest, out),
             Diff => diff::<Dual<LastFileSeen, FileCount>, O>(first_operand, rest, out),
             Intersect => intersect::<Dual<LastFileSeen, FileCount>, O>(first_operand, rest, out),
-            Single => count::<Logged<LineCount>, O>(AndKeep::Single, first_operand, rest, out),
+            Single => count::<LineCount, O>(AndKeep::Single, first_operand, rest, out),
             Multiple => {
                 count::<Dual<LineCount, FileCount>, O>(AndKeep::Multiple, first_operand, rest, out)
             }
-            SingleByFile => {
-                count::<Logged<FileCount>, O>(AndKeep::Single, first_operand, rest, out)
-            }
-            MultipleByFile => {
-                count::<Logged<FileCount>, O>(AndKeep::Multiple, first_operand, rest, out)
-            }
+            SingleByFile => count::<FileCount, O>(AndKeep::Single, first_operand, rest, out),
+            MultipleByFile => count::<FileCount, O>(AndKeep::Multiple, first_operand, rest, out),
         },
     }
 }
@@ -133,27 +128,6 @@ trait Countable: Bookkeeping {
 impl<C: Countable> Accounting for C {
     fn output_zet_set(set: &ZetSet<C>, out: impl std::io::Write) -> Result<()> {
         C::output_counted_zet_set(set, out)
-    }
-}
-#[derive(Clone, Copy, PartialEq, Debug)]
-struct Logged<R: Countable>(R);
-impl<R: Countable> Bookkeeping for Logged<R> {
-    fn new() -> Self {
-        Self(R::new())
-    }
-    fn next_file(&mut self) -> Result<()> {
-        self.0.next_file()
-    }
-    fn update_with(&mut self, other: Self) {
-        self.0.update_with(other.0)
-    }
-    fn retention_value(self) -> u32 {
-        self.0.retention_value()
-    }
-}
-impl<R: Countable> Countable for Logged<R> {
-    fn write_count(&self, width: usize, mut out: &mut impl std::io::Write) -> Result<()> {
-        self.0.write_count(width, &mut out)
     }
 }
 
@@ -616,10 +590,9 @@ mod test_bookkeeping {
 
     #[test]
     fn line_count_logs_the_string_overflow_for_u32_max() {
-        let zet =
-            ZetSet::<Logged<LineCount>>::new(b"a\na\na\nb\n", Logged(LineCount(u32::MAX - 1)));
+        let zet = ZetSet::<LineCount>::new(b"a\na\na\nb\n", LineCount(u32::MAX - 1));
         let mut result = Vec::new();
-        Logged::<LineCount>::output_zet_set(&zet, &mut result).unwrap();
+        LineCount::output_zet_set(&zet, &mut result).unwrap();
         let result = String::from_utf8(result).unwrap();
         assert_eq!(result, format!(" overflow  a\n{} b\n", u32::MAX - 1));
     }
