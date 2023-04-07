@@ -110,10 +110,10 @@ pub(crate) trait Bookkeeping: Copy + PartialEq + Debug {
         self.retention_value()
     }
     fn write_count(&self, width: usize, out: &mut impl std::io::Write) -> Result<()>;
-    #[allow(unused_variables)]
-    fn output_zet_set(set: &ZetSet<Self>, out: impl std::io::Write) -> Result<()> {
-        unimplemented!()
-    }
+}
+
+pub(crate) trait Accounting: Bookkeeping {
+    fn output_zet_set(set: &ZetSet<Self>, out: impl std::io::Write) -> Result<()>;
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -139,7 +139,9 @@ impl<R: Bookkeeping> Bookkeeping for Logged<R> {
         }
         Ok(())
     }
-    fn output_zet_set(set: &ZetSet<Self>, mut out: impl std::io::Write) -> Result<()> {
+}
+impl<R: Bookkeeping> Accounting for Logged<R> {
+    fn output_zet_set(set: &ZetSet<Logged<R>>, mut out: impl std::io::Write) -> Result<()> {
         let Some(max_count) = set.values().map(|v| v.count()).max() else { return Ok(()) };
         let width = (max_count.ilog10() + 1) as usize;
         out.write_all(set.bom)?;
@@ -168,6 +170,11 @@ impl<R: Bookkeeping> Bookkeeping for Unlogged<R> {
     fn retention_value(self) -> u32 {
         self.0.retention_value()
     }
+    fn write_count(&self, _width: usize, _out: &mut impl std::io::Write) -> Result<()> {
+        Ok(())
+    }
+}
+impl<R: Bookkeeping> Accounting for Unlogged<R> {
     fn output_zet_set(set: &ZetSet<Self>, mut out: impl std::io::Write) -> Result<()> {
         out.write_all(set.bom)?;
         for line in set.keys() {
@@ -175,9 +182,6 @@ impl<R: Bookkeeping> Bookkeeping for Unlogged<R> {
             out.write_all(set.line_terminator)?;
         }
         out.flush()?;
-        Ok(())
-    }
-    fn write_count(&self, _width: usize, _out: &mut impl std::io::Write) -> Result<()> {
         Ok(())
     }
 }
@@ -211,6 +215,8 @@ impl<Retain: Bookkeeping, Log: Bookkeeping> Bookkeeping for Dual<Retain, Log> {
     fn write_count(&self, width: usize, out: &mut impl std::io::Write) -> Result<()> {
         Logged(self.log).write_count(width, out)
     }
+}
+impl<Retain: Bookkeeping, Log: Bookkeeping> Accounting for Dual<Retain, Log> {
     fn output_zet_set(set: &ZetSet<Self>, mut out: impl std::io::Write) -> Result<()> {
         let Some(max_count) = set.values().map(|v| v.count()).max() else { return Ok(()) };
         let width = (max_count.ilog10() + 1) as usize;
@@ -267,7 +273,7 @@ fn every_line<B: Bookkeeping, O: LaterOperand>(
 /// `Union` collects every line, so we don't need to call `retain`; and
 /// the only bookkeeping needed is for the line/file counts, so we don't
 /// need a `Dual` bookkeeping value and just use the `Log` argument passed in.
-fn union<Log: Bookkeeping, O: LaterOperand>(
+fn union<Log: Accounting, O: LaterOperand>(
     first_operand: &[u8],
     rest: impl Iterator<Item = Result<O>>,
     out: impl std::io::Write,
@@ -281,7 +287,7 @@ fn union<Log: Bookkeeping, O: LaterOperand>(
 /// the file number of each file seen in a subsequent operand. We discard lines
 /// whose `LastFileSeen::retention_value` is not `1`, so we're left only with
 /// lines that appear only in the first file.
-fn diff<B: Bookkeeping, O: LaterOperand>(
+fn diff<B: Accounting, O: LaterOperand>(
     first_operand: &[u8],
     rest: impl Iterator<Item = Result<O>>,
     out: impl std::io::Write,
@@ -327,7 +333,7 @@ impl Bookkeeping for LastFileSeen {
 /// rather than `insert_or_update`. But lines in `Intersect`'s result must also
 /// appear in every other file; so after each file we discard those lines whose
 /// `LastFileSeen` number is not the current `file_number`.
-fn intersect<B: Bookkeeping, O: LaterOperand>(
+fn intersect<B: Accounting, O: LaterOperand>(
     first_operand: &[u8],
     rest: impl Iterator<Item = Result<O>>,
     out: impl std::io::Write,
@@ -429,7 +435,7 @@ enum AndKeep {
 /// times a line has appeared in the input, or the number of files it has
 /// appeared in.  Then retain those whose bookkeeping item's `retention_value`
 /// is 1 (for `AndKeep::Single`) or greater than 1 (for `AndKeep::Multiple`).
-fn count<B: Bookkeeping, O: LaterOperand>(
+fn count<B: Accounting, O: LaterOperand>(
     keep: AndKeep,
     first_operand: &[u8],
     rest: impl Iterator<Item = Result<O>>,
@@ -445,7 +451,7 @@ fn count<B: Bookkeeping, O: LaterOperand>(
 
 /// When we're done with a `ZetSet`, we write its lines to our output and exit
 /// the program.
-fn output_and_discard<B: Bookkeeping>(set: ZetSet<B>, out: impl std::io::Write) -> Result<()> {
+fn output_and_discard<B: Accounting>(set: ZetSet<B>, out: impl std::io::Write) -> Result<()> {
     B::output_zet_set(&set, out)?;
     std::mem::forget(set); // Slightly faster to just abandon this, since we're about to exit.
                            // Thanks to [Karolin Varner](https://github.com/koraa)'s huniq
