@@ -9,15 +9,15 @@ fn main() -> Result<()> {
     let args = zet::args::parsed();
 
     let paths = first_and_rest(&args.paths).or_else(|| first_and_rest(&["-".into()]));
-    let (first_operand, rest, number_of_operands) = match paths {
+    let (first_operand, rest) = match paths {
         None => {
             bail!("This can't happen: with no file arguments, zet should read from standard input")
         }
-        Some((first, others, others_len)) => (first?, others, others_len + 1),
+        Some((first, others)) => (first?, others),
     };
 
     let mut op = args.op;
-    if number_of_operands == 1 {
+    if rest.len() == 0 {
         use OpName::*;
         match op {
             // For a single operand, Union is slightly more efficient, and its

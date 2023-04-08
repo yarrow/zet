@@ -1,8 +1,9 @@
 //! Provides the `first_and_rest` function, which returns a `Vec<u8>` containing
-//! the contents of the first operand and an iterator over the remaining
-//! operands. *Note:* this different treatment of the first and remaining
-//! operands has the unfortunate result of requiring different code paths for
-//! translating UTF16 files into UTF8. That currently seems worth the cost.
+//! the contents of the first operand and an `ExactSizeIterator` over the
+//! remaining operands. *Note:* this different treatment of the first and
+//! remaining operands has the unfortunate result of requiring different code
+//! paths for translating UTF16 files into UTF8. That currently seems worth the
+//! cost.
 use crate::set::LaterOperand;
 use anyhow::{Context, Result};
 use bstr::io::BufReadExt;
@@ -20,9 +21,9 @@ fn use_stdin(path: &Path) -> bool {
     path.to_string_lossy() == "-"
 }
 /// Return the contents of the first file named in `files` as a `Vec<u8>`, and
-/// an iterator over the subsequent arguments.
+/// an `ExactSizeIterator` over the subsequent arguments.
 #[must_use]
-pub fn first_and_rest(files: &[PathBuf]) -> Option<(Result<Vec<u8>>, Remaining, usize)> {
+pub fn first_and_rest(files: &[PathBuf]) -> Option<(Result<Vec<u8>>, Remaining)> {
     fn all_of_stdin() -> Result<Vec<u8>> {
         let mut buffer = Vec::new();
         io::stdin().read_to_end(&mut buffer).context("Can't read file: <stdin>")?;
@@ -40,8 +41,7 @@ pub fn first_and_rest(files: &[PathBuf]) -> Option<(Result<Vec<u8>>, Remaining, 
                     .map(decode_if_utf16)
             };
             let rest = rest.to_vec();
-            let rest_len = rest.len();
-            Some((first_operand, Remaining::from(rest), rest_len))
+            Some((first_operand, Remaining::from(rest)))
         }
     }
 }
@@ -67,7 +67,7 @@ fn decode_if_utf16(candidate: Vec<u8>) -> Vec<u8> {
 
 /// The first operand is read into memory in its entirety, but that's not
 /// efficient for the second and subsequent operands.  The `Remaining`
-/// structure is an iterator over those operands.
+/// structure is an `ExactSizeIterator` over those operands.
 pub struct Remaining {
     files: std::vec::IntoIter<PathBuf>,
 }
@@ -82,6 +82,12 @@ impl Iterator for Remaining {
     type Item = Result<NextOperand>;
     fn next(&mut self) -> Option<Self::Item> {
         self.files.next().map(|path| reader_for(&path))
+    }
+}
+
+impl ExactSizeIterator for Remaining {
+    fn len(&self) -> usize {
+        self.files.len()
     }
 }
 

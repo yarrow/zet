@@ -20,10 +20,10 @@
 //!   on the assumption that few lines in the first file are duplicates.
 //! * We do *not* read the entire contents of subsequent files. This can cost us
 //!   time in key allocation, but often saves both time and memory: `Intersect`
-//!   and `Diff` never allocate, since they only remove lines from the set,
-//!   while `Union`, `Single` and `Multiple` don't do extensive allocation
-//!   in the fairly common case where the second and subsequent input files
-//!   have few lines not already present in the first file.
+//!   and `Diff` never allocate, since they only remove lines from the set, while
+//!   the other operation won't do extensive allocation in the fairly common case
+//!   where the second and subsequent input files have few lines not already
+//!   present in the first file.
 //! * We start output with a Unicode byte order mark if and only the first input
 //!   file begins with a byte order mark.
 //! * We strip the line terminator (either `\r\n` or `\n`) from the end of each
@@ -38,7 +38,8 @@
 //! takes a `&[u8]` slice and a bookkeeping item used by the calling operation.
 //! The call `ZetSet::new(slice, item)` returns an initialized `ZetSet` with:
 //! * An `IndexMap` whose keys (lines) are borrowed from `slice` and initial
-//!   bookkeeping values equal to `item`.
+//!   bookkeeping values equal to `item`, and possibly updated if seen multiple
+//!   times in the slice.
 //! * A field that indicates whether `slice` started with a byte order mark.
 //! * A field that holds the line terminator to be used, taken from the first
 //!   line of `slice`.
@@ -52,8 +53,8 @@
 //! * `z.update_if_present(operand, item)` calls `v.update_with(file_number)`
 //!   on the bookkeeping item of lines in operand that are present in `z`,
 //!   ignoring lines that are not already present.
-//! * Finally, `z.retain(keep)` retains lines for which `keep(item.value())` is
-//!   true of the line's bookkeeping item.
+//! * Finally, `z.retain(keep)` retains lines for which
+//!   `keep(item.retention_value())` is true of the line's bookkeeping item.
 //!
 #![deny(
     warnings,

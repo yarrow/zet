@@ -34,77 +34,115 @@ pub fn calculate<O: LaterOperand>(
     operation: OpName,
     log_type: LogType,
     first_operand: &[u8],
-    rest: impl Iterator<Item = Result<O>>,
+    rest: impl ExactSizeIterator<Item = Result<O>>,
     out: impl std::io::Write,
 ) -> Result<()> {
+    let number_of_operands = rest.len() + 1; // + 1 because first_operand is an operand
+    if number_of_operands > u32::MAX as usize {
+        bail!("Zet can't handle more than {} input files", u32::MAX)
+        // Since we have <= u32::MAX operands, the `next_file` method can't overflow and we can use
+        // wrapping_add
+    }
     match log_type {
         LogType::None => match operation {
-            Union => union::<TrackNothing, O>(first_operand, rest, out),
-            Diff => diff::<TrackLastFileSeen, O>(first_operand, rest, out),
-            Intersect => intersect::<TrackLastFileSeen, O>(first_operand, rest, out),
-            Single => count::<CountLines, O>(AndKeep::Single, first_operand, rest, out),
-            Multiple => count::<CountLines, O>(AndKeep::Multiple, first_operand, rest, out),
-            SingleByFile => count::<CountFiles, O>(AndKeep::Single, first_operand, rest, out),
-            MultipleByFile => count::<CountFiles, O>(AndKeep::Multiple, first_operand, rest, out),
+            Union => union::<Unsifted, O>(first_operand, rest, out),
+            Diff => diff::<Files, O>(first_operand, rest, out),
+            Intersect => intersect::<Files, O>(first_operand, rest, out),
+            Single => keep_single::<Lines, O>(first_operand, rest, out),
+            Multiple => keep_multiple::<Lines, O>(first_operand, rest, out),
+            SingleByFile => keep_single::<Files, O>(first_operand, rest, out),
+            MultipleByFile => keep_multiple::<Files, O>(first_operand, rest, out),
         },
 
         // When `log_type` is `LogType::Lines` and `operation` is `Single` or
-        // `Multiple`, both logging and selection use `CountLines`. Since
-        // `Dual<CountLines, CountLines>` would do duplicate bookkeeping, we just
-        // use `CountLines` by itself.
+        // `Multiple`, both logging and selection use `Lines`. Since
+        // `SiftLog<Lines, Lines>` would do duplicate bookkeeping, we just
+        // use `Lines` by itself.
         LogType::Lines => match operation {
-            Union => union::<LogLines, O>(first_operand, rest, out),
-            Diff => diff::<Dual<TrackLastFileSeen, CountLines>, O>(first_operand, rest, out),
-            Intersect => {
-                intersect::<Dual<TrackLastFileSeen, CountLines>, O>(first_operand, rest, out)
-            }
-            Single => count::<LogLines, O>(AndKeep::Single, first_operand, rest, out),
-            Multiple => count::<LogLines, O>(AndKeep::Multiple, first_operand, rest, out),
-            SingleByFile => {
-                count::<Dual<CountFiles, CountLines>, O>(AndKeep::Single, first_operand, rest, out)
-            }
-            MultipleByFile => count::<Dual<CountFiles, CountLines>, O>(
-                AndKeep::Multiple,
-                first_operand,
-                rest,
-                out,
-            ),
+            Union => union::<Log<Lines>, O>(first_operand, rest, out),
+            Diff => diff::<SiftLog<Files, Lines>, O>(first_operand, rest, out),
+            Intersect => intersect::<SiftLog<Files, Lines>, O>(first_operand, rest, out),
+            Single => keep_single::<Log<Lines>, O>(first_operand, rest, out),
+            Multiple => keep_multiple::<Log<Lines>, O>(first_operand, rest, out),
+            SingleByFile => keep_single::<SiftLog<Files, Lines>, O>(first_operand, rest, out),
+            MultipleByFile => keep_multiple::<SiftLog<Files, Lines>, O>(first_operand, rest, out),
         },
 
-        // Similarly, we don't want to use `Dual<CountFiles, CountFiles>`
-        // bookkeeping values, so we use `LogFiles` by itselfwhen `log_type` is
+        // Similarly, we don't want to use `SiftLog<Files, Files>` bookkeeping
+        // values, so we use `Log<Files>` by itself when `log_type` is
         // LogType::Files` and `operation` is `SingleByFile` or
         // `MultipleByFile`.
         //
-        // And we use `LogLines` for `Single`, rather than `Dual<CountLines,
-        // CountFiles>`, since the number reported for `Single` will always be 1
-        // — a line appearing only once can appear in only one file.
+        // And we use `Log<Lines>` for `Single`, rather than `SiftLog<Lines,
+        // Files>`, since the number reported for `Single` will always be 1 — a
+        // line appearing only once can appear in only one file.
         LogType::Files => match operation {
-            Union => union::<LogFiles, O>(first_operand, rest, out),
-            Diff => diff::<Dual<TrackLastFileSeen, CountFiles>, O>(first_operand, rest, out),
-            Intersect => {
-                intersect::<Dual<TrackLastFileSeen, CountFiles>, O>(first_operand, rest, out)
-            }
-            Single => count::<LogLines, O>(AndKeep::Single, first_operand, rest, out),
-            Multiple => count::<Dual<CountLines, CountFiles>, O>(
-                AndKeep::Multiple,
-                first_operand,
-                rest,
-                out,
-            ),
-            SingleByFile => count::<LogFiles, O>(AndKeep::Single, first_operand, rest, out),
-            MultipleByFile => count::<LogFiles, O>(AndKeep::Multiple, first_operand, rest, out),
+            Union => union::<Log<Files>, O>(first_operand, rest, out),
+            Diff => diff::<Log<Files>, O>(first_operand, rest, out),
+            Intersect => intersect::<Log<Files>, O>(first_operand, rest, out),
+            Single => keep_single::<Log<Lines>, O>(first_operand, rest, out),
+            Multiple => keep_multiple::<SiftLog<Lines, Files>, O>(first_operand, rest, out),
+            SingleByFile => keep_single::<Log<Files>, O>(first_operand, rest, out),
+            MultipleByFile => keep_multiple::<Log<Files>, O>(first_operand, rest, out),
         },
     }
 }
 
-/// The `Bookkeeping` trait specifies the kind of types that can
-/// serve as the bookkeeping values for a `ZetSet`.
+/// A `ZetSet` is an ordered set of lines where each line from the input file(s)
+/// occurs once in the `ZetSet`, and each line has an associated `Bookkeeping`
+/// value that we use to determine whether to retain the line in the output, and
+/// optionally to output a count along with each line (counting either the
+/// number of times the line occurs in the input, or the number of files in
+/// which the line occurs).
+///
+/// The `Bookkeeping` trait specifies the kind of types that can serve as the
+/// bookkeeping values for a `ZetSet`, and defines a default `output_zet_set`
+/// method to print the lines without a count.
+///
+/// There are seven `Bookkeeping` types. The `Unsifted`, `Lines`, and `Files`
+/// types are used for "sifting" — after all files have been processed, we look
+/// at the bookkeeping values to sift out unwanted lines before printing.  The
+/// `Union` operation outputs every line, so uses an `Unsifted` bookkeeping type
+/// with a zero-size value and no-op methods.  The `Single` and `Multiple`
+/// operations use the `Lines` type to sift by the number of times a line has
+/// been seen, while the `Diff`, `Intersect`, `SingleByFile`, and
+/// `MultipleByFile` operations use the `Files` type to sift by the number of
+/// files in which a line has been seen.
+///
+/// The `Log<Lines>` and `Log<Files>` types act like `Lines` and `Files`
+/// respectively, except that their `output_zet_set` methods output the
+/// appropriate count along with each line. They can also be used for sifting,
+/// so if we want to output only those lines which occur more than once in the
+/// input, and want to know how many times each line has been seen, we can use
+/// `Log<Lines>` both retain lines seen more than once and to print the exact
+/// number.
+///
+/// Sometimes, though we want to sift by one value but print another. We might,
+/// for instance, want to output lines that occur in only one file, but also
+/// want to print how many time each line occurred in the file. For that we'd
+/// use `SiftLog<Files, Lines>` bookkeeping values to sift by the number of
+/// files seen and log the number of lines seen.  And we could use
+/// `SiftLog<Lines, Files>` to print only lines occuring multiple times, while
+/// printing the number of files each line occurs in.
 pub(crate) trait Bookkeeping: Copy + PartialEq + Debug {
+    /// The initial bookkeeping value for each line in the first operand.
+    /// Usually keeps track of lines and/or files seen.
     fn new() -> Self;
-    fn next_file(&mut self) -> Result<()>;
+
+    /// Increment the bookkeeping item's `n`th file field (if it has one)
+    fn next_file(&mut self);
+
+    /// Here `other` is the value that would have been inserted for a
+    /// newly-encountered line. Used to update the bookkeeping values of lines
+    /// already present in the `ZetSet`.
     fn update_with(&mut self, other: Self);
+
+    /// The value to be used in closure passed to the `ZetSet`'s `retain`
+    /// method.
     fn retention_value(self) -> u32;
+
+    /// Output the `ZetSet`. The provided implementation doesn't log a count of
+    /// lines or files, so must be overridden by types that do loggging.
     fn output_zet_set(set: &ZetSet<Self>, mut out: impl std::io::Write) -> Result<()> {
         out.write_all(set.bom)?;
         for line in set.keys() {
@@ -116,12 +154,289 @@ pub(crate) trait Bookkeeping: Copy + PartialEq + Debug {
     }
 }
 
-trait Loggable {
+/// The `Loggable` trait specifies two additional methods used to log a count
+/// with each output line.
+trait Loggable: Bookkeeping {
+    /// The line/file count to be used for logging purposes
     fn log_value(self) -> u32;
+
+    /// Write the count to the output. Called before outputting the line itself.
     fn write_log(&self, width: usize, out: &mut impl std::io::Write) -> Result<()>;
 }
 
-fn output_zet_set_annotated<B: Bookkeeping + Loggable>(
+/// For the "additive" operations (all but `Diff` and `Intersect`), we insert
+/// every line in the input into the `ZetSet`. Both `ZetSet::new` and
+/// `set.insert_or_update` will call `b.update_with(item)` on the line's
+/// bookkeeping item `b` if the line is already present in the `ZetSet`.
+///
+/// `every_line`'s caller can then use `set.retain()` to examine the each line's
+/// bookkeeping item to decide whether or not it belongs in the set.
+fn every_line<B: Bookkeeping, O: LaterOperand>(
+    first_operand: &[u8],
+    rest: impl Iterator<Item = Result<O>>,
+) -> Result<ZetSet<B>> {
+    let mut item = B::new();
+    let mut set = ZetSet::new(first_operand, item);
+    for operand in rest {
+        item.next_file();
+        set.insert_or_update(operand?, item)?;
+    }
+    Ok(set)
+}
+
+/// `Union` collects every line, so we don't need to call `retain`
+fn union<B: Bookkeeping, O: LaterOperand>(
+    first_operand: &[u8],
+    rest: impl Iterator<Item = Result<O>>,
+    out: impl std::io::Write,
+) -> Result<()> {
+    let set = every_line::<B, O>(first_operand, rest)?;
+    output_and_discard(set, out)
+}
+
+/// `Single` and `SingleByFile` retain those lines where the relevant count is
+/// `1`.
+fn keep_single<B: Bookkeeping, O: LaterOperand>(
+    first_operand: &[u8],
+    rest: impl Iterator<Item = Result<O>>,
+    out: impl std::io::Write,
+) -> Result<()> {
+    let mut set = every_line::<B, O>(first_operand, rest)?;
+    set.retain(|occurences| occurences == 1);
+    output_and_discard(set, out)
+}
+
+/// `Multiple` and `MultipleByFile` retain those lines where the relevant count is
+/// greater than `1`.
+fn keep_multiple<B: Bookkeeping, O: LaterOperand>(
+    first_operand: &[u8],
+    rest: impl Iterator<Item = Result<O>>,
+    out: impl std::io::Write,
+) -> Result<()> {
+    let mut set = every_line::<B, O>(first_operand, rest)?;
+    set.retain(|occurences| occurences > 1);
+    output_and_discard(set, out)
+}
+
+/// For the "subtractive" operations `Diff` and `Intersect`, we insert only
+/// those lines in the first input file into the `ZetSet`. `ZetSet::new` will
+/// call `b.update_with(item)` on the line's bookkeeping item `b` if the line is
+/// already present in the `ZetSet`.
+///
+/// Lines in the remaining files are only used to reduce the output, so we call
+/// `set.update_if_present` to call `b.update_with(item)` when the line is
+/// present in the `ZetSet` will bookkeeping value `b`.
+///
+/// Then the caller of `first_file_lines` can then use `set.retain()` to examine
+/// the each line's bookkeeping item to decide whether or not it belongs in the
+/// set.
+fn first_file_lines<B: Bookkeeping, O: LaterOperand>(
+    first_operand: &[u8],
+    rest: impl Iterator<Item = Result<O>>,
+) -> Result<ZetSet<B>> {
+    let mut item = B::new();
+    let mut set = ZetSet::new(first_operand, item);
+    for operand in rest {
+        item.next_file();
+        set.update_if_present(operand?, item)?;
+    }
+    Ok(set)
+}
+
+/// `Diff` retains only those lines seen only in the first file. Since
+/// `first_file_lines` only includes lines from the first file, we can
+/// equivalently retain those lines whose file count is `1`.
+fn diff<B: Bookkeeping, O: LaterOperand>(
+    first_operand: &[u8],
+    rest: impl Iterator<Item = Result<O>>,
+    out: impl std::io::Write,
+) -> Result<()> {
+    let first_file_only = 1;
+    let mut set = first_file_lines::<B, O>(first_operand, rest)?;
+    set.retain(|files_containing_line| files_containing_line == first_file_only);
+    output_and_discard(set, out)
+}
+
+/// `Intersect` retains only those lines whose file count is the same as the
+/// number of input files.
+fn intersect<B: Bookkeeping, O: LaterOperand>(
+    first_operand: &[u8],
+    rest: impl ExactSizeIterator<Item = Result<O>>,
+    out: impl std::io::Write,
+) -> Result<()> {
+    let all_files = u32::try_from(rest.len() + 1)?;
+    let mut set = first_file_lines::<B, O>(first_operand, rest)?;
+    set.retain(|files_containing_line| files_containing_line == all_files);
+    output_and_discard(set, out)
+}
+
+/// When we've finished constructing the `ZetSet`, we write its lines to our
+/// output and exit the program.
+fn output_and_discard<B: Bookkeeping>(set: ZetSet<B>, out: impl std::io::Write) -> Result<()> {
+    B::output_zet_set(&set, out)?;
+    std::mem::forget(set); // Slightly faster to just abandon this, since we're about to exit.
+                           // Thanks to [Karolin Varner](https://github.com/koraa)'s huniq
+    Ok(())
+}
+
+/// We use the `Unsifted` struct for the `Union` operation when logging isn't needed.
+/// `Union` includes every line seen and doesn't need bookkeeping for anything
+/// but such logging.
+#[derive(Clone, Copy, PartialEq, Debug)]
+struct Unsifted();
+impl Bookkeeping for Unsifted {
+    fn new() -> Self {
+        Unsifted()
+    }
+    fn next_file(&mut self) {}
+    fn update_with(&mut self, _other: Self) {}
+    fn retention_value(self) -> u32 {
+        0
+    }
+}
+
+/// For `Single` and `Multiple` each line's `Lines` item will keep track of
+/// how many times it has appeared in the entire input. `Lines` can also be
+/// used for reporting the number of times each line appears in the input.
+///
+/// `Lines` is a thin wrapper around `u32`. It ignores `next_file`, and uses
+/// `update_with` only to increment its `u32` element. We use a saturating
+/// increment, because neither `Single` and `Multiple` care only whether the
+/// `u32` is `1` or greater than `1`, and for logging purposes it seems better
+/// to report overflow for lines that appear `u32::MAX` times or more than to
+/// stop `zet` completely.
+#[derive(Clone, Copy, PartialEq, Debug)]
+struct Lines(u32);
+impl Bookkeeping for Lines {
+    /// Returns `Lines(1)` because when we insert a fresh line into the `ZetSet`
+    /// we've seen it once.
+    fn new() -> Self {
+        Lines(1)
+    }
+
+    /// `next_file` does nothing because `Lines` isn't affected by the number of
+    /// files we've seen.
+    fn next_file(&mut self) {}
+
+    /// When `update_with` is called, it means we've seen the line an additional
+    /// time.  We ignore `_other` and just increment our line count (with
+    /// `saturating_add(1)` so we don't wrap around.
+    fn update_with(&mut self, _other: Self) {
+        self.0 = self.0.saturating_add(1);
+    }
+
+    /// Our `retention_value` is just the `u32` element.
+    fn retention_value(self) -> u32 {
+        self.0
+    }
+}
+impl Loggable for Lines {
+    /// Our `log_value` is the same as our `retention_value`: the underlying
+    /// `u32` element.
+    fn log_value(self) -> u32 {
+        self.retention_value()
+    }
+
+    /// Write our `log_value`. But if that is `u32::MAX`, write `" overflow  "`
+    /// instead, since we might actually have seen more than `u32::MAX` lines.
+    fn write_log(&self, width: usize, out: &mut impl std::io::Write) -> Result<()> {
+        if self.0 == u32::MAX {
+            write!(out, " overflow  ")?
+        } else {
+            write!(out, "{:width$} ", self.0)?
+        }
+        Ok(())
+    }
+}
+/// For `Diff`, `Intersect`, `SingleByFile`, and `MultipleByFile`, each line's
+/// `Files` item will keep track of how many files the line has appeared in.
+/// `Files` can also be used to report the file count information for operatons
+/// whose selection criteria are different from number of files.
+///
+/// The `Files` struct has `file_number` and `files_seen` fields.
+#[derive(Clone, Copy, PartialEq, Debug)]
+struct Files {
+    file_number: u32,
+    files_seen: u32,
+}
+impl Bookkeeping for Files {
+    /// Returns `Files { file_number: 0, files_seen: 1 }` — `file_number` acts
+    /// as an ID number, different for each operand, while `files_seen` counts
+    /// the number of files this line has been seen to occur in.
+    fn new() -> Self {
+        Files { file_number: 0, files_seen: 1 }
+    }
+
+    /// Increment the `file_number` field — with `wrapping_add(1)` because we
+    /// trust `calculate` to have bailed if there are more than `u32::MAX` file
+    /// operands.
+    fn next_file(&mut self) {
+        self.file_number = self.file_number.wrapping_add(1);
+    }
+
+    /// If a line is already present in the `ZetSet`, with bookkeeping value
+    /// `b`, and `other.file_number` is different from `b.file_number`, we
+    /// update `b.file_number` and increment `b.files_seen`.
+    fn update_with(&mut self, other: Self) {
+        if other.file_number != self.file_number {
+            self.files_seen += 1;
+            self.file_number = other.file_number;
+        }
+    }
+
+    /// Our `retention_value` is the `files_seen` field.
+    fn retention_value(self) -> u32 {
+        self.files_seen
+    }
+}
+impl Loggable for Files {
+    /// Our `log_value` is the same as our `retention_value` — `files_seen`.
+    fn log_value(self) -> u32 {
+        self.retention_value()
+    }
+
+    /// We write `files_seen`.
+    fn write_log(&self, width: usize, out: &mut impl std::io::Write) -> Result<()> {
+        write!(out, "{:width$} ", self.files_seen)?;
+        Ok(())
+    }
+}
+
+/// The `Log` newtype delegates everything except `output_zet_set` to its
+/// sole element, and overrides `output_zet_set` to call
+/// `output_zet_set_annotated`.
+#[derive(Clone, Copy, PartialEq, Debug)]
+struct Log<B: Loggable>(B);
+impl<B: Loggable> Bookkeeping for Log<B> {
+    fn new() -> Self {
+        Self(B::new())
+    }
+    fn next_file(&mut self) {
+        self.0.next_file()
+    }
+    fn update_with(&mut self, other: Self) {
+        self.0.update_with(other.0)
+    }
+    fn retention_value(self) -> u32 {
+        self.0.retention_value()
+    }
+    fn output_zet_set(set: &ZetSet<Self>, out: impl std::io::Write) -> Result<()> {
+        output_zet_set_annotated(set, out)
+    }
+}
+impl<B: Loggable> Loggable for Log<B> {
+    fn log_value(self) -> u32 {
+        self.0.log_value()
+    }
+    fn write_log(&self, width: usize, out: &mut impl std::io::Write) -> Result<()> {
+        self.0.write_log(width, out)
+    }
+}
+
+/// The two `Loggable` methods are used in `output_zet_set_annotated`, and the
+/// `Log<X>` and `SiftLog<X,Y>` types override `output_zet_set` to call
+/// `output_zet_set_annotated` for the actual logging.
+fn output_zet_set_annotated<B: Loggable>(
     set: &ZetSet<B>,
     mut out: impl std::io::Write,
 ) -> Result<()> {
@@ -136,300 +451,60 @@ fn output_zet_set_annotated<B: Bookkeeping + Loggable>(
     out.flush()?;
     Ok(())
 }
-#[derive(Clone, Copy, PartialEq, Debug)]
-struct Logged<B: Bookkeeping + Loggable>(B);
-impl<B: Bookkeeping + Loggable> Bookkeeping for Logged<B> {
-    fn new() -> Self {
-        Self(B::new())
-    }
-    fn next_file(&mut self) -> Result<()> {
-        self.0.next_file()
-    }
-    fn update_with(&mut self, other: Self) {
-        self.0.update_with(other.0)
-    }
-    fn retention_value(self) -> u32 {
-        self.0.retention_value()
-    }
-    fn output_zet_set(set: &ZetSet<Self>, out: impl std::io::Write) -> Result<()> {
-        output_zet_set_annotated(set, out)
-    }
-}
-impl<B: Bookkeeping + Loggable> Loggable for Logged<B> {
-    fn log_value(self) -> u32 {
-        self.0.log_value()
-    }
-    fn write_log(&self, width: usize, out: &mut impl std::io::Write) -> Result<()> {
-        self.0.write_log(width, out)
-    }
-}
 
-/// The `Dual` struct lets us use one item for retention purposes and another
-/// for logging. We take the `retention_value` from the first item and `log_value`
-/// and `write_log` from the second.
+/// A `SiftLog<Sifted, Logged>` struct tracks a `Bookkeeping` item of type
+/// `Sifted` and a `Loggable` item of type `Logged`. The latter will be used to
+/// print a count for each line, either the number of times the line appeared in
+/// the input, or the number of files it appeared in. We use the
+/// `retention_value` of `Sifted` and the `log_value` and `write_log` methods of
+/// `Logged`.
 #[derive(Clone, Copy, PartialEq, Debug)]
-struct Dual<Retain: Bookkeeping, Log: Bookkeeping + Loggable> {
-    pub(crate) retention: Retain,
-    pub(crate) log: Log,
+struct SiftLog<Sifted: Bookkeeping, Logged: Loggable> {
+    sift: Sifted,
+    log: Logged,
 }
-impl<Retain: Bookkeeping, Log: Bookkeeping + Loggable> Bookkeeping for Dual<Retain, Log> {
+impl<Sifted: Bookkeeping, Logged: Loggable> Bookkeeping for SiftLog<Sifted, Logged> {
+    /// Returns `SiftLog { sift: Sifted::new(), log: Logged::new() }` —
+    /// freshly inserted lines will have a bookkeeping item suitable for both
+    /// sifting and logging.
     fn new() -> Self {
-        Dual { retention: Retain::new(), log: Log::new() }
+        SiftLog { sift: Sifted::new(), log: Logged::new() }
     }
-    fn next_file(&mut self) -> Result<()> {
-        self.retention.next_file()?;
+
+    /// Our `next_file` method calls `next_file` for both its fields.
+    fn next_file(&mut self) {
+        self.sift.next_file();
         self.log.next_file()
     }
+
+    /// Our `update_with` method calls `update_with` for both its fields,
+    /// sending `other.sift` to our `sift` field and `other.log` to our `log`
+    /// field.
     fn update_with(&mut self, other: Self) {
-        self.retention.update_with(other.retention);
+        self.sift.update_with(other.sift);
         self.log.update_with(other.log);
     }
+
+    /// Our `retention_value` is our **`sift` field's** retention value.
     fn retention_value(self) -> u32 {
-        self.retention.retention_value()
+        self.sift.retention_value()
     }
+
+    /// We override `output_zet_set` to use `output_zet_set_annotated`.
     fn output_zet_set(set: &ZetSet<Self>, out: impl std::io::Write) -> Result<()> {
         output_zet_set_annotated(set, out)
     }
 }
-impl<Retain: Bookkeeping, Log: Bookkeeping + Loggable> Loggable for Dual<Retain, Log> {
+impl<Sifted: Bookkeeping, Logged: Loggable> Loggable for SiftLog<Sifted, Logged> {
+    /// Our `log_value` is our **`log` field's** log value.
     fn log_value(self) -> u32 {
         self.log.log_value()
     }
+
+    /// For `write_log` we output our `log` field's log value.
     fn write_log(&self, width: usize, out: &mut impl std::io::Write) -> Result<()> {
         self.log.write_log(width, out)
     }
-}
-
-/// We use the `TrackNothing` struct for the `Union` operation, since `Union` includes
-/// every line seen and doesn't need bookkeeping. need to keep track of
-/// anything. `TrackNothing` is also used for the default log operantion of not logging
-/// anything.
-#[derive(Clone, Copy, PartialEq, Debug)]
-struct TrackNothing();
-impl Bookkeeping for TrackNothing {
-    fn new() -> Self {
-        TrackNothing()
-    }
-    fn next_file(&mut self) -> Result<()> {
-        Ok(())
-    }
-    fn update_with(&mut self, _other: Self) {}
-    fn retention_value(self) -> u32 {
-        0
-    }
-}
-/// For most operations, we insert every line in the input into the `ZetSet`.
-/// Both `new` and `insert_or_update` will call `v.update_with(item)` on the
-/// line's bookkeeping item `v` if the line is already present in the `ZetSet`.
-/// The operation will then call `set.retain()` to examine the each line's
-/// bookkeeping item to decide whether or not it belongs in the set.
-fn every_line<B: Bookkeeping, O: LaterOperand>(
-    first_operand: &[u8],
-    rest: impl Iterator<Item = Result<O>>,
-) -> Result<ZetSet<B>> {
-    let mut item = B::new();
-    let mut set = ZetSet::new(first_operand, item);
-    for operand in rest {
-        item.next_file()?;
-        set.insert_or_update(operand?, item)?;
-    }
-    Ok(set)
-}
-
-/// `Union` collects every line, so we don't need to call `retain`; and
-/// the only bookkeeping needed is for the line/file counts, so we don't
-/// need a `Dual` bookkeeping value and just use the `Log` argument passed in.
-fn union<Log: Bookkeeping, O: LaterOperand>(
-    first_operand: &[u8],
-    rest: impl Iterator<Item = Result<O>>,
-    out: impl std::io::Write,
-) -> Result<()> {
-    let set = every_line::<Log, O>(first_operand, rest)?;
-    output_and_discard(set, out)
-}
-
-/// Only lines that appear in the first operand will be in the result of `Diff`;
-/// so `Diff` uses `update_if_present` rather than `insert_or_update`, changing
-/// the file number of each file seen in a subsequent operand. We discard lines
-/// whose `TrackLastFileSeen::retention_value` is not `1`, so we're left only with
-/// lines that appear only in the first file.
-fn diff<B: Bookkeeping, O: LaterOperand>(
-    first_operand: &[u8],
-    rest: impl Iterator<Item = Result<O>>,
-    out: impl std::io::Write,
-) -> Result<()> {
-    let mut item = B::new();
-    let first_file = item.retention_value();
-    let mut set = ZetSet::new(first_operand, item);
-    for operand in rest {
-        item.next_file()?;
-        set.update_if_present(operand?, item)?;
-    }
-    set.retain(|file_number| file_number == first_file);
-    output_and_discard(set, out)
-}
-
-/// `TrackLastFileSeen` is a thin wrapper around a `u32`, with `next_file` being a
-/// checked increment
-#[derive(Clone, Copy, PartialEq, Debug)]
-struct TrackLastFileSeen(u32);
-impl Bookkeeping for TrackLastFileSeen {
-    fn new() -> Self {
-        TrackLastFileSeen(0)
-    }
-    fn next_file(&mut self) -> Result<()> {
-        match self.0.checked_add(1) {
-            Some(n) => self.0 = n,
-            None => bail!("Zet can't handle more than {} input files", u32::MAX),
-        }
-        Ok(())
-    }
-    fn update_with(&mut self, other: Self) {
-        self.0 = other.0
-    }
-    fn retention_value(self) -> u32 {
-        self.0
-    }
-}
-/// Similarly, only lines that appear in the first operand will be in the result
-/// of `Intersect`; so `Intersect` as well as `Diff` uses `update_if_present`
-/// rather than `insert_or_update`. But lines in `Intersect`'s result must also
-/// appear in every other file; so after each file we discard those lines whose
-/// `TrackLastFileSeen` number is not the current `file_number`.
-fn intersect<B: Bookkeeping, O: LaterOperand>(
-    first_operand: &[u8],
-    rest: impl Iterator<Item = Result<O>>,
-    out: impl std::io::Write,
-) -> Result<()> {
-    let mut item = B::new();
-    let mut set = ZetSet::new(first_operand, item);
-    for operand in rest {
-        item.next_file()?;
-        let this_file = item.retention_value();
-        set.update_if_present(operand?, item)?;
-        set.retain(|last_file_seen| last_file_seen == this_file);
-    }
-    output_and_discard(set, out)
-}
-
-/// For `Single` and `Multiple` each line's `CountLines` item will keep track of
-/// how many times it has appeared in the entire input. `CountLines` can also be
-/// used for reporting the number of times each line appears in the input.
-///
-/// Like `TrackLastFileSeen`, `CountLines` is a thin wrapper around `u32` — but
-/// `CountLines` ignores `next_file`, and uses `update_with` only to increment the
-/// `u32`. Here we use a saturating increment, because neither `Single` and
-/// `Multiple` care only whether the `u32` is `1` or greater than `1`, and for
-/// logging purposes it seems better to report overflow for lines that appear
-/// `u32::MAX` times or more than to stop `zet` completely.
-#[derive(Clone, Copy, PartialEq, Debug)]
-struct CountLines(u32);
-impl Bookkeeping for CountLines {
-    fn new() -> Self {
-        CountLines(1)
-    }
-    fn next_file(&mut self) -> Result<()> {
-        Ok(())
-    }
-    fn update_with(&mut self, _other: Self) {
-        self.0 = self.0.saturating_add(1);
-    }
-    fn retention_value(self) -> u32 {
-        self.0
-    }
-}
-impl Loggable for CountLines {
-    fn log_value(self) -> u32 {
-        self.retention_value()
-    }
-    fn write_log(&self, width: usize, out: &mut impl std::io::Write) -> Result<()> {
-        if self.0 == u32::MAX {
-            write!(out, " overflow  ")?
-        } else {
-            write!(out, "{:width$} ", self.0)?
-        }
-        Ok(())
-    }
-}
-type LogLines = Logged<CountLines>;
-type LogFiles = Logged<CountFiles>;
-/// For `SingleByFile` and `MultipleByFile` each line's `CountFiles` item will
-/// keep track of how many files the line has appeared in. `CountFiles` can also
-/// be used to report the file count information for operatons whose selection
-/// criteria are different from number of files.
-///
-/// Like `TrackLastFileSeen`, `CountFiles` keeps track of the last file seen, and
-/// `bail`s if the number of files seen exceeds `u32::MAX`. It has a separate
-/// `files_seen` field for tracking the number of files seen.
-#[derive(Clone, Copy, PartialEq, Debug)]
-struct CountFiles {
-    file_number: u32,
-    files_seen: u32,
-}
-impl Bookkeeping for CountFiles {
-    fn new() -> Self {
-        CountFiles { file_number: 0, files_seen: 1 }
-    }
-    fn next_file(&mut self) -> Result<()> {
-        match self.file_number.checked_add(1) {
-            Some(n) => self.file_number = n,
-            None => bail!("Zet can't handle more than {} input files", u32::MAX),
-        }
-        Ok(())
-    }
-    fn update_with(&mut self, other: Self) {
-        if other.file_number != self.file_number {
-            self.files_seen += 1;
-            self.file_number = other.file_number;
-        }
-    }
-    fn retention_value(self) -> u32 {
-        self.files_seen
-    }
-}
-impl Loggable for CountFiles {
-    fn log_value(self) -> u32 {
-        self.retention_value()
-    }
-    fn write_log(&self, width: usize, out: &mut impl std::io::Write) -> Result<()> {
-        write!(out, "{:width$} ", self.files_seen)?;
-        Ok(())
-    }
-}
-
-/// For `Single` and `SingleByFile` we'll call `count(AndKeep::Single, ...)`
-/// and for `Multiple` and `MultipleByFile` we'll call `count(AndKeep:Multiple, ...)`
-#[derive(Clone, Copy, PartialEq)]
-enum AndKeep {
-    Single,
-    Multiple,
-}
-
-/// Create a `ZetSet` whose bookkeeping items must keep track of the number of
-/// times a line has appeared in the input, or the number of files it has
-/// appeared in.  Then retain those whose bookkeeping item's `retention_value`
-/// is 1 (for `AndKeep::Single`) or greater than 1 (for `AndKeep::Multiple`).
-fn count<B: Bookkeeping, O: LaterOperand>(
-    keep: AndKeep,
-    first_operand: &[u8],
-    rest: impl Iterator<Item = Result<O>>,
-    out: impl std::io::Write,
-) -> Result<()> {
-    let mut set = every_line::<B, O>(first_operand, rest)?;
-    match keep {
-        AndKeep::Single => set.retain(|occurences| occurences == 1),
-        AndKeep::Multiple => set.retain(|occurences| occurences > 1),
-    }
-    output_and_discard(set, out)
-}
-
-/// When we're done with a `ZetSet`, we write its lines to our output and exit
-/// the program.
-fn output_and_discard<B: Bookkeeping>(set: ZetSet<B>, out: impl std::io::Write) -> Result<()> {
-    B::output_zet_set(&set, out)?;
-    std::mem::forget(set); // Slightly faster to just abandon this, since we're about to exit.
-                           // Thanks to [Karolin Varner](https://github.com/koraa)'s huniq
-    Ok(())
 }
 
 #[allow(clippy::pedantic)]
@@ -576,8 +651,8 @@ mod test_bookkeeping {
 
     #[test]
     fn line_count_update_with_uses_saturating_increment() {
-        let mut changer = CountLines(u32::MAX - 2);
-        let other = CountLines::new();
+        let mut changer = Lines(u32::MAX - 2);
+        let other = Lines::new();
         assert_eq!(changer.retention_value(), u32::MAX - 2);
         changer.update_with(other);
         assert_eq!(changer.retention_value(), u32::MAX - 1);
@@ -588,26 +663,10 @@ mod test_bookkeeping {
     }
 
     #[test]
-    fn file_count_next_file_uses_checked_increment() {
-        let mut changer = CountFiles { file_number: u32::MAX - 1, files_seen: 1 };
-        changer.next_file().unwrap();
-        assert_eq!(changer, CountFiles { file_number: u32::MAX, files_seen: 1 });
-        assert!(changer.next_file().is_err());
-    }
-
-    #[test]
-    fn last_file_seen_next_file_uses_checked_increment() {
-        let mut changer = TrackLastFileSeen(u32::MAX - 1);
-        changer.next_file().unwrap();
-        assert_eq!(changer, TrackLastFileSeen(u32::MAX));
-        assert!(changer.next_file().is_err());
-    }
-
-    #[test]
     fn log_lines_logs_the_string_overflow_for_u32_max() {
-        let zet = ZetSet::<LogLines>::new(b"a\na\na\nb\n", Logged(CountLines(u32::MAX - 1)));
+        let zet = ZetSet::<Log<Lines>>::new(b"a\na\na\nb\n", Log(Lines(u32::MAX - 1)));
         let mut result = Vec::new();
-        LogLines::output_zet_set(&zet, &mut result).unwrap();
+        Log::<Lines>::output_zet_set(&zet, &mut result).unwrap();
         let result = String::from_utf8(result).unwrap();
         assert_eq!(result, format!(" overflow  a\n{} b\n", u32::MAX - 1));
     }
