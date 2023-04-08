@@ -121,6 +121,21 @@ trait Loggable {
     fn write_log(&self, width: usize, out: &mut impl std::io::Write) -> Result<()>;
 }
 
+fn output_zet_set_annotated<B: Bookkeeping + Loggable>(
+    set: &ZetSet<B>,
+    mut out: impl std::io::Write,
+) -> Result<()> {
+    let Some(max_count) = set.values().map(|v| v.log_value()).max() else { return Ok(()) };
+    let width = (max_count.ilog10() + 1) as usize;
+    out.write_all(set.bom)?;
+    for (line, item) in set.iter() {
+        item.write_log(width, &mut out)?;
+        out.write_all(line)?;
+        out.write_all(set.line_terminator)?;
+    }
+    out.flush()?;
+    Ok(())
+}
 #[derive(Clone, Copy, PartialEq, Debug)]
 struct Logged<B: Bookkeeping + Loggable>(B);
 impl<B: Bookkeeping + Loggable> Bookkeeping for Logged<B> {
@@ -136,17 +151,8 @@ impl<B: Bookkeeping + Loggable> Bookkeeping for Logged<B> {
     fn retention_value(self) -> u32 {
         self.0.retention_value()
     }
-    fn output_zet_set(set: &ZetSet<Self>, mut out: impl std::io::Write) -> Result<()> {
-        let Some(max_count) = set.values().map(|v| v.log_value()).max() else { return Ok(()) };
-        let width = (max_count.ilog10() + 1) as usize;
-        out.write_all(set.bom)?;
-        for (line, item) in set.iter() {
-            item.write_log(width, &mut out)?;
-            out.write_all(line)?;
-            out.write_all(set.line_terminator)?;
-        }
-        out.flush()?;
-        Ok(())
+    fn output_zet_set(set: &ZetSet<Self>, out: impl std::io::Write) -> Result<()> {
+        output_zet_set_annotated(set, out)
     }
 }
 impl<B: Bookkeeping + Loggable> Loggable for Logged<B> {
@@ -158,18 +164,17 @@ impl<B: Bookkeeping + Loggable> Loggable for Logged<B> {
     }
 }
 
-type Dual<Retain, Log> = Logged<Duo<Retain, Log>>;
 /// The `Dual` struct lets us use one item for retention purposes and another
 /// for logging. We take the `retention_value` from the first item and `log_value`
 /// and `write_log` from the second.
 #[derive(Clone, Copy, PartialEq, Debug)]
-struct Duo<Retain: Bookkeeping, Log: Bookkeeping + Loggable> {
+struct Dual<Retain: Bookkeeping, Log: Bookkeeping + Loggable> {
     pub(crate) retention: Retain,
     pub(crate) log: Log,
 }
-impl<Retain: Bookkeeping, Log: Bookkeeping + Loggable> Bookkeeping for Duo<Retain, Log> {
+impl<Retain: Bookkeeping, Log: Bookkeeping + Loggable> Bookkeeping for Dual<Retain, Log> {
     fn new() -> Self {
-        Duo { retention: Retain::new(), log: Log::new() }
+        Dual { retention: Retain::new(), log: Log::new() }
     }
     fn next_file(&mut self) -> Result<()> {
         self.retention.next_file()?;
@@ -182,13 +187,16 @@ impl<Retain: Bookkeeping, Log: Bookkeeping + Loggable> Bookkeeping for Duo<Retai
     fn retention_value(self) -> u32 {
         self.retention.retention_value()
     }
-}
-impl<Retain: Bookkeeping, Log: Bookkeeping + Loggable> Loggable for Duo<Retain, Log> {
-    fn log_value(self) -> u32 {
-        self.log.retention_value()
+    fn output_zet_set(set: &ZetSet<Self>, out: impl std::io::Write) -> Result<()> {
+        output_zet_set_annotated(set, out)
     }
-    fn write_log(&self, width: usize, mut out: &mut impl std::io::Write) -> Result<()> {
-        self.log.write_log(width, &mut out)
+}
+impl<Retain: Bookkeeping, Log: Bookkeeping + Loggable> Loggable for Dual<Retain, Log> {
+    fn log_value(self) -> u32 {
+        self.log.log_value()
+    }
+    fn write_log(&self, width: usize, out: &mut impl std::io::Write) -> Result<()> {
+        self.log.write_log(width, out)
     }
 }
 
