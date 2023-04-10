@@ -22,9 +22,11 @@ fn main() -> Result<()> {
         match op {
             // For a single operand, Union is slightly more efficient, and its
             // result is identical to Intersect, Diff, and SingleByFile
-            Union | Intersect | Diff | SingleByFile => op = Union, // Union is slightly more efficient
+            Union | Intersect | Diff | SingleByFile => op = Union,
+
             // No line can occur in multiple files if there is only one file
             MultipleByFile => return Ok(()),
+
             // Even for a single operand, the results of Single and Multiple
             // differ from that of Union
             Single | Multiple => {}

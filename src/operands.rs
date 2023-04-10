@@ -16,7 +16,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-/// The Unix convention for using `stdin` as a file arguments
+/// The Unix convention: if a file argument is `-`, use `stdin`.
 fn use_stdin(path: &Path) -> bool {
     path.to_string_lossy() == "-"
 }

@@ -14,8 +14,9 @@ Here are the subcommands of `zet` and what they do:
 * `zet intersect x y z` outputs the lines that occur in all of `x`, `y`, and `z`.
 * `zet diff x y z` outputs the lines that occur in `x` but not in `y` or `z`.
 * `zet single x y z` outputs the lines that occur exactly once in the entire input.
-* `zet single --file x y z` outputs the lines that occur in exactly one of `x`, `y`,
-  or `z`. (Including a line that occurs, say, twice in `y` but not in `x` or `z`) 
+* `zet single --file x y z` outputs the lines that occur in exactly one of `x`,
+  `y`, or `z`. (Output would include, say, a line that occurs, say, twice in `y`
+  but not in `x` or `z`) 
 * `zet multiple x y z` outputs the lines that occur more than once in the entire input.
 * `zet multiple --files x y z` outputs the lines that occur in two or more of `x`, `y`,
   and `z` (but not a line that occurs twice in `y` but not in `x` or `z`).
