@@ -57,7 +57,7 @@
 
 Initial release
 
-[Unreleased]: https://github.com/yarrow/zet/compare/0.2.6...HEAD
+[Unreleased]: https://github.com/yarrow/zet/compare/v0.2.6...HEAD
 [0.2.6]: https://github.com/yarrow/zet/compare/0.2.5...v0.2.6
 [0.2.5]: https://github.com/yarrow/zet/compare/0.2.0...0.2.5
 [0.2.0]: https://github.com/yarrow/zet/compare/v0.1.1...0.2.0
