@@ -1,6 +1,6 @@
 [package]
 name = "zet"
-version = "1.0.0-prerelease.1"
+version = "1.0.0-prerelease.2"
 authors = ["Yarrow Angelweed <yarrow.angelweed@gmail.com>"]
 description = "zet finds the union, intersection, set difference, etc of files considered as sets of lines"
 documentation = "https://github.com/yarrow/zet"
