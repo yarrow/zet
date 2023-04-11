@@ -1,6 +1,6 @@
 # Change Log
 
-## [Unreleased]
+# [1.0.0] — under development
 
 ## Added
 - Add the `--count-lines` flag to show the number of times each line occurs in the input and the `--count-files` flag to show the number of files each line occurs in.  The `--count` flag acts like `--count-lines` unless `--count-files` is active, in which case it acts like `--count-files`. The `--count-none` turns off counting, and can be used to override the other `count` flags. (In the usual POSIX convention, the last `count` flag given will override any previous `count` flag.)
@@ -11,7 +11,7 @@
 - **Breaking:** Add the `--files` (alias `--file`) flag for the `zet single` and `zet multiple` commands. The `zet single` command now outputs lines that occur exactly once in the entire input. The `zet single --file` command reproduces the old behavior (output lines that occur in just one file, though possibly many times in that one file). Similarly, `zet multiple --files` reproduces the old behavior of requiring output lines to occur in more than one file, while `zet multiple` without the `--files` flag will output lines that occur more than once, even if in just one file.
 - Use `clap 4`'s help format, but `clap 3`'s colors. This is self-indulgent recreation of (part of) clap's `help` feature, because I like the `clap 4`'s help format, but really miss the colored (rather than gray-scale) help.
 
-## [0.2.6] - 2023-02-02
+# [0.2.6] - 2023-02-02
 
 ## Removed
 - Abandon trying to have a Minimum Supported Rust Version (maybe once we're 1.0?)
@@ -37,7 +37,7 @@
 - Change Single/Multiple code to use a single NonZeroUsize operand ID rather than
   two u32 IDs
 
-## [0.2.0] - 2021-07-03
+# [0.2.0] - 2021-07-03
 
 ## Changed
 - Zet looks for Byte Order Marks in UTF-8, UTF-16LE and UTF-16BE files,
@@ -48,16 +48,16 @@
   argument (or `\n` if the first file consists of a single line with no
   terminator).
 
-## [0.1.1] - 2021-06-14
+# [0.1.1] - 2021-06-14
 
 ## Fixed
 - Upgrade from yanked dependencies
 
-## 0.1.0 - 2021-06-14
+# 0.1.0 - 2021-06-14
 
 Initial release
 
-[Unreleased]: https://github.com/yarrow/zet/compare/v0.2.6...HEAD
+[1.0.0]: https://github.com/yarrow/zet/compare/v0.2.6...HEAD
 [0.2.6]: https://github.com/yarrow/zet/compare/0.2.5...v0.2.6
 [0.2.5]: https://github.com/yarrow/zet/compare/0.2.0...0.2.5
 [0.2.0]: https://github.com/yarrow/zet/compare/v0.1.1...0.2.0
