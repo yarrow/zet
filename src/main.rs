@@ -34,10 +34,11 @@ fn main() -> Result<()> {
     }
 
     let first = first_operand.as_slice();
+    //panic!("\n\n\n\n\n\n###########################{op:?}                {:?}\n", args.log_type);
     if io::stdout().is_terminal() {
-        calculate(op, dbg!(args.log_type), first, rest, io::stdout().lock())?;
+        calculate(op, args.log_type, first, rest, io::stdout().lock())?;
     } else {
-        calculate(op, dbg!(args.log_type), first, rest, io::BufWriter::new(io::stdout().lock()))?;
+        calculate(op, args.log_type, first, rest, io::BufWriter::new(io::stdout().lock()))?;
     };
     Ok(())
 }

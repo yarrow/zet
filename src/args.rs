@@ -24,16 +24,6 @@ pub fn parsed() -> Args {
     if op == CliName::Help {
         help_and_exit()
     }
-    if parsed.files {
-        //FIXME – remove this once we have a test showing it's in error
-        match op {
-            CliName::Single | CliName::Multiple => (),
-            _ => {
-                eprintln!("{}", help::files_usage());
-                exit_usage();
-            }
-        }
-    }
     let log_type = if parsed.count_files {
         LogType::Files
     } else if parsed.count_lines {
@@ -77,12 +67,8 @@ fn help_and_exit() -> ! {
 }
 
 const SUCCESS_CODE: i32 = 0;
-const USAGE_CODE: i32 = 2; // Because `clap` uses 2
 fn exit_success() -> ! {
     safe_exit(SUCCESS_CODE)
-}
-fn exit_usage() -> ! {
-    safe_exit(USAGE_CODE)
 }
 /// From clap
 fn safe_exit(code: i32) -> ! {
@@ -136,7 +122,7 @@ struct CliArgs {
 
     #[arg(long, overrides_with_all(["count", "count_files", "count_lines", "count_none"]))]
     /// The --count-none flag tells `zet` to turn off reporting
-    count_none: (),
+    count_none: bool,
 
     #[arg(long, overrides_with_all(["count", "count_files", "count_lines", "count_none"]))]
     /// The --count is like --count-lines, but --files makes it act like --count-files

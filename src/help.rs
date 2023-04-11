@@ -28,14 +28,6 @@ pub(crate) fn version() -> String {
     format!("{name} {version}")
 }
 
-pub(crate) fn files_usage() -> String {
-    let style = global_style();
-    let error = style.error("error:");
-    let files = style.literal("--files");
-    let single = style.item("single");
-    let multiple = style.item("multiple");
-    format!("{error} The '{files}' flag is only meaningful with the commands {single} or {multiple}\n\n  note: to pass a file called '{files}', use '-- --files'")
-}
 pub(crate) fn print() {
     let input = include_str!("help.txt");
     let style = global_style();

@@ -57,6 +57,25 @@ fn subcommand_for(op: OpName) -> &'static str {
 fn subcommands() -> [&'static str; 7] {
     OP_NAMES.map(subcommand_for)
 }
+fn flagged_subcommands_for(op: OpName) -> Vec<String> {
+    fn flag(name: &str) -> Vec<String> {
+        let mut result = vec![name.to_string(), format!("{name} --count-none")];
+        match name {
+            "union" | "intersect" | "diff" => result.push(format!("{name} --files")),
+            _ => {}
+        }
+        result
+    }
+    match op {
+        Union => flag("union"),
+        Intersect => flag("intersect"),
+        Diff => flag("diff"),
+        Single => flag("single"),
+        SingleByFile => flag("single --file"),
+        Multiple => flag("multiple"),
+        MultipleByFile => flag("multiple --files"),
+    }
+}
 
 #[test]
 fn subcommands_allow_empty_arg_list_and_produce_empty_output() {
@@ -86,13 +105,15 @@ fn zet_subcommand_x_y_z_matches_expected_output_for_all_operations() {
     let y_path = &path_with(&temp, "y.txt", &y().join(""), Encoding::Plain);
     let z_path = &path_with(&temp, "z.txt", &z().join(""), Encoding::Plain);
     for op in OP_NAMES {
-        let sub = subcommand_for(op);
-        let output = run([sub, x_path, y_path, z_path]).unwrap();
-        assert_eq!(
-            String::from_utf8(output.stdout).unwrap(),
-            xpected(op).join(""),
-            "Output from {sub} ({op:?}) doesn't match expected",
-        );
+        for sub in flagged_subcommands_for(op) {
+            let output = run([&sub, x_path, y_path, z_path]).unwrap();
+            eprintln!("\n\n\n\n\n");
+            assert_eq!(
+                String::from_utf8(output.stdout).unwrap(),
+                xpected(op).join(""),
+                "Output from {sub} ({op:?}) doesn't match expected",
+            );
+        }
     }
 }
 

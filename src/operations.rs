@@ -620,7 +620,7 @@ mod test {
         ];
         let line_count = lines(&args);
         for &op in &[Intersect, Union, Diff, Single, SingleByFile, Multiple, MultipleByFile] {
-            let result = counted(dbg!(op), LogType::Lines, &args);
+            let result = counted(op, LogType::Lines, &args);
             for line in result.keys() {
                 assert_eq!(result.get(line), line_count.get(line));
             }
