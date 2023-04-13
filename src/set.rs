@@ -60,6 +60,12 @@ impl<'data, B: Bookkeeping> ZetSet<'data, B> {
     /// Create a new `ZetSet`, with each key a line borrowed from `slice`, and
     /// value `item` for every line newly seen. If a line is already present,
     /// with bookkeeping value `v`, update it by calling `v.update_with(item)`
+    ///
+    /// This is very much like the `insert_or_update` method, which uses
+    /// `for_byte_line`. But I had borrow-checker trouble when I tried that, so
+    /// this code is a specialized version, with what would have been
+    /// `for_byte_line` inlined by hand. See Andrew Gallant's `bstr` crate, in
+    /// particular `bstr::io::for_byte_record_with_terminator`.
     pub(crate) fn new(mut slice: &'data [u8], item: B) -> Self {
         let (bom, line_terminator) = output_info(slice);
         slice = &slice[bom.len()..];

@@ -3,7 +3,7 @@ zet: Take the union, intersection, etc of files
 
 `zet` is a command-line utility for doing set operations on files considered as
 sets of lines. For instance, `zet union x y z` outputs the lines that occur in
-any of `x`, `y`, or `z`, and `zet intersect x y z` those that occur in all of them.
+any of `x`, `y`, or `z`, `zet intersect x y z` those that occur in all of them, and `zet diff x y z` those that occur in `x` but not in `y` or `z`. `zet` prints each output line only once, and prints lines in the order of their first appearance in its input. 
 
 [![Build status](https://github.com/yarrow/zet/actions/workflows/ci.yml/badge.svg)](https://github.com/yarrow/zet/actions)
 [![Crates.io](https://img.shields.io/crates/v/zet.svg)](https://crates.io/crates/zet)
@@ -25,6 +25,24 @@ The `--count-lines` flag makes `zet` show the number of times each line occurs i
 The `--count-files` flag shows the number of files each line occurs in.
 The `-c` or `--count` flags act like `--count-lines`, unless `--files` is in effect, in which case they act like `--count-files`.
 
+## Example
+
+Suppose you maintain three mailing lists on a site that lets you download membership lists as CSV files, and add new members by uploading a CSV file in the same format. You have three lists, `a`, `b`, and `c` that people have joined, and you want to create two new lists: `everyone`, whose membership should be those who have joined any of `a`, `b`, and `c`; and `big-fans`, whose membership should those who have signed up for all three of `a`, `b`, and `c`.
+
+You've downloaded the membership lists `a`, `b`, and `c` to `a.csv`, `b.csv`, and `c.csv`. To create the membership list for `everyone` and `big-fans`, you can use `zet`:
+
+```bash
+zet union a.csv b.csv c.csv > everyone.csv
+zet intersect a.csv b.csv c.csv > big-fans.csv
+```
+
+Alas, by the time you create `everyone` and `big-fans`, new people have joined the `a`, `b`, and `c` lists. So you download the current membership of those lists to `a-now.csv`, `b-now.csv`, and `c-now.csv`.  You create `new-everyone.csv` and `new-big-fans.csv`, containing the membership records of people who should be added to the `everyone` list and `big-fan` list respectively:
+
+```bash
+zet union a-now.csv b-now.csv c-now.csv | zet diff - everyone.csv > new-everyone.csv
+zet intersect a-now.csv b-now.csv c-now.csv | zet diff - big-fans.csv > new-big-fans.csv
+```
+
 ## Comparisons to other commands
 Some `zet` subcommands are similar to traditional Unix commands:
 
@@ -36,18 +54,20 @@ Some `zet` subcommands are similar to traditional Unix commands:
   zet single    | uniq -u
   zet multiple  | uniq -d
 
-Differences: `zet`'s input need not be sorted, and it can take multiple input
-files (rather than just one (like `uniq`) or two (like `comm`).  For large
-files, `zet` is 3 to 4 times faster than `uniq` and 7 to 8 times faster than
-`comm`, but takes much more memory: `zet` reads its first file argument into
-memory, and (for `union`, `single`, and `multiple`) allocates additional space
-for each line encountered that wasn't in the first file. In contrast `uniq` and
-`comm` take an essentially fixed amount of space, no matter how large the input,
-since they depend on the input(s) being sorted.
-
-So `zet` is faster until it runs into a memory limit, at which point it stops
-working. (And `zet` has no `-i` or `-ignore-case` option, unlike `uniq` and
-`comm`.)
+Differences:
+* `zet`'s input need not be sorted, and it outputs lines in the order of their
+  first appearance in the input. It can take multiple input files (rather than
+  just one (like `uniq`) or two (like `comm`).
+* `zet` has no `-i` or `-ignore-case` option, unlike `uniq` and `comm`.For
+  large files, `zet` is about 4.5 times faster than `uniq` and 10 times faster
+  than `comm` (see [benchmark details](doc/zet-vs-other-commands.md)). But
+  `zet` takes much more memory than `uniq` or `comm`: `zet` reads its first
+  file argument into memory, and (for `union`, `single`, and `multiple`)
+  allocates additional space for each line encountered that wasn't in the first
+  file. In contrast `uniq` and `comm` take an essentially fixed amount of
+  space, no matter how large the input, since they depend on the input(s) being
+  sorted. So `zet` is faster until it runs into a memory limit, at which point
+  it stops working.
 
 The [`huniq`](https://crates.io/crates/huniq) command is slightly faster than
 `zet union` and takes less memory, because it keeps only a hash of each line in
@@ -58,11 +78,12 @@ in order to count lines.
 
 ## Notes
 
-* Each output line occurs only once, because we're treating the files as sets
-  and the lines as their elements.
-* We do take the file structure into account in one respect: the lines are
-  output in the same order as they are encountered. So `zet union x` prints out
-  the lines of `x`, in order, with duplicates removed.
+* As stated above, each output line occurs only once, and the lines are output
+  in the same order as they are encountered.
+* When no file path is given on the command line, zet reads from standard
+  input.
+* When a file argument is `-`, `zet` reads from standard input rather than the
+  file named `-`.
 * Zet translates UTF-16LE and UTF-16BE files to UTF-8, and ignores Byte Order
   Marks (BOMs) when comparing lines. It prepends a BOM to its output if and
   only if its first file argument begins with a BOM.
