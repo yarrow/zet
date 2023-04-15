@@ -31,16 +31,16 @@ Suppose you maintain three mailing lists on a site that lets you download member
 
 You've downloaded the membership lists `a`, `b`, and `c` to `a.csv`, `b.csv`, and `c.csv`. To create the membership list for `everyone` and `big-fans`, you can use `zet`:
 
-```bash
-zet union a.csv b.csv c.csv > everyone.csv
-zet intersect a.csv b.csv c.csv > big-fans.csv
+```console
+$ zet union a.csv b.csv c.csv > everyone.csv
+$ zet intersect a.csv b.csv c.csv > big-fans.csv
 ```
 
-Alas, by the time you create `everyone` and `big-fans`, new people have joined the `a`, `b`, and `c` lists. So you download the current membership of those lists to `a-now.csv`, `b-now.csv`, and `c-now.csv`.  You create `new-everyone.csv` and `new-big-fans.csv`, containing the membership records of people who should be added to the `everyone` list and `big-fan` list respectively:
+Alas, by the time you create `everyone` and `big-fans`, new people have joined the `a`, `b`, and `c` lists. So you download the current membership of those lists to `a-now.csv`, `b-now.csv`, and `c-now.csv`.  You create `delta-everyone.csv` and `delta-big-fans.csv`, containing the membership records of people who should be added to the `everyone` list and `big-fan` list respectively:
 
-```bash
-zet union a-now.csv b-now.csv c-now.csv | zet diff - everyone.csv > new-everyone.csv
-zet intersect a-now.csv b-now.csv c-now.csv | zet diff - big-fans.csv > new-big-fans.csv
+```console
+$ zet union a-now.csv b-now.csv c-now.csv | zet diff - everyone.csv > delta-everyone.csv
+$ zet intersect a-now.csv b-now.csv c-now.csv | zet diff - big-fans.csv > delta-big-fans.csv
 ```
 
 ## Comparisons to other commands
