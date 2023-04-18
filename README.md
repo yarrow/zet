@@ -23,7 +23,7 @@ Here are the subcommands of `zet` and what they do:
 
 The `--count-lines` flag makes `zet` show the number of times each line occurs in the input.
 The `--count-files` flag shows the number of files each line occurs in.
-The `-c` or `--count` flags act like `--count-lines`, unless `--files` is in effect, in which case they act like `--count-files`.
+The `-c` or `--count` flags act like `--count-lines`, unless `--files` is in effect, in which case they act like `--count-files`. The `--count-none` flag turns off counting, and can be used to override the other count flags. (In the usual POSIX convention, the last count flag given will override any previous count flag.)
 
 ## Example
 
@@ -83,7 +83,7 @@ in order to count lines.
 * When no file path is given on the command line, zet reads from standard
   input.
 * When a file argument is `-`, `zet` reads from standard input rather than the
-  file named `-`.
+  file named `-`. (That file can be passed to zet as `./-`)
 * Zet translates UTF-16LE and UTF-16BE files to UTF-8, and ignores Byte Order
   Marks (BOMs) when comparing lines. It prepends a BOM to its output if and
   only if its first file argument begins with a BOM.

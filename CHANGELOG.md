@@ -1,9 +1,9 @@
 # Change Log
 
-# [1.0.0] — under development
+# [1.0.0] - 2023-04-18
 
 ## Added
-- Add the `--count-lines` flag to show the number of times each line occurs in the input and the `--count-files` flag to show the number of files each line occurs in.  The `--count` flag acts like `--count-lines` unless `--count-files` is active, in which case it acts like `--count-files`. The `--count-none` turns off counting, and can be used to override the other `count` flags. (In the usual POSIX convention, the last `count` flag given will override any previous `count` flag.)
+- Add the `--count-lines` flag to show the number of times each line occurs in the input and the `--count-files` flag to show the number of files each line occurs in.  The `--count` flag acts like `--count-lines` unless `--count-files` is active, in which case it acts like `--count-files`. The `--count-none` flag turns off counting, and can be used to override the other `count` flags. (In the usual POSIX convention, the last `count` flag given will override any previous `count` flag.)
 
 ## Changed
 - **Breaking:** When `-` is used as a file argument, `zet` reads from standard input, not the file `-` in the current directory.  (That file can be passed to `zet` as `./-`)
@@ -57,7 +57,7 @@
 
 Initial release
 
-[1.0.0]: https://github.com/yarrow/zet/compare/v0.2.6...HEAD
+[1.0.0]: https://github.com/yarrow/zet/compare/v0.2.6...v1.0.0
 [0.2.6]: https://github.com/yarrow/zet/compare/0.2.5...v0.2.6
 [0.2.5]: https://github.com/yarrow/zet/compare/0.2.0...0.2.5
 [0.2.0]: https://github.com/yarrow/zet/compare/v0.1.1...0.2.0
