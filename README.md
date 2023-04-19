@@ -3,7 +3,7 @@ zet: Take the union, intersection, etc of files
 
 `zet` is a command-line utility for doing set operations on files considered as
 sets of lines. For instance, `zet union x y z` outputs the lines that occur in
-any of `x`, `y`, or `z`, `zet intersect x y z` those that occur in all of them, and `zet diff x y z` those that occur in `x` but not in `y` or `z`. `zet` prints each output line only once, and prints lines in the order of their first appearance in its input. 
+any of `x`, `y`, or `z`, `zet intersect x y z` those that occur in all of them, and `zet diff x y z` those that occur in `x` but not in `y` or `z`. `zet` always removes duplicate lines, printing each output line only once, and prints lines in the order of their first appearance in its input. 
 
 [![Build status](https://github.com/yarrow/zet/actions/workflows/ci.yml/badge.svg)](https://github.com/yarrow/zet/actions)
 [![Crates.io](https://img.shields.io/crates/v/zet.svg)](https://crates.io/crates/zet)
@@ -58,6 +58,8 @@ Differences:
 * `zet`'s input need not be sorted, and it outputs lines in the order of their
   first appearance in the input. It can take multiple input files (rather than
   just one (like `uniq`) or two (like `comm`).
+* Unlike `comm`, `zet` always removes duplicate lines — so `zet diff a b` is
+  more similar to `comm -23 a b | uniq` than to `comm -23 a b` alone.
 * `zet` has no `-i` or `-ignore-case` option, unlike `uniq` and `comm`.For
   large files, `zet` is about 4.5 times faster than `uniq` and 10 times faster
   than `comm` (see [benchmark details](doc/zet-vs-other-commands.md)). But
