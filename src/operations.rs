@@ -511,7 +511,6 @@ impl<Sifted: Bookkeeping, Logged: Loggable> Loggable for SiftLog<Sifted, Logged>
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::operands;
     use bstr::ByteSlice;
     use indexmap::IndexMap;
 
@@ -530,8 +529,6 @@ mod test {
         calculate(operation, LogType::None, first, rest, &mut answer).unwrap();
         String::from_utf8(answer).unwrap()
     }
-
-    use self::OpName::*;
 
     #[test]
     fn given_a_single_argument_all_most_ops_return_input_lines_in_order_without_dups() {
@@ -647,7 +644,6 @@ mod test {
 #[allow(clippy::pedantic)]
 mod test_bookkeeping {
     use super::*;
-    use std::fs::File;
 
     #[test]
     fn line_count_update_with_uses_saturating_increment() {
