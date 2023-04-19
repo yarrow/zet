@@ -75,7 +75,7 @@
     clippy::semicolon_if_nothing_returned,
     clippy::struct_excessive_bools
 )]
-#![cfg_attr(debug_assertions, allow(dead_code, unused_imports, unused_variables))]
+#![cfg_attr(all(debug_assertions, not(test)), allow(dead_code, unused_imports, unused_variables))]
 
 pub mod args;
 pub mod help;
