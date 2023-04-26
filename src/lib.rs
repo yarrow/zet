@@ -73,7 +73,8 @@
     clippy::items_after_statements,
     clippy::missing_errors_doc,
     clippy::semicolon_if_nothing_returned,
-    clippy::struct_excessive_bools
+    clippy::struct_excessive_bools,
+    clippy::let_underscore_untyped
 )]
 #![cfg_attr(debug_assertions, allow(dead_code, unused_imports, unused_variables))]
 
