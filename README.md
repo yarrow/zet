@@ -1,5 +1,5 @@
-zet: Take the union, intersection, etc of files
-=================================================
+zet: Take the union, intersection, difference, etc of files — compare to `uniq` and `comm`.
+===========================================================================================
 
 `zet` is a command-line utility for doing set operations on files considered as
 sets of lines. For instance, `zet union x y z` outputs the lines that occur in
