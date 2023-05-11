@@ -301,10 +301,10 @@ impl Bookkeeping for Unsifted {
 ///
 /// `Lines` is a thin wrapper around `u32`. It ignores `next_file`, and uses
 /// `update_with` only to increment its `u32` element. We use a saturating
-/// increment, because neither `Single` and `Multiple` care only whether the
-/// `u32` is `1` or greater than `1`, and for logging purposes it seems better
-/// to report overflow for lines that appear `u32::MAX` times or more than to
-/// stop `zet` completely.
+/// increment, because `Single` and `Multiple` care only whether the `u32` is
+/// `1` or greater than `1`, and for logging purposes it seems better to report
+/// overflow for lines that appear `u32::MAX` times or more than to stop `zet`
+/// completely.
 #[derive(Clone, Copy, PartialEq, Debug)]
 struct Lines(u32);
 impl Bookkeeping for Lines {
