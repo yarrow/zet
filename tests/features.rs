@@ -292,7 +292,7 @@ mod test_the_tests {
     use super::*;
     #[test]
     fn expected_union_output_is_the_concatentated_input_lines_in_order_with_no_duplicates() {
-        let xyz = vec![x(), y(), z()].concat();
+        let xyz = [x(), y(), z()].concat();
         let unique_input_lines: Vec<String> = xyz.into_iter().unique().collect();
         let union_lines = xpected(Union);
         assert!(union_lines.eq(&unique_input_lines));
