@@ -91,7 +91,7 @@ in order to count lines.
   only if its first file argument begins with a BOM.
 * Zet ignores all lines endings (`\r\n` or `\n`) when comparing lines, so two
   input lines compare the same if their only difference is that one ends in
-  `\r\n` and the other in `\r`. Zet ends each output line with `\r\n` if the
+  `\r\n` and the other in `\n`. Zet ends each output line with `\r\n` if the
   first line of its first file argument ends in `\r\n`, and `\n` otherwise (if
   the first line ends in `\n` or the first file has only one line and that line
   has no line terminator.)
