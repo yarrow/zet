@@ -112,7 +112,7 @@ pub enum OpName {
 #[command(name = "zet")]
 /// `CliArgs` contains the parsed command line.
 struct CliArgs {
-    #[arg(short, long, overrides_with_all(["count", "count_files", "count_lines", "count_none"]))]
+    #[arg(long, overrides_with_all(["count", "count_files", "count_lines", "count_none"]))]
     /// The --count-files flag tells `zet` to report the number of files a line occurs in
     count_files: bool,
 
@@ -124,7 +124,7 @@ struct CliArgs {
     /// The --count-none flag tells `zet` to turn off reporting
     count_none: bool,
 
-    #[arg(long, overrides_with_all(["count", "count_files", "count_lines", "count_none"]))]
+    #[arg(short, long, overrides_with_all(["count", "count_files", "count_lines", "count_none"]))]
     /// The --count is like --count-lines, but --files makes it act like --count-files
     count: bool,
 

@@ -3,7 +3,7 @@ use std::process::Command;
 
 use assert_cmd::prelude::*;
 use assert_fs::{prelude::*, TempDir};
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 use itertools::Itertools;
 use once_cell::sync::Lazy;
 use zet::args::OpName::{self, *};
@@ -136,7 +136,7 @@ fn the_last_line_of_a_file_need_not_end_in_a_newline() {
 }
 
 #[test]
-fn zet_subcommand_with_count_flag_x_y_z_matches_expected_output_for_all_operations() {
+fn zet_subcommand_with_count_lines_flag_x_y_z_matches_expected_output_for_all_operations() {
     let temp = TempDir::new().unwrap();
 
     let x_path = &path_with(&temp, "x.txt", &x().join(""), Encoding::Plain);
@@ -147,9 +147,52 @@ fn zet_subcommand_with_count_flag_x_y_z_matches_expected_output_for_all_operatio
         let output = run([sub, "--count-lines", x_path, y_path, z_path]).unwrap();
         assert_eq!(
             String::from_utf8(output.stdout).unwrap(),
-            xpected_with_count(op).join(""),
+            xpected_with_count_lines(op).join(""),
             "Output from {sub} ({op:?}) doesn't match expected",
         );
+    }
+}
+
+#[test]
+fn zet_subcommand_with_count_files_flag_x_y_z_matches_expected_output_for_all_operations() {
+    let temp = TempDir::new().unwrap();
+
+    let x_path = &path_with(&temp, "x.txt", &x().join(""), Encoding::Plain);
+    let y_path = &path_with(&temp, "y.txt", &y().join(""), Encoding::Plain);
+    let z_path = &path_with(&temp, "z.txt", &z().join(""), Encoding::Plain);
+    for op in OP_NAMES {
+        let sub = subcommand_for(op);
+        let output = run([sub, "--count-files", x_path, y_path, z_path]).unwrap();
+        assert_eq!(
+            String::from_utf8(output.stdout).unwrap(),
+            xpected_with_count_files(op).join(""),
+            "Output from {sub} ({op:?}) doesn't match expected",
+        );
+    }
+}
+
+#[test]
+fn zet_subcommand_with_count_flag_or_c_flag_follows_files_flag() {
+    let temp = TempDir::new().unwrap();
+
+    let x_path = &path_with(&temp, "x.txt", &x().join(""), Encoding::Plain);
+    let y_path = &path_with(&temp, "y.txt", &y().join(""), Encoding::Plain);
+    let z_path = &path_with(&temp, "z.txt", &z().join(""), Encoding::Plain);
+    for op in OP_NAMES {
+        let sub = subcommand_for(op);
+        for flag in ["-c", "--count"] {
+            let output = run([sub, flag, x_path, y_path, z_path]).unwrap();
+            let expected = if sub.contains("--file") {
+                xpected_with_count_files(op)
+            } else {
+                xpected_with_count_lines(op)
+            };
+            assert_eq!(
+                String::from_utf8(output.stdout).unwrap(),
+                expected.join(""),
+                "Output from {sub} ({op:?}) doesn't match expected",
+            );
+        }
     }
 }
 
@@ -266,16 +309,15 @@ fn y() -> Vec<String> {
 fn z() -> Vec<String> {
     text_for(|r| r.z)
 }
-fn counts() -> IndexMap<String, usize> {
+fn xpected_with_count_lines(op: OpName) -> Vec<String> {
     let xyz = [x(), y(), z()].concat();
     let mut count_of = IndexMap::new();
     for line in xyz {
         count_of.entry(line).and_modify(|v| *v += 1).or_insert(1);
     }
-    count_of
+    xpected_with_count(op, &count_of)
 }
-fn xpected_with_count(op: OpName) -> Vec<String> {
-    let count_of = counts();
+fn xpected_with_count(op: OpName, count_of: &IndexMap<String, usize>) -> Vec<String> {
     INPUT
         .iter()
         .filter(|inp| inp.should_be_in(op))
@@ -284,6 +326,26 @@ fn xpected_with_count(op: OpName) -> Vec<String> {
             format!("{} {line}", count_of[&line])
         })
         .collect()
+}
+
+fn xpected_with_count_files(op: OpName) -> Vec<String> {
+    fn in_file(lines: &Vec<String>) -> IndexSet<String> {
+        let mut seen = IndexSet::new();
+        for line in lines {
+            seen.insert(line.clone());
+        }
+        seen
+    }
+    let x_seen = in_file(&x());
+    let y_seen = in_file(&y());
+    let z_seen = in_file(&z());
+    let mut count_of = IndexMap::<String, usize>::new();
+    for seen in [x_seen, y_seen, z_seen] {
+        for line in seen.iter() {
+            *count_of.entry(line.clone()).or_insert(0) += 1;
+        }
+    }
+    xpected_with_count(op, &count_of)
 }
 
 // These tests of the expected results are sanity checks that the expected

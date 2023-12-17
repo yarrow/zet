@@ -861,7 +861,7 @@ checksum = "dff9641d1cd4be8d1a070daf9e3773c5f67e78b4d9d42263020c057706765c04"
 
 [[package]]
 name = "zet"
-version = "1.0.0"
+version = "2.0.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
