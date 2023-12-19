@@ -1,4 +1,6 @@
-use crate::styles::{global_style, StyleSheet, StyledStr};
+use crate::styles::{app_name, as_item, as_title, ColorChoice, StyledStr};
+use anstream;
+use anyhow::{bail, Result};
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use terminal_size::{terminal_size, Height, Width};
@@ -18,38 +20,50 @@ struct Entry<'a> {
     caption: &'a str,
 }
 
-fn name(style: &StyleSheet) -> StyledStr {
-    style.app_name("zet")
+fn name() -> StyledStr<'static> {
+    app_name("zet")
 }
 
 pub(crate) fn version() -> String {
     let version = std::env!("CARGO_PKG_VERSION");
-    let name = name(global_style());
+    let name = name();
     format!("{name} {version}")
 }
 
-pub(crate) fn print() {
+pub(crate) fn print(color_choice: &ColorChoice) -> Result<()> {
+    let color_choice = match color_choice {
+        ColorChoice::Always => anstream::ColorChoice::Always,
+        ColorChoice::Auto => anstream::ColorChoice::Auto,
+        ColorChoice::Never => anstream::ColorChoice::Never,
+    };
+    let mut stdout = anstream::AutoStream::new(std::io::stdout().lock(), color_choice);
+    match fallable_print(&mut stdout) {
+        Err(e) => bail!("failed printing to stdout: {e}"),
+        Ok(_) => Ok(()),
+    }
+}
+fn fallable_print(stdout: &mut dyn std::io::Write) -> std::io::Result<usize> {
     let input = include_str!("help.txt");
-    let style = global_style();
-    let help = parse(style, input);
-    println!("{}", version());
+    let help = parse(input);
+    writeln!(stdout, "{}", version())?;
     for help_item in help {
         match help_item {
             HelpItem::Paragraph(text) => {
-                wrap(text, &C.wrap_options).iter().for_each(|line| println!("{line}"))
+                for line in wrap(text, &C.wrap_options) {
+                    writeln!(stdout, "{line}")?;
+                }
             }
-            HelpItem::Usage(args) => {
-                println!("{}{}{}", style.title("Usage: "), name(style), args)
-            }
+            HelpItem::Usage(args) => writeln!(stdout, "{}{}{}", as_title("Usage: "), name(), args)?,
             HelpItem::Section(s) => {
-                println!("{}", style.title(s.title));
-                s.print_entries();
+                writeln!(stdout, "{}", as_title(s.title))?;
+                s.print_entries(stdout)?;
             }
         };
     }
+    Ok(0)
 }
 
-fn parse<'a>(style: &StyleSheet, text: &'a str) -> Vec<HelpItem<'a>> {
+fn parse(text: &str) -> Vec<HelpItem> {
     const USAGE: &str = "Usage: ";
     let mut help = Vec::new();
     let mut lines = text.lines().fuse();
@@ -68,7 +82,7 @@ fn parse<'a>(style: &StyleSheet, text: &'a str) -> Vec<HelpItem<'a>> {
                 }
                 let Some(sp_sp) = entry.rfind("  ") else { panic!("No double space in {entry}") };
                 let (item, caption) = entry.split_at(sp_sp + 2);
-                entries.push(Entry { item: style.item(item), caption });
+                entries.push(Entry { item: as_item(item), caption });
             };
             help.push(HelpItem::Section(Section { title, entries }));
             if let Some(part) = result {
@@ -82,11 +96,11 @@ fn parse<'a>(style: &StyleSheet, text: &'a str) -> Vec<HelpItem<'a>> {
 }
 
 impl<'a> Section<'a> {
-    fn print_entries(&self) {
+    fn print_entries(self, stdout: &mut dyn std::io::Write) -> std::io::Result<usize> {
         let fits_in_line = self.entries.iter().all(Entry::fits_in_line);
         if fits_in_line {
             for entry in &self.entries {
-                println!("{}{}", entry.item, entry.caption);
+                writeln!(stdout, "{}{}", entry.item, entry.caption)?;
             }
         } else {
             let same_line_help = self.same_line_help_lines();
@@ -97,7 +111,7 @@ impl<'a> Section<'a> {
                 &next_line_help
             };
             for line in help.iter().flatten() {
-                println!("{line}");
+                writeln!(stdout, "{line}")?;
             }
         }
         fn badness<T>(vv: &[Vec<T>]) -> usize {
@@ -106,6 +120,7 @@ impl<'a> Section<'a> {
                 total + v.len() + m * 2
             })
         }
+        Ok(0)
     }
     fn next_line_help_indent(&self) -> &'a str {
         let max_indent =

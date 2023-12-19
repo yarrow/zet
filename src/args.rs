@@ -2,7 +2,7 @@
 
 use crate::help;
 use crate::operations::LogType;
-use crate::styles::{set_color_choice, ColorChoice};
+use crate::styles::ColorChoice;
 use clap::{Parser, ValueEnum};
 use std::path::PathBuf;
 
@@ -12,34 +12,16 @@ use std::path::PathBuf;
 pub fn parsed() -> Args {
     let parsed = CliArgs::parse();
     let cc = parsed.color.unwrap_or(ColorChoice::Auto);
-    set_color_choice(cc);
     if parsed.help {
-        help_and_exit();
+        help_and_exit(&cc);
     }
     if parsed.version {
         println!("{}", help::version());
         exit_success();
     }
-    let Some(op) = parsed.command else { help_and_exit() };
-    if op == CliName::Help {
-        help_and_exit()
-    }
-    let log_type = if parsed.count_files {
-        LogType::Files
-    } else if parsed.count_lines {
-        LogType::Lines
-    } else if parsed.count {
-        if parsed.files {
-            LogType::Files
-        } else {
-            LogType::Lines
-        }
-    } else {
-        LogType::None
-    };
-
+    let Some(op) = parsed.command else { help_and_exit(&cc) };
     let op = match op {
-        CliName::Help => help_and_exit(), // This can't happen, but...
+        CliName::Help => help_and_exit(&cc),
         CliName::Intersect => OpName::Intersect,
         CliName::Union => OpName::Union,
         CliName::Diff => OpName::Diff,
@@ -58,12 +40,33 @@ pub fn parsed() -> Args {
             }
         }
     };
+
+    let log_type = if parsed.count_files {
+        LogType::Files
+    } else if parsed.count_lines {
+        LogType::Lines
+    } else if parsed.count {
+        if parsed.files {
+            LogType::Files
+        } else {
+            LogType::Lines
+        }
+    } else {
+        LogType::None
+    };
+
     Args { op, log_type, paths: parsed.paths }
 }
 
-fn help_and_exit() -> ! {
-    help::print();
-    exit_success();
+fn help_and_exit(cc: &ColorChoice) -> ! {
+    let code = match help::print(cc) {
+        Err(e) => {
+            eprintln!("{e}");
+            1
+        }
+        Ok(()) => SUCCESS_CODE,
+    };
+    safe_exit(code);
 }
 
 const SUCCESS_CODE: i32 = 0;
