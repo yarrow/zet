@@ -123,8 +123,7 @@ impl<'a> Section<'a> {
         Ok(0)
     }
     fn next_line_help_indent(&self) -> &'a str {
-        let max_indent =
-            self.entries.iter().map(|e| e.item.indented_by()).fold(0, std::cmp::Ord::max);
+        let max_indent = self.entries.iter().map(|e| e.item.indented_by()).fold(0, Ord::max);
         let indent_len = (max_indent + 4).min(BLANKS.len());
         &BLANKS[..indent_len]
     }
