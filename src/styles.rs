@@ -29,7 +29,7 @@ pub(crate) struct StyledStr<'a> {
     prefix: Style,
     content: &'a str,
 }
-impl<'a> StyledStr<'a> {
+impl StyledStr<'_> {
     #[must_use]
     pub fn len(&self) -> usize {
         self.content.len()
@@ -40,7 +40,7 @@ impl<'a> StyledStr<'a> {
         self.content.as_bytes().find_not_byteset(b" ").unwrap_or(self.len())
     }
 }
-impl<'a> fmt::Display for StyledStr<'a> {
+impl fmt::Display for StyledStr<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}{}{}", self.prefix.render(), self.content, self.prefix.render_reset())
     }
