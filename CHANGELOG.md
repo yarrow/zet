@@ -1,9 +1,12 @@
 # Change Log
 
-# [2.0.0 (Unreleased)]
+# [2.0.1]
 
 ## Fixed
-- `zet -c`, like `zet --count`, is supposed to count the number of times a line appears unless there's a `--files` flag; but due to an error, `-c` always counts the number of files the line appears in. (So if a line appears in one file 100 times, the reported count is 1, even without the `--file` flag.)  This is fixed, but since it changes behaviour in a non-backward compatible way, we bump the version number.
+- `zet -c`, like `zet --count`, is supposed to count the number of times a line appears unless there's a `--files` flag; but due to an error, `-c` always counts the number of files the line appears in. (So if a line appears in one file 100 times, the reported count is 1, even without the `--file` flag.)  This is fixed, but since it changes behaviour in a non-backward compatible way, we bump the major version number.
+
+## Changed
+- Bump Minimum Supported Rust Version to 1.78.0
 
 # [1.0.0] - 2023-04-18
 
@@ -62,7 +65,7 @@
 
 Initial release
 
-[2.0.0 (Unreleased)]: https://github.com/yarrow/zet/compare/v1.0.0...back-to-clap
+[2.0.1]: https://github.com/yarrow/zet/compare/v1.0.0...v2.0.1
 [1.0.0]: https://github.com/yarrow/zet/compare/v0.2.6...v1.0.0
 [0.2.6]: https://github.com/yarrow/zet/compare/0.2.5...v0.2.6
 [0.2.5]: https://github.com/yarrow/zet/compare/0.2.0...0.2.5
