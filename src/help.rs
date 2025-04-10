@@ -58,7 +58,7 @@ fn fallable_print(stdout: &mut dyn std::io::Write) -> std::io::Result<usize> {
                 writeln!(stdout, "{}", as_title(s.title))?;
                 s.print_entries(stdout)?;
             }
-        };
+        }
     }
     Ok(0)
 }
