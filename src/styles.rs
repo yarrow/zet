@@ -13,15 +13,15 @@ const BOLD_GREEN: Style = GREEN.bold();
 const YELLOW: Style = Style::new().fg_color(Some(Color::Ansi(AnsiColor::Yellow)));
 
 #[must_use]
-pub(crate) fn app_name(content: &str) -> StyledStr {
+pub(crate) fn app_name(content: &str) -> StyledStr<'_> {
     StyledStr { prefix: BOLD_GREEN, content }
 }
 #[must_use]
-pub(crate) fn as_item(content: &str) -> StyledStr {
+pub(crate) fn as_item(content: &str) -> StyledStr<'_> {
     StyledStr { prefix: GREEN, content }
 }
 #[must_use]
-pub(crate) fn as_title(content: &str) -> StyledStr {
+pub(crate) fn as_title(content: &str) -> StyledStr<'_> {
     StyledStr { prefix: YELLOW, content }
 }
 

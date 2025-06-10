@@ -63,7 +63,7 @@ fn fallable_print(stdout: &mut dyn std::io::Write) -> std::io::Result<usize> {
     Ok(0)
 }
 
-fn parse(text: &str) -> Vec<HelpItem> {
+fn parse(text: &str) -> Vec<HelpItem<'_>> {
     const USAGE: &str = "Usage: ";
     let mut help = Vec::new();
     let mut lines = text.lines().fuse();

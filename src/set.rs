@@ -116,15 +116,15 @@ impl<'data, B: Bookkeeping> ZetSet<'data, B> {
     }
 
     /// Expose the underlying `ZetSet`'s `keys` method
-    pub(crate) fn keys(&self) -> map::Keys<Cow<[u8]>, B> {
+    pub(crate) fn keys(&self) -> map::Keys<'_, Cow<'_, [u8]>, B> {
         self.set.keys()
     }
     /// Expose the underlying `ZetSet`'s `iter` method
-    pub(crate) fn iter(&self) -> map::Iter<Cow<[u8]>, B> {
+    pub(crate) fn iter(&self) -> map::Iter<'_, Cow<'_, [u8]>, B> {
         self.set.iter()
     }
     /// Expose the underlying `ZetSet`'s `values` method
-    pub(crate) fn values(&self) -> map::Values<Cow<[u8]>, B> {
+    pub(crate) fn values(&self) -> map::Values<'_, Cow<'_, [u8]>, B> {
         self.set.values()
     }
 }

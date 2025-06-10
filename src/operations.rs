@@ -174,7 +174,7 @@ trait Loggable: Bookkeeping {
 fn every_line<B: Bookkeeping, O: LaterOperand>(
     first_operand: &[u8],
     rest: impl Iterator<Item = Result<O>>,
-) -> Result<ZetSet<B>> {
+) -> Result<ZetSet<'_, B>> {
     let mut item = B::new();
     let mut set = ZetSet::new(first_operand, item);
     for operand in rest {
@@ -233,7 +233,7 @@ fn keep_multiple<B: Bookkeeping, O: LaterOperand>(
 fn first_file_lines<B: Bookkeeping, O: LaterOperand>(
     first_operand: &[u8],
     rest: impl Iterator<Item = Result<O>>,
-) -> Result<ZetSet<B>> {
+) -> Result<ZetSet<'_, B>> {
     let mut item = B::new();
     let mut set = ZetSet::new(first_operand, item);
     for operand in rest {
