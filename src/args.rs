@@ -3,7 +3,8 @@
 use crate::help;
 use crate::operations::LogType;
 use crate::styles::ColorChoice;
-use clap::{Parser, ValueEnum};
+use clap::{CommandFactory, Parser, ValueEnum};
+use clap_complete::Shell;
 use std::path::PathBuf;
 
 /// Returns the parsed command line: the `Args` return value's `op` field is the set operation
@@ -11,6 +12,10 @@ use std::path::PathBuf;
 #[must_use]
 pub fn parsed() -> Args {
     let parsed = CliArgs::parse();
+    if let Some(shell) = parsed.completions {
+        clap_complete::generate(shell, &mut CliArgs::command(), "zet", &mut std::io::stdout());
+        exit_success();
+    }
     let cc = parsed.color.unwrap_or(ColorChoice::Auto);
     if parsed.help {
         help_and_exit(&cc);
@@ -153,6 +158,10 @@ struct CliArgs {
     /// The `color` flag tells us whether to print color or not (Auto means Yes, if
     /// stdout is a terminal that supports color)
     color: Option<ColorChoice>,
+
+    #[arg(long, value_name = "SHELL")]
+    /// Print shell completions for the given shell and exit
+    completions: Option<Shell>,
 
     #[arg(value_enum)]
     /// `op` is the set operation requested

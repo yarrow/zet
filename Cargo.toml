@@ -22,6 +22,7 @@ encoding_rs = "0.8.28"
 encoding_rs_io = "0.1.7"
 fxhash = "0.2.1"
 clap = { version = "4.1.4", default-features = false, features = ["std","error-context","suggestions", "derive","cargo"] }
+clap_complete = { version = "=4.5.67", default-features = false }
 memchr = "2.4.0"
 indexmap = "1.7.0"
 is-terminal = "0.4.2"
@@ -42,4 +43,3 @@ lto = "thin"
 [profile.dist]
 inherits = "release"
 lto = "thin"
-

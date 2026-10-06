@@ -16,6 +16,7 @@ Options:
   -c  --count         Like --count-lines, but if --files is present, like --count-files
       --file[s]       To count as multiple, a line must occur in more than one file. Affects the single and multiple commands, as well as the -c and --count options
       --color <WHEN>  [possible values: auto, always, never]
+      --completions <SHELL>  Print shell completions [possible values: bash, elvish, fish, powershell, zsh]
   -h, --help          Print this message
   -V, --version       Print version
 
