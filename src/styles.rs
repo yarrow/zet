@@ -1,60 +1,43 @@
-use anstyle::{AnsiColor, Color, Style};
-use clap::ValueEnum;
-use std::fmt;
+//! Colors for `zet`'s help: `clap 4`'s help format, but `clap 3`'s colors.
 
-#[derive(Debug, Clone, ValueEnum)]
+use clap::builder::styling::{AnsiColor, Style, Styles};
+use clap::ValueEnum;
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
 pub(crate) enum ColorChoice {
     Auto,
     Always,
     Never,
 }
-const GREEN: Style = Style::new().fg_color(Some(Color::Ansi(AnsiColor::Green)));
-const BOLD_GREEN: Style = GREEN.bold();
-const YELLOW: Style = Style::new().fg_color(Some(Color::Ansi(AnsiColor::Yellow)));
-
-#[must_use]
-pub(crate) fn app_name(content: &str) -> StyledStr<'_> {
-    StyledStr { prefix: BOLD_GREEN, content }
-}
-#[must_use]
-pub(crate) fn as_item(content: &str) -> StyledStr<'_> {
-    StyledStr { prefix: GREEN, content }
-}
-#[must_use]
-pub(crate) fn as_title(content: &str) -> StyledStr<'_> {
-    StyledStr { prefix: YELLOW, content }
-}
-
-pub(crate) struct StyledStr<'a> {
-    prefix: Style,
-    content: &'a str,
-}
-impl StyledStr<'_> {
-    #[must_use]
-    pub fn len(&self) -> usize {
-        self.content.len()
-    }
-    #[must_use]
-    pub fn indented_by(&self) -> usize {
-        use bstr::ByteSlice;
-        self.content.as_bytes().find_not_byteset(b" ").unwrap_or(self.len())
+impl From<ColorChoice> for clap::ColorChoice {
+    fn from(choice: ColorChoice) -> Self {
+        match choice {
+            ColorChoice::Auto => clap::ColorChoice::Auto,
+            ColorChoice::Always => clap::ColorChoice::Always,
+            ColorChoice::Never => clap::ColorChoice::Never,
+        }
     }
 }
-impl fmt::Display for StyledStr<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}{}{}", self.prefix.render(), self.content, self.prefix.render_reset())
+impl From<ColorChoice> for anstream::ColorChoice {
+    fn from(choice: ColorChoice) -> Self {
+        match choice {
+            ColorChoice::Auto => anstream::ColorChoice::Auto,
+            ColorChoice::Always => anstream::ColorChoice::Always,
+            ColorChoice::Never => anstream::ColorChoice::Never,
+        }
     }
 }
 
-#[cfg(test)]
-mod test {
-    use super::*;
+const GREEN: Style = AnsiColor::Green.on_default();
+const YELLOW: Style = AnsiColor::Yellow.on_default();
 
-    #[test]
-    fn test_len() {
-        let contents = "abc";
-        assert_eq!(app_name(contents).len(), contents.len());
-        assert_eq!(as_item(contents).len(), contents.len());
-        assert_eq!(as_title(contents).len(), contents.len());
-    }
-}
+/// The style for `zet`'s own name
+pub(crate) const APP_NAME: Style = GREEN.bold();
+/// The style for section titles, like `Usage:` and `Options:`
+pub(crate) const TITLE: Style = YELLOW;
+/// The style for the names of commands and options
+pub(crate) const ITEM: Style = GREEN;
+
+/// The styles `clap` uses for help and error messages
+pub(crate) const STYLES: Styles =
+    Styles::styled().header(TITLE).usage(TITLE).literal(ITEM).placeholder(ITEM);

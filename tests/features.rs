@@ -31,6 +31,50 @@ fn prints_help_if_no_subcommand() {
 }
 
 #[test]
+fn help_is_the_same_however_requested_and_lists_every_command_and_option() {
+    let help = String::from_utf8(main_binary().unwrap().stdout).unwrap();
+    for request in ["help", "-h", "--help"] {
+        let output = run([request]).unwrap();
+        assert_eq!(String::from_utf8(output.stdout).unwrap(), help, "Output from {request}");
+    }
+    for command in ["union", "intersect", "diff", "single", "multiple", "help"] {
+        assert!(help.contains(&format!("\n  {command} ")), "No help for {command}");
+    }
+    for option in ["--count-lines", "--count-files", "-c, --count", "--file[s]", "--color <WHEN>"] {
+        assert!(help.contains(option), "No help for {option}");
+    }
+}
+
+#[test]
+fn completions_offer_the_real_option_names_not_the_ones_help_displays() {
+    for shell in ["bash", "elvish", "fish", "powershell", "zsh"] {
+        let output = run(["--completions", shell]).unwrap();
+        let completions = String::from_utf8(output.stdout).unwrap();
+        for option in ["files", "lines"] {
+            // Fish completions say `-l files`, the others `--files`
+            let offered = [format!("--{option}"), format!("-l {option} ")];
+            assert!(
+                offered.iter().any(|name| completions.contains(name)),
+                "No --{option} in {shell} completions"
+            );
+        }
+        assert!(!completions.contains("[s]"), "Display-only name in {shell} completions");
+    }
+}
+
+#[test]
+fn color_appears_in_help_and_version_only_when_asked_for() {
+    for request in ["help", "--version"] {
+        for (color, expect_color) in
+            [("", false), ("--color=never", false), ("--color=always", true)]
+        {
+            let output = run([request, color]).unwrap();
+            assert_eq!(output.stdout.contains(&b'\x1b'), expect_color, "zet {request} {color}");
+        }
+    }
+}
+
+#[test]
 #[allow(non_snake_case)]
 fn prints_version_with_V_or_version_flag() {
     for version in ["-V", "--version"] {
