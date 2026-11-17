@@ -21,5 +21,7 @@ unix-archive = ".tar.gz"
 install-path = "CARGO_HOME"
 # Which actions to run on pull requests
 pr-run-mode = "upload"
+# Don't cache builds, so the rehearsal runs the same steps as a real release
+cache-builds = false
 # Whether to install an updater program
 install-updater = false
