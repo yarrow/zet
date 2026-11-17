@@ -1,4 +1,3 @@
-# based on ci.yml in axodotdev/cargo-dist 
 # The "Normal" CI for tests and linters and whatnot
 name: ci
 
@@ -11,10 +10,14 @@ on:
     branches:
       # The main branch
       - main
-  # And once a week? 
+  # And twice a week
   # This can catch things like "rust updated and actually regressed something"
   schedule:
     - cron: "26 8 * * 0,3"
+
+# None of these checks needs to write to the repository
+permissions:
+  contents: read
 
 # We want all these checks to fail if they spit out warnings
 env:
@@ -25,99 +28,57 @@ jobs:
   fmt:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v1
-      - uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
-          profile: minimal
           components: rustfmt
-          override: true
-      - uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --all -- --check
+      - run: cargo fmt --all -- --check
 
   # Check that clippy is appeased
   clippy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v1
-      - uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
-          profile: minimal
           components: clippy
-          override: true
-      - uses: actions-rs/clippy-check@v1
-        env:
-          PWD: ${{ env.GITHUB_WORKSPACE }}
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          args: --workspace --tests --examples --no-deps
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --workspace --all-targets --no-deps
 
   # Make sure the docs build without warnings
   docs:
-   runs-on: ubuntu-latest
-   env:
-     RUSTDOCFLAGS: -Dwarnings
-   steps:
-     - uses: actions/checkout@master
-     - uses: actions-rs/toolchain@v1
-       with:
-         toolchain: stable
-         profile: minimal
-         components: rust-docs
-         override: true
-     - uses: swatinem/rust-cache@v1
-     - uses: actions-rs/cargo@v1
-       with:
-         command: doc
-         args: --workspace --no-deps --document-private-items
+    runs-on: ubuntu-latest
+    env:
+      RUSTDOCFLAGS: -Dwarnings
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo doc --workspace --no-deps --document-private-items
 
-  # Build and run tests/doctests/examples on all platforms
-  # FIXME: look into `cargo-hack` which lets you more aggressively
-  # probe all your features and rust versions (see tracing's ci)
+  # Build and run the tests on all platforms
   test:
     runs-on: ${{ matrix.os }}
     strategy:
+      # Let every combination finish, so we can see which ones fail
+      fail-fast: false
       # Test the cross-product of these platforms+toolchains
       matrix:
-        os: [ubuntu-latest, windows-latest, macOS-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
         rust: [nightly, stable]
     steps:
-      # Setup tools
-      - uses: actions/checkout@master
-      - uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.rust }}
-          profile: minimal
-          override: true
-      - uses: swatinem/rust-cache@v1
-      # Run the tests/doctests (default features)
-      - uses: actions-rs/cargo@v1
-        env:
-          PWD: ${{ env.GITHUB_WORKSPACE }}
-        with:
-          command: test
-          args: --workspace
-      # Run the tests/doctests (all features)
-      - uses: actions-rs/cargo@v1
-        env:
-          PWD: ${{ env.GITHUB_WORKSPACE }}
-        with:
-          command: test
-          args: --workspace --all-features
-      # Test the examples (default features)
-      - uses: actions-rs/cargo@v1
-        env:
-          PWD: ${{ env.GITHUB_WORKSPACE }}
-        with:
-          command: test
-          args: --workspace --examples --bins
-      # Test the examples (all features)
-      - uses: actions-rs/cargo@v1
-        env:
-          PWD: ${{ env.GITHUB_WORKSPACE }}
-        with:
-          command: test
-          args: --workspace --all-features --examples --bins
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace
+
+  # Make sure we still build and pass the tests with the `rust-version` in Cargo.toml
+  msrv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.85.0
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace --locked
