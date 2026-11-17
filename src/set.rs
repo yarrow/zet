@@ -3,7 +3,7 @@
 use crate::operations::Bookkeeping;
 use anyhow::Result;
 use fxhash::FxBuildHasher;
-use indexmap::{map, IndexMap};
+use indexmap::{IndexMap, map};
 use memchr::memchr;
 use std::borrow::Cow;
 

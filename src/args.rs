@@ -1,7 +1,8 @@
 //! Code to parse the command line using `clap`, and definitions of the parsed result
 
 use crate::operations::LogType;
-use crate::styles::{ColorChoice, APP_NAME, ITEM, STYLES, TITLE};
+use crate::styles::{APP_NAME, ColorChoice, ITEM, STYLES, TITLE};
+use clap::error::ErrorKind;
 use clap::{Command, CommandFactory, Parser, ValueEnum};
 use clap_complete::Shell;
 use std::fmt::Write as _;
@@ -12,10 +13,6 @@ use std::path::PathBuf;
 #[must_use]
 pub fn parsed() -> Args {
     let parsed = CliArgs::parse();
-    if let Some(shell) = parsed.completions {
-        clap_complete::generate(shell, &mut CliArgs::command(), "zet", &mut std::io::stdout());
-        exit_success();
-    }
     let cc = parsed.color.unwrap_or(ColorChoice::Auto);
     if parsed.help {
         help_and_exit(cc);
@@ -26,6 +23,7 @@ pub fn parsed() -> Args {
     let Some(op) = parsed.command else { help_and_exit(cc) };
     let op = match op {
         CliName::Help => help_and_exit(cc),
+        CliName::Completions => completions_and_exit(&parsed.paths, cc),
         CliName::Intersect => OpName::Intersect,
         CliName::Union => OpName::Union,
         CliName::Diff => OpName::Diff,
@@ -50,11 +48,7 @@ pub fn parsed() -> Args {
     } else if parsed.count_lines {
         LogType::Lines
     } else if parsed.count {
-        if parsed.files {
-            LogType::Files
-        } else {
-            LogType::Lines
-        }
+        if parsed.files { LogType::Files } else { LogType::Lines }
     } else {
         LogType::None
     };
@@ -64,6 +58,39 @@ pub fn parsed() -> Args {
 
 fn help_and_exit(cc: ColorChoice) -> ! {
     exit_after(help_command().color(cc.into()).print_help())
+}
+
+/// Print the completion script for the shell named by the `completions` command's sole argument
+fn completions_and_exit(shells: &[PathBuf], cc: ColorChoice) -> ! {
+    let possible = || {
+        let shells: Vec<_> = Shell::value_variants().iter().map(Shell::to_string).collect();
+        format!("  [possible values: {}]", shells.join(", "))
+    };
+    let (kind, message) = match shells {
+        [] => (
+            ErrorKind::MissingRequiredArgument,
+            format!("the name of a shell is required\n{}", possible()),
+        ),
+        [shell] => match shell.to_str().and_then(|name| Shell::from_str(name, false).ok()) {
+            Some(shell) => {
+                let mut stdout = std::io::stdout();
+                clap_complete::generate(shell, &mut CliArgs::command(), "zet", &mut stdout);
+                exit_success();
+            }
+            None => (
+                ErrorKind::InvalidValue,
+                format!("invalid shell '{}'\n{}", shell.display(), possible()),
+            ),
+        },
+        [_, extra, ..] => {
+            (ErrorKind::TooManyValues, format!("unexpected argument '{}' found", extra.display()))
+        }
+    };
+    CliArgs::command()
+        .color(cc.into())
+        .override_usage(format!("{APP_NAME}zet{APP_NAME:#} completions <SHELL>"))
+        .error(kind, message)
+        .exit()
 }
 
 fn version_and_exit(cc: ColorChoice) -> ! {
@@ -225,10 +252,6 @@ struct CliArgs {
     /// When to color the help message
     color: Option<ColorChoice>,
 
-    #[arg(long, value_name = "SHELL")]
-    /// Print shell completions for the given shell and exit
-    completions: Option<Shell>,
-
     #[arg(short, long)]
     /// Print this message
     help: bool,
@@ -259,6 +282,8 @@ enum CliName {
     Single,
     /// Prints lines appearing more than once; with --files, in more than one file
     Multiple,
+    /// Print a completion script for bash, elvish, fish, powershell or zsh
+    Completions,
     /// Print this message
     Help,
 }

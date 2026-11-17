@@ -2,7 +2,7 @@ use std::fs::File;
 use std::process::Command;
 
 use assert_cmd::prelude::*;
-use assert_fs::{prelude::*, TempDir};
+use assert_fs::{TempDir, prelude::*};
 use indexmap::{IndexMap, IndexSet};
 use itertools::Itertools;
 use once_cell::sync::Lazy;
@@ -37,7 +37,7 @@ fn help_is_the_same_however_requested_and_lists_every_command_and_option() {
         let output = run([request]).unwrap();
         assert_eq!(String::from_utf8(output.stdout).unwrap(), help, "Output from {request}");
     }
-    for command in ["union", "intersect", "diff", "single", "multiple", "help"] {
+    for command in ["union", "intersect", "diff", "single", "multiple", "completions", "help"] {
         assert!(help.contains(&format!("\n  {command} ")), "No help for {command}");
     }
     for option in ["--count-lines", "--count-files", "-c, --count", "--file[s]", "--color <WHEN>"] {
@@ -48,7 +48,7 @@ fn help_is_the_same_however_requested_and_lists_every_command_and_option() {
 #[test]
 fn completions_offer_the_real_option_names_not_the_ones_help_displays() {
     for shell in ["bash", "elvish", "fish", "powershell", "zsh"] {
-        let output = run(["--completions", shell]).unwrap();
+        let output = run(["completions", shell]).unwrap();
         let completions = String::from_utf8(output.stdout).unwrap();
         for option in ["files", "lines"] {
             // Fish completions say `-l files`, the others `--files`
@@ -59,6 +59,16 @@ fn completions_offer_the_real_option_names_not_the_ones_help_displays() {
             );
         }
         assert!(!completions.contains("[s]"), "Display-only name in {shell} completions");
+    }
+}
+
+#[test]
+fn completions_command_fails_without_exactly_one_known_shell() {
+    for shells in ["", "tcsh", "Fish", "fish zsh"] {
+        let output = run(["completions", shells]).assert().failure().get_output().clone();
+        assert!(output.stdout.is_empty(), "zet completions {shells} wrote to stdout");
+        let message = String::from_utf8(output.stderr).unwrap();
+        assert!(message.contains("zet completions <SHELL>"), "zet completions {shells}: {message}");
     }
 }
 
@@ -397,7 +407,7 @@ fn xpected_with_count_files(op: OpName) -> Vec<String> {
 mod test_the_tests {
     use super::*;
     #[test]
-    fn expected_union_output_is_the_concatentated_input_lines_in_order_with_no_duplicates() {
+    fn expected_union_output_is_the_concatenated_input_lines_in_order_with_no_duplicates() {
         let xyz = [x(), y(), z()].concat();
         let unique_input_lines: Vec<String> = xyz.into_iter().unique().collect();
         let union_lines = xpected(Union);
