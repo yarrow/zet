@@ -1,6 +1,6 @@
 //! Houses the `calculate` function
 //!
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use std::fmt::Debug;
 
 use crate::args::OpName::{
@@ -122,7 +122,7 @@ pub fn calculate<O: LaterOperand>(
 /// want to print how many time each line occurred in the file. For that we'd
 /// use `SiftLog<Files, Lines>` bookkeeping values to sift by the number of
 /// files seen and log the number of lines seen.  And we could use
-/// `SiftLog<Lines, Files>` to print only lines occuring multiple times, while
+/// `SiftLog<Lines, Files>` to print only lines occurring multiple times, while
 /// printing the number of files each line occurs in.
 pub(crate) trait Bookkeeping: Copy + PartialEq + Debug {
     /// The initial bookkeeping value for each line in the first operand.
@@ -142,7 +142,7 @@ pub(crate) trait Bookkeeping: Copy + PartialEq + Debug {
     fn retention_value(self) -> u32;
 
     /// Output the `ZetSet`. The provided implementation doesn't log a count of
-    /// lines or files, so must be overridden by types that do loggging.
+    /// lines or files, so must be overridden by types that do logging.
     fn output_zet_set(set: &ZetSet<Self>, mut out: impl std::io::Write) -> Result<()> {
         out.write_all(set.bom)?;
         for line in set.keys() {
@@ -202,7 +202,7 @@ fn keep_single<B: Bookkeeping, O: LaterOperand>(
     out: impl std::io::Write,
 ) -> Result<()> {
     let mut set = every_line::<B, O>(first_operand, rest)?;
-    set.retain(|occurences| occurences == 1);
+    set.retain(|occurrences| occurrences == 1);
     output_and_discard(set, out)
 }
 
@@ -214,7 +214,7 @@ fn keep_multiple<B: Bookkeeping, O: LaterOperand>(
     out: impl std::io::Write,
 ) -> Result<()> {
     let mut set = every_line::<B, O>(first_operand, rest)?;
-    set.retain(|occurences| occurences > 1);
+    set.retain(|occurrences| occurrences > 1);
     output_and_discard(set, out)
 }
 
@@ -275,7 +275,7 @@ fn intersect<B: Bookkeeping, O: LaterOperand>(
 fn output_and_discard<B: Bookkeeping>(set: ZetSet<B>, out: impl std::io::Write) -> Result<()> {
     B::output_zet_set(&set, out)?;
     std::mem::forget(set); // Slightly faster to just abandon this, since we're about to exit.
-                           // Thanks to [Karolin Varner](https://github.com/koraa)'s huniq
+    // Thanks to [Karolin Varner](https://github.com/koraa)'s huniq
     Ok(())
 }
 
@@ -350,7 +350,7 @@ impl Loggable for Lines {
 }
 /// For `Diff`, `Intersect`, `SingleByFile`, and `MultipleByFile`, each line's
 /// `Files` item will keep track of how many files the line has appeared in.
-/// `Files` can also be used to report the file count information for operatons
+/// `Files` can also be used to report the file count information for operations
 /// whose selection criteria are different from number of files.
 ///
 /// The `Files` struct has `file_number` and `files_seen` fields.

@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use is_terminal::IsTerminal;
 use std::io;
 use zet::args::OpName;

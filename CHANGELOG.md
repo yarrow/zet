@@ -1,20 +1,40 @@
 # Change Log
 
+# [2.1.0]
+
+## Added
+
+- The `zet completions <SHELL>` command prints a shell completion script for `bash`, `elvish`, `fish`, `powershell` or `zsh`. For example, `zet completions fish > zet.fish`. (Thanks to [jtrv] for the pull request.)
+- Help lines for `--count-none` and `--line[s]` were previously missing.
+
+## Changed
+
+- Bump Minimum Supported Rust Version to 1.85.0
+- We're back to `clap` for help output, since `clap 4` lets us print colored help again.
+
+## Fixed
+
+- `zet --version` no longer writes color escape codes when its output isn't a terminal.
+
 # [2.0.1]
 
 ## Fixed
-- `zet -c`, like `zet --count`, is supposed to count the number of times a line appears unless there's a `--files` flag; but due to an error, `-c` always counts the number of files the line appears in. (So if a line appears in one file 100 times, the reported count is 1, even without the `--file` flag.)  This is fixed, but since it changes behaviour in a non-backward compatible way, we bump the major version number.
+
+- `zet -c`, like `zet --count`, is supposed to count the number of times a line appears unless there's a `--files` flag; but due to an error, `-c` always counts the number of files the line appears in. (So if a line appears in one file 100 times, the reported count is 1, even without the `--file` flag.) This is fixed, but since it changes behaviour in a non-backward compatible way, we bump the major version number.
 
 ## Changed
+
 - Bump Minimum Supported Rust Version to 1.78.0
 
 # [1.0.0] - 2023-04-18
 
 ## Added
-- Add the `--count-lines` flag to show the number of times each line occurs in the input and the `--count-files` flag to show the number of files each line occurs in.  The `--count` flag acts like `--count-lines` unless `--count-files` is active, in which case it acts like `--count-files`. The `--count-none` flag turns off counting, and can be used to override the other `count` flags. (In the usual POSIX convention, the last `count` flag given will override any previous `count` flag.)
+
+- Add the `--count-lines` flag to show the number of times each line occurs in the input and the `--count-files` flag to show the number of files each line occurs in. The `--count` flag acts like `--count-lines` unless `--count-files` is active, in which case it acts like `--count-files`. The `--count-none` flag turns off counting, and can be used to override the other `count` flags. (In the usual POSIX convention, the last `count` flag given will override any previous `count` flag.)
 
 ## Changed
-- **Breaking:** When `-` is used as a file argument, `zet` reads from standard input, not the file `-` in the current directory.  (That file can be passed to `zet` as `./-`)
+
+- **Breaking:** When `-` is used as a file argument, `zet` reads from standard input, not the file `-` in the current directory. (That file can be passed to `zet` as `./-`)
 - When no file arguments are given, `zet` reads from standard input.
 - **Breaking:** Add the `--files` (alias `--file`) flag for the `zet single` and `zet multiple` commands. The `zet single` command now outputs lines that occur exactly once in the entire input. The `zet single --file` command reproduces the old behavior (output lines that occur in just one file, though possibly many times in that one file). Similarly, `zet multiple --files` reproduces the old behavior of requiring output lines to occur in more than one file, while `zet multiple` without the `--files` flag will output lines that occur more than once, even if in just one file.
 - Use `clap 4`'s help format, but `clap 3`'s colors. This is self-indulgent recreation of (part of) clap's `help` feature, because I like the `clap 4`'s help format, but really miss the colored (rather than gray-scale) help.
@@ -22,25 +42,28 @@
 # [0.2.6] - 2023-02-02
 
 ## Removed
+
 - Abandon trying to have a Minimum Supported Rust Version (maybe once we're 1.0?)
 
 ## Changed
+
 - Use cargo-dist to create the release
 - Move `for_byte_lines` from `NextOperand` to a trait (thanks to [ysthakur] for the suggestion)
 
 ## [0.2.5] - 2022-11-10
 
 ## Changed
+
 - Bump Minimum Supported Rust Version to 1.64.0
 - Switch from `failure` to `anyhow`
 - Performance enhancements:
-    - Use `Cow` keys for `UnionSet` and `CountedSet` so we can borrow the lines of
-      the first file rather than allocating them
-    - If `line` is in a `CountedSet`, don't allocate a key
-    - Use `FxHash` — averages 10-15% faster on large files
-    - Convert `Diff` and `Union` to use `CowSet`
-    - Convert `Single`, `Multiple`, and `Intersect` to by-line algorithms
-    - No longer create map/set for args after the 1st
+  - Use `Cow` keys for `UnionSet` and `CountedSet` so we can borrow the lines of
+    the first file rather than allocating them
+  - If `line` is in a `CountedSet`, don't allocate a key
+  - Use `FxHash` — averages 10-15% faster on large files
+  - Convert `Diff` and `Union` to use `CowSet`
+  - Convert `Single`, `Multiple`, and `Intersect` to by-line algorithms
+  - No longer create map/set for args after the 1st
 - Refactor and expand internal documentation.
 - Change Single/Multiple code to use a single NonZeroUsize operand ID rather than
   two u32 IDs
@@ -48,6 +71,7 @@
 # [0.2.0] - 2021-07-03
 
 ## Changed
+
 - Zet looks for Byte Order Marks in UTF-8, UTF-16LE and UTF-16BE files,
   translating UTF-16LE and UTF-16BE to UTF-8. It outputs a (UTF-8) Byte Order
   Mark if and only if it finds one in its first file argument.
@@ -59,16 +83,19 @@
 # [0.1.1] - 2021-06-14
 
 ## Fixed
+
 - Upgrade from yanked dependencies
 
 # 0.1.0 - 2021-06-14
 
 Initial release
 
+[2.1.0]: https://github.com/yarrow/zet/compare/v2.0.1...v2.1.0
 [2.0.1]: https://github.com/yarrow/zet/compare/v1.0.0...v2.0.1
 [1.0.0]: https://github.com/yarrow/zet/compare/v0.2.6...v1.0.0
 [0.2.6]: https://github.com/yarrow/zet/compare/0.2.5...v0.2.6
 [0.2.5]: https://github.com/yarrow/zet/compare/0.2.0...0.2.5
 [0.2.0]: https://github.com/yarrow/zet/compare/v0.1.1...0.2.0
 [0.1.1]: https://github.com/yarrow/zet/compare/v0.1.0...v0.1.1
-[ysthakur]:https://github.com/ysthakur
+[ysthakur]: https://github.com/ysthakur
+[jtrv]: https://github.com/jtrv

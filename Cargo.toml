@@ -1,35 +1,51 @@
 [package]
 name = "zet"
-version = "2.0.1"
+version = "2.1.0"
 authors = ["Yarrow Angelweed <yarrow.angelweed@gmail.com>"]
 description = "zet finds the union, intersection, set difference, etc of files considered as sets of lines"
 documentation = "https://github.com/yarrow/zet"
-homepage = "https://github.com/yarrow/zet"
 repository = "https://github.com/yarrow/zet"
 readme = "README.md"
 keywords = ["set", "operation", "union", "uniq", "intersection"]
 categories = ["command-line-utilities", "text-processing"]
 license = "MIT OR Apache-2.0"
-edition = '2021'
-rust-version = "1.78.0"
+edition = '2024'
+rust-version = "1.85.0"
 
 [dependencies]
 anyhow = "1.0.42"
-anstream = "0.6.5"
-bstr = { version = "1.1.0", default-features = false, features = ["std", "alloc"] }
+anstream = "1.0.0"
+bstr = { version = "1.1.0", default-features = false, features = [
+    "std",
+    "alloc",
+] }
 encoding_rs = "0.8.28"
 encoding_rs_io = "0.1.7"
 fxhash = "0.2.1"
-clap = { version = "4.5", default-features = false, features = ["std", "color", "help", "usage", "wrap_help", "string", "error-context", "suggestions", "derive", "cargo"] }
-clap_complete = { version = "=4.5.67", default-features = false }
+clap = { version = "4.5", default-features = false, features = [
+    "std",
+    "color",
+    "help",
+    "usage",
+    "wrap_help",
+    "string",
+    "error-context",
+    "suggestions",
+    "derive",
+    "cargo",
+] }
+clap_complete = { version = "4.5", default-features = false }
 memchr = "2.4.0"
-indexmap = "1.7.0"
+indexmap = "2.14.2"
 is-terminal = "0.4.2"
 
 [dev-dependencies]
 assert_cmd = "2.0.7"
 assert_fs = "1.0.10"
-itertools = "0.10.5"
+# We don't use `ignore` directly: it's a dependency of `assert_fs`. Version 0.4.30 needs Rust 1.88
+# but doesn't declare it, so cargo picks it despite our `rust-version`
+ignore = "=0.4.29"
+itertools = "0.15.0"
 once_cell = "1.17.1"
 
 [profile.release]

@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
+set -x
 cargo fmt -- --check
 cargo test -q
-cargo clippy --workspace --tests --examples --no-deps
-cargo clippy --profile=test
-cargo clippy --profile=release --tests --examples --no-deps
+cargo clippy --profile=test --all-targets --no-deps
+cargo clippy --profile=release --all-targets --no-deps

@@ -1,7 +1,7 @@
 //! Colors for `zet`'s help: `clap 4`'s help format, but `clap 3`'s colors.
 
-use clap::builder::styling::{AnsiColor, Style, Styles};
 use clap::ValueEnum;
+use clap::builder::styling::{AnsiColor, Style, Styles};
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub(crate) enum ColorChoice {

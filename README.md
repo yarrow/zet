@@ -78,6 +78,22 @@ line whose hash is the same as another, different, line). But `zet union
 --count` is slightly faster than `huniq -c`, because `huniq -c` sorts its input
 in order to count lines.
 
+## Shell completions
+
+`zet completions <SHELL>` prints a completion script for `<SHELL>`, which can
+be `bash`, `elvish`, `fish`, `powershell`, or `zsh`. Save the script where your
+shell looks for completions. For instance:
+
+```console
+$ zet completions fish > ~/.config/fish/completions/zet.fish
+$ zet completions bash > ~/.local/share/bash-completion/completions/zet
+$ zet completions zsh > ~/.zfunc/_zet
+```
+
+(The `bash` example assumes you use the `bash-completion` package, and the
+`zsh` example that `~/.zfunc` is in your `$fpath`. See your shell's
+documentation for other possibilities.)
+
 ## Notes
 
 * As stated above, each output line occurs only once, and the lines are output
